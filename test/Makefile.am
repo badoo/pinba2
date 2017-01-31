@@ -2,15 +2,11 @@
 
 # FIXME: need to add this to configure and maybe move code to this repo completely
 hardcoded_deps = \
-	-I$(top_srcdir)/../meow \
 	-I$(top_srcdir)/../misc \
-	-I/local/_libs/boost/1.57.0/include \
-	-I/local/_libs/sparsehash/2.0.3/include \
 	#
 
-#	-I/local/_libs/sparsehash-c11/master/include/google
-
 cflags = \
+	$(CXXFLAGS) \
  	-O0 -g3 -mtune=native \
  	$(MYSQL_INC) \
 	$(DEPS_CFLAGS) \

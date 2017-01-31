@@ -347,11 +347,11 @@ struct report___by_request_data_t : public report_t
 		//        sparsehash with c++11 support (https://github.com/sparsehash/sparsehash-c11) fixes this
 		//        but gcc 4.9.4 doesn't support the type_traits it requires
 		//        so live this is for now, but probably - move to gcc6 or something
-		// item_t(item_t const& other)
-		// 	: data(other.data)
-		// 	, hv(other.hv)
-		// {
-		// }
+		item_t(item_t const& other)
+			: data(other.data)
+			, hv(other.hv)
+		{
+		}
 
 		item_t(item_t&& other)
 		{

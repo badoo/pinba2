@@ -4,12 +4,10 @@ EXTRA_DIST = include/*.h
 # FIXME: need to add this to configure and maybe move code to this repo completely
 hardcoded_deps = \
 	-I$(top_srcdir)/../misc \
-	-I$(top_srcdir)/../meow \
-	-I/local/_libs/boost/1.57.0/include \
-	-I/local/_libs/sparsehash/2.0.3/include \
 	#
 
 cflags = \
+	$(CXXFLAGS) \
 	-O0 -g3 -mtune=native \
  	$(MYSQL_INC) \
 	$(DEPS_CFLAGS) \

@@ -141,7 +141,8 @@ else
 	HEADERS="include/my_dir.h include/mysql/plugin.h include/mysql.h include/mysql_version.h"
 	for file in $HEADERS; do
 		if ! test -r "$with_mysql/$file"; then
-			AC_MSG_ERROR([Failed to find required header file $file in $with_mysql, check the path and make sure you've run './configure ..<options>.. && cd include && make' in MySQL sources dir])
+			AC_MSG_ERROR([Failed to find required header file $file in $with_mysql, check the path and make sure you've run \
+				'./configure ..<options>.. && cd include && make' in MySQL sources dir])
 		fi
 	done
 
@@ -257,10 +258,27 @@ AC_ARG_WITH(build-string,
 )
 dnl }}}
 
-AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build statically)])],
+AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build it statically)])],
 [
 	CXXFLAGS="$CXXFLAGS -pthread -lanl -I$with_nanomsg/include"
 	LDFLAGS="$LDFLAGS $with_nanomsg/lib/libnanomsg.a"
+])
+
+AC_ARG_WITH(sparsehash, [AS_HELP_STRING([--with-sparsehash], [path to sparsehash library])],
+[
+	CXXFLAGS="$CXXFLAGS -I$with_sparsehash/include" # this one is for sparsehash
+	CXXFLAGS="$CXXFLAGS -I$with_sparsehash/include/google" # this one is for sparsehash-c11
+])
+
+AC_ARG_WITH(meow, [AS_HELP_STRING([--with-meow], [path to meow library])],
+[
+	CXXFLAGS="$CXXFLAGS -I$with_meow"
+])
+
+AC_ARG_WITH(boost, [AS_HELP_STRING([--with-boost], [path to boost library])],
+[
+	CXXFLAGS="$CXXFLAGS -I$with_boost/include" # installed version
+	CXXFLAGS="$CXXFLAGS -I$with_boost"         # just downloaded source code version
 ])
 
 AC_SUBST(INSTALL_STRIP_FLAG)
