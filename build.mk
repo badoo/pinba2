@@ -2,7 +2,6 @@
 SUPPRESS_WARNINGS = 2>&1 | (egrep -v '(AC_TRY_RUN called without default to allow cross compiling|AC_PROG_CXXCPP was called before AC_PROG_CXX|defined in acinclude.m4 but never used|AC_PROG_LEX invoked multiple times|AC_DECL_YYTEXT is expanded from...|the top level)'||true)
 
 AUTOCONF ?= 'autoconf'
-ACLOCAL ?= 'aclocal'
 AUTOHEADER ?= 'autoheader'
 AUTOMAKE ?= 'automake'
 LIBTOOLIZE ?= $(shell uname -s | grep Darwin >/dev/null && echo 'glibtoolize' || echo 'libtoolize')
@@ -15,15 +14,12 @@ all: $(targets)
 ltmain:
 	$(LIBTOOLIZE) --force --copy
 
-aclocal.m4: configure.ac
-	$(ACLOCAL)
-
 $(config_h_in): configure
 	@echo rebuilding $@
 	@rm -f $@
 	$(AUTOHEADER) $(SUPPRESS_WARNINGS)
 
-configure: aclocal.m4 configure.ac ltmain
+configure: configure.ac ltmain
 	@echo rebuilding $@
 	$(AUTOCONF) $(SUPPRESS_WARNINGS)
 
