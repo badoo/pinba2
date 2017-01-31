@@ -1,7 +1,7 @@
 AC_INIT([pinba2], [2.0.0])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ha_pinba.cpp])
-AM_INIT_AUTOMAKE([foreign subdir-objects])
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER([src/auto_config.h])
 #AX_PREFIX_CONFIG_H(src/pinba_config.h)
 AM_INIT_AUTOMAKE
