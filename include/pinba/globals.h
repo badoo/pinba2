@@ -8,6 +8,7 @@
 #include <memory> // unique_ptr
 
 #include <meow/str_ref.hpp>
+#include <meow/std_unique_ptr.hpp>
 #include <meow/format/format.hpp>
 #include <meow/unix/time.hpp>
 

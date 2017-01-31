@@ -9,6 +9,7 @@ depcomp
 install-sh
 libtool
 ltmain.sh
+aclocal.m4
 stamp-h1
 m4
 missing

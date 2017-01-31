@@ -11,75 +11,25 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/sparse_hash_map>
 
-#include <meow/chunk.hpp>
 #include <meow/stopwatch.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
-#include <meow/unix/time.hpp>
-#include <meow/std_unique_ptr.hpp>
 #include <meow/format/format_to_string.hpp>
 
 #include "pinba/globals.h"
 #include "pinba/packet.h"
+#include "pinba/report.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct histogram_t
-{
-	// map time_interval -> request_count
-	//
-	// sparse_hash_map is said to be more efficient memory-wise
-	// and we kinda need that, since there is a histogram per row per timeslice
-	//
-	// TODO: a couple of ideas on tuning this
-	//  1. maybe make hash map impl configureable, so that if report has few rows
-	//     a faster hash map can be use (like dense_hash_map)
-	//  2. experiment with hash function for integers here (maybe a simple identity will work?)
-	//  3. control hash map grows as much as possible, to save memory (at least use small initial size)
-	//  4. keep as little state in this object as possible to save memory
-	//     all confguration information (like histogram max size and hash initial size can be passed from outside)
-	//  5. maybe use memory pools to allocate objects like this one (x84_64)
-	//     sizeof(unordered_map) == 56    // as of gcc 4.9.4
-	//     sizeof(dense_hash_map) == 80
-	//     sizeof(sparse_hash_map) == 88
-	//  6. try https://github.com/greg7mdp/sparsepp (within 1% of sparse_hash_map by mem usage, but faster lookup/insert)
-	//     sizeof(spp::sparse_hash_map) == 88
-	//  7. sparse_hash_set should use less memory due to using uint32_t but expect 64bit alignments?
-	//
-	typedef google::sparse_hash_map<uint32_t, uint32_t> map_t;
-	map_t map;
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct report_global_info_t
-{
-	// uint32_t    row_count; // as max of all timeslice's row count
-
-	uint32_t    timeslice_count;
-	duration_t  time_window;
-};
-
 
 struct report_row_data___by_request_t
 {
-	uint32_t    req_count;
-	double      req_per_sec;
-
-	duration_t  req_time_total;
-	duration_t  req_time_per_sec;
-	duration_t  req_time_median;
-
-	duration_t  ru_utime_total;
-	duration_t  ru_utime_per_sec;
-
-	duration_t  ru_stime_total;
-	duration_t  ru_stime_per_sec;
-
-	uint64_t    traffic_total;
-	double      traffic_per_sec;
-
-	uint64_t    memory_footprint_total;
+	uint32_t   req_count;
+	duration_t req_time;
+	duration_t ru_utime;
+	duration_t ru_stime;
+	uint64_t   traffic_kb;
+	uint64_t   mem_usage;
 
 	report_row_data___by_request_t()
 	{
@@ -90,16 +40,17 @@ struct report_row_data___by_request_t
 
 
 struct report_row___by_request_t
-	: public report_row_data___by_request_t
 {
-	histogram_t hv;
+	report_row_data___by_request_t  data;
+	histogram_t                     hv;
 };
 
 struct report_row___by_timer_t
 {
 	uint32_t    req_count;   // number of requests timer with such tag was present in
 	uint32_t    hit_count;   // timer hit X times
-	duration_t  total_time;  // sum of all timer values (i.e. total time spent in this timer)
+	duration_t  time_total;  // sum of all timer values (i.e. total time spent in this timer)
+	// timeval_t   time_total;  // sum of all timer values (i.e. total time spent in this timer)
 	duration_t  ru_utime;    // same for rusage user
 	duration_t  ru_stime;    // same for rusage system
 };
@@ -107,37 +58,10 @@ struct report_row___by_timer_t
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-// max number of key parts we support for reports
-#define REPORT_MAX_KEY_PARTS 7
-
-template<size_t N>
-using report_key_base_t = meow::chunk<uint32_t, N, uint32_t>;
-
-template<size_t N>
-using report_key_str_base_t = meow::chunk<str_ref, N, uint32_t>;
-
-using report_key_t     = report_key_base_t<REPORT_MAX_KEY_PARTS>;
-using report_key_str_t = report_key_str_base_t<REPORT_MAX_KEY_PARTS>;
-
-namespace detail {
-	template<size_t N>
-	struct report_key___padding_checker
-	{
-		static_assert(sizeof(report_key_base_t<N>) == ((N + 1) * sizeof(uint32_t)), "ensure no padding within report_key_base_t");
-	};
-	constexpr report_key___padding_checker<1> const report_key___padding_checker__1__;
-	constexpr report_key___padding_checker<2> const report_key___padding_checker__2__;
-	constexpr report_key___padding_checker<3> const report_key___padding_checker__3__;
-	constexpr report_key___padding_checker<4> const report_key___padding_checker__4__;
-	constexpr report_key___padding_checker<5> const report_key___padding_checker__5__;
-	constexpr report_key___padding_checker<6> const report_key___padding_checker__6__;
-	constexpr report_key___padding_checker<7> const report_key___padding_checker__7__;
-} // namespace detail {
-
 struct report_key__hasher_t
 {
 	template<size_t N>
-	constexpr size_t operator()(report_key_base_t<N> const& key) const
+	inline constexpr size_t operator()(report_key_base_t<N> const& key) const
 	{
 		return meow::hash_blob(key.data(), N);
 	}
@@ -146,7 +70,7 @@ struct report_key__hasher_t
 struct report_key__equal_t
 {
 	template<size_t N>
-	constexpr bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
+	inline constexpr bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
 	{
 		return (l.size() != r.size())
 				? false
@@ -167,79 +91,6 @@ std::string report_key_to_string(report_key_base_t<N> const& k)
 
 	return result;
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define REPORT_KIND__BY_REQUEST_DATA 0
-#define REPORT_KIND__BY_TIMER_DATA   1
-
-struct report_snapshot_t
-{
-	// this struct is just a placeholder, same size as real hashtable iterator
-	// FIXME: what about alignment here?
-	// TODO: maybe make iteration completely internal
-	//       (i.e. never give position away, just "current data" and expose next/prev/reset/valid)
-	struct position_t
-	{
-		uintptr_t dummy___[3];
-	};
-
-	virtual ~report_snapshot_t() {}
-
-	// get global snapshot data
-	// this function is here (and not JUST in report_t), to avoid race conditions,
-	// i.e. globals() and get_snapshot() returning slightly different data,
-	// due to those being 2 separate function calls (and some packets might get processed in the middle)
-	// virtual report_global_data_t* globals() const = 0;
-
-	// prepare snapshot for use
-	// MUST be called before any of the functions below
-	// this exists primarily to allow preparation to take place in a thread
-	// different from the one handling report data (more parallelism, yey)
-	virtual void prepare() = 0;
-
-	// iteration, this should be very cheap
-	virtual position_t pos_first() = 0;
-	virtual position_t pos_last() = 0;
-	virtual position_t pos_next(position_t const&) = 0;
-	virtual position_t pos_prev(position_t const&) = 0;
-	virtual bool       pos_equal(position_t const&, position_t const&) const = 0;
-
-	// key handling
-	virtual uint32_t         n_key_parts() const = 0;
-	virtual report_key_t     get_key(position_t const&) const = 0;
-	virtual report_key_str_t get_key_str(position_t const&) const = 0;
-
-	// data handling
-	virtual int   data_kind() const = 0;
-	virtual void* get_data(position_t const&) = 0;
-
-	// histograms
-	virtual bool               histogram_enabled() const = 0;
-	virtual histogram_t const* get_histogram(position_t const&) = 0;
-};
-typedef std::unique_ptr<report_snapshot_t> report_snapshot_ptr;
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct report_t : private boost::noncopyable
-{
-	virtual ~report_t() {}
-
-	virtual str_ref name() const = 0;
-
-	// TODO: report kinds need some love, maybe just have separate classes for them
-	//       or have this one too (since we'd like to store them all in one place)
-	virtual int     kind() const = 0;
-
-	virtual void ticks_init(timeval_t curr_tv) = 0;
-	virtual void tick_now(timeval_t curr_tv) = 0;
-
-	virtual void add(packet_t*) = 0;
-	virtual void add_multi(packet_t**, uint32_t packet_count) = 0;
-
-	virtual report_snapshot_ptr get_snapshot() = 0;
-};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -291,7 +142,7 @@ struct report_conf_t
 {
 	std::string name;
 
-	// duration_t  time_window;   // total time window this report covers (report host uses this for ticking)
+	duration_t  time_window;      // total time window this report covers (report host uses this for ticking)
 	uint32_t    ts_count;         // number of timeslices to store
 
 	uint32_t    hv_bucket_count;  // number of histogram buckets, each bucket is hv_bucket_d 'wide'
@@ -306,27 +157,11 @@ struct report_conf_t
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct report___by_request_data_t : public report_t
+struct report___by_request_t : public report_t
 {
-	typedef report___by_request_data_t  self_t;
-	typedef report_key_t                key_t;
-
-	struct data_t
-	{
-		uint32_t   req_count;
-		duration_t req_time;
-		duration_t ru_utime;
-		duration_t ru_stime;
-		uint64_t   traffic_kb;
-		uint64_t   mem_usage;
-
-		data_t()
-		{
-			// static_assert(std::is_standard_layout<decltype(*this)>::value, "make sure data can be zeroed by memset");
-			// FIXME: add some safeguards here?
-			memset(this, 0, sizeof(*this));
-		}
-	};
+	typedef report___by_request_t           self_t;
+	typedef report_key_t                    key_t;
+	typedef report_row_data___by_request_t  data_t;
 
 	struct item_t
 		: private boost::noncopyable
@@ -342,7 +177,7 @@ struct report___by_request_data_t : public report_t
 		}
 
 		// FIXME: only used by dense_hash_map for set_empty_key()
-		//        !!! AND SWAP() FOR SOME REASON !!!
+		//        !!! AND swap() FOR SOME REASON !!!
 		//        should not be called often with huge histograms, so expect it to be ok :(
 		//        sparsehash with c++11 support (https://github.com/sparsehash/sparsehash-c11) fixes this
 		//        but gcc 4.9.4 doesn't support the type_traits it requires
@@ -404,6 +239,7 @@ struct report___by_request_data_t : public report_t
 
 public:
 
+	// FIXME: need a better name for this and item_t
 	// typedef std::unordered_map<
 	typedef google::dense_hash_map<
 						  key_t
@@ -425,6 +261,7 @@ public:
 
 private:
 	report_conf_t *conf_;
+	report_info_t  info_;
 
 	ticks_t        ticks_;
 
@@ -447,20 +284,22 @@ public: // should be private really
 
 		typedef hash_t::const_iterator iterator_t;
 
-		hash_t    data_;          // real data we iterate over
-		ticks_t   ticks_;         // ticks we merge our data from (in other thread potentially)
-		uint32_t  n_key_parts_;   // number of key parts that exist here for real
-		bool      hv_enabled_;    // histograms enabled ?
+	private:
+
+		hash_t        data_;   // real data we iterate over
+		ticks_t       ticks_;  // ticks we merge our data from (in other thread potentially)
+		report_info_t rinfo_;  // report info, immutable copy taken in ctor
 
 	public:
 
-		snapshot_t(ticks_t ticks, uint32_t n_key_parts, bool hv_enabled)
-			: data_{}
+		snapshot_t(ticks_t ticks, report_info_t const& rinfo)
+			: data_()
 			, ticks_(std::move(ticks))  // get a copy, and move explicitly
-			, n_key_parts_(n_key_parts)
-			, hv_enabled_(hv_enabled)
+			, rinfo_(rinfo)
 		{
 		}
+
+	private:
 
 		virtual void prepare() override
 		{
@@ -481,25 +320,14 @@ public: // should be private really
 					report_row___by_request_t& row = data_[item_pair.first];
 					auto const& item_data = item_pair.second.data;
 
-					row.req_count                   += item_data.req_count;
-					// row.req_per_sec              += ;
-					row.req_time_total              += item_data.req_time;
-					// row.req_time_percent         += ;
-					// row.req_time_per_sec         += ;
-					// row.req_time_median          += ;
-					row.ru_utime_total              += item_data.ru_utime;
-					// row.ru_utime_percent         += ;
-					// row.ru_utime_per_sec         += ;
-					row.ru_stime_total              += item_data.ru_stime;
-					// row.ru_stime_percent         += ;
-					// row.ru_stime_per_sec         += ;
-					row.traffic_total               += item_data.traffic_kb;
-					// row.traffic_percent          += ;
-					// row.traffic_per_sec          += ;
-					row.memory_footprint_total      += item_data.mem_usage;
-					// row.memory_footprint_percent += ;
+					row.data.req_count  += item_data.req_count;
+					row.data.req_time   += item_data.req_time;
+					row.data.ru_utime   += item_data.ru_utime;
+					row.data.ru_stime   += item_data.ru_stime;
+					row.data.traffic_kb += item_data.traffic_kb;
+					row.data.mem_usage  += item_data.mem_usage;
 
-					if (hv_enabled_)
+					if (rinfo_.hv_enabled)
 					{
 						for (auto const& hv_pair : item_pair.second.hv.map)
 							row.hv.map[hv_pair.first] += hv_pair.second;
@@ -508,6 +336,11 @@ public: // should be private really
 			}
 
 			ticks_.clear();
+		}
+
+		virtual report_info_t const* report_info() const override
+		{
+			return &rinfo_;
 		}
 
 	private:
@@ -529,7 +362,7 @@ public: // should be private really
 			return p.pos;
 		}
 
-	public:
+	private:
 
 		virtual position_t pos_first() override
 		{
@@ -579,11 +412,6 @@ public: // should be private really
 			return result;
 		}
 
-		virtual uint32_t n_key_parts() const override
-		{
-			return n_key_parts_;
-		}
-
 		virtual int data_kind() const override
 		{
 			return REPORT_KIND__BY_REQUEST_DATA;
@@ -595,14 +423,9 @@ public: // should be private really
 			return (void*)&it->second; // FIXME: const
 		}
 
-		virtual bool histogram_enabled() const override
-		{
-			return hv_enabled_;
-		}
-
 		virtual histogram_t const* get_histogram(position_t const& pos) override
 		{
-			if (!this->histogram_enabled())
+			if (!rinfo_.hv_enabled)
 				return NULL;
 
 			auto const& it = reinterpret_cast<iterator_t const&>(pos);
@@ -610,27 +433,29 @@ public: // should be private really
 		}
 	};
 
-private:
-
-	bool const hv_enabled()
-	{
-		return conf_->hv_bucket_count > 0;
-	}
-
 public:
 
-	report___by_request_data_t(report_conf_t *conf)
+	report___by_request_t(report_conf_t *conf)
 		: conf_(conf)
 		, raw_start_tv_{0}
 	{
 		// validate config
 		if (conf_->key_fetchers.size() > key_t::static_size)
+		{
 			throw std::runtime_error(ff::fmt_str(
-				"required keys ({0}) > supported keys ({1})",
-				conf_->key_fetchers.size(), key_t::static_size));
+				"required keys ({0}) > supported keys ({1})", conf_->key_fetchers.size(), key_t::static_size));
+		}
 
 		// dense_hash_map specific
 		raw_.set_empty_key(key_t());
+
+		info_ = report_info_t {
+			.kind            = REPORT_KIND__BY_REQUEST_DATA,
+			.timeslice_count = conf_->ts_count,
+			.time_window     = conf_->time_window,
+			.n_key_parts     = (uint32_t)conf_->key_fetchers.size(),
+			.hv_enabled      = (conf_->hv_bucket_count > 0),
+		};
 	}
 
 	virtual str_ref name() const override
@@ -638,10 +463,17 @@ public:
 		return conf_->name;
 	}
 
+	virtual report_info_t const* info() const override
+	{
+		return &info_;
+	}
+
 	virtual int kind() const override
 	{
-		return REPORT_KIND__BY_REQUEST_DATA;
+		return info_.kind;
 	}
+
+public:
 
 	virtual void ticks_init(timeval_t curr_tv) override
 	{
@@ -673,7 +505,7 @@ public:
 
 	virtual report_snapshot_ptr get_snapshot() override
 	{
-		return meow::make_unique<snapshot_t>(ticks_, conf_->key_fetchers.size(), hv_enabled());
+		return meow::make_unique<snapshot_t>(ticks_, info_);
 	}
 
 public:
@@ -712,7 +544,7 @@ public:
 		item_t& item = raw_[k];
 		item.data_increment(packet);
 
-		if (hv_enabled())
+		if (info_.hv_enabled)
 		{
 			item.hv_increment(packet, conf_->hv_bucket_count, conf_->hv_bucket_d);
 		}
@@ -799,6 +631,158 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+#if 0
+struct report___by_timer_t : public report_t
+{
+	typedef report___by_timer_t           self_t;
+	typedef report_key_t                  key_t;
+	typedef report_row_data___by_timer_t  data_t;
+
+	struct item_t
+		: private boost::noncopyable
+	{
+		data_t      data;
+		histogram_t hv;
+
+		item_t()
+			: data()
+			, hv()
+		{
+		}
+
+		// FIXME: only used by dense_hash_map for set_empty_key()
+		//        !!! AND swap() FOR SOME REASON !!!
+		//        should not be called often with huge histograms, so expect it to be ok :(
+		//        sparsehash with c++11 support (https://github.com/sparsehash/sparsehash-c11) fixes this
+		//        but gcc 4.9.4 doesn't support the type_traits it requires
+		//        so live this is for now, but probably - move to gcc6 or something
+		item_t(item_t const& other)
+			: data(other.data)
+			, hv(other.hv)
+		{
+		}
+
+		item_t(item_t&& other)
+		{
+			*this = std::move(other); // operator=()
+		}
+
+		void operator=(item_t&& other)
+		{
+			data = other.data;          // a copy
+			hv.map.swap(other.hv.map);  // real move
+		}
+
+		void data_increment(packet_t *packet)
+		{
+		}
+
+		void hv_increment(packet_t *packet, uint32_t hv_bucket_count, duration_t hv_bucket_d)
+		{
+			uint32_t const id = packet->request_time.nsec / hv_bucket_d.nsec;
+			uint32_t const bucket_id = (id < hv_bucket_count)
+										? id + 1 // known tick bucket
+										: id;    // infinity
+
+			hv.map[bucket_id] += 1;
+		}
+
+		void merge_other(item_t const& other)
+		{
+			// data
+			data.req_count  += other.data.req_count;
+			data.hit_count  += other.data.hit_count;
+			data.req_time   += other.data.req_time;
+			data.ru_utime   += other.data.ru_utime;
+			data.ru_stime   += other.data.ru_stime;
+
+			// hv
+			for (auto const& hv_pair : other.hv.map)
+			{
+				hv.map[hv_pair.first] += hv_pair.second;
+			}
+		}
+	};
+
+public:
+
+	// FIXME: need a better name for this and item_t
+	// typedef std::unordered_map<
+	typedef google::dense_hash_map<
+						  key_t
+						, item_t
+						, report_key__hasher_t
+						, report_key__equal_t
+					> raw_t;
+
+	struct timeslice_t
+		: boost::intrusive_ref_counter<timeslice_t>
+	{
+		timeval_t start_tv = {0};
+		timeval_t end_tv   = {0};
+		raw_t     items;
+	};
+	typedef boost::intrusive_ptr<timeslice_t> timeslice_ptr;
+
+	typedef std::vector<timeslice_ptr> ticks_t; // constant size
+
+private:
+	report_conf_t *conf_;
+	report_info_t  info_;
+
+	ticks_t        ticks_;
+
+	raw_t          raw_;
+	timeval_t      raw_start_tv_; // timeval we've started gathering raw data
+
+public:
+
+	virtual void add(packet_t *packet)
+	{
+		// run all selectors and check if packet is 'interesting to us'
+		for (size_t i = 0, i_end = conf_->selectors.size(); i < i_end; ++i)
+		{
+			auto const& selector = conf_->selectors[i];
+			if (!selector.func(packet))
+			{
+				ff::fmt(stdout, "packet {0} skipped by selector {1}\n", packet, selector.name);
+				return;
+			}
+		}
+
+		packed_timer_t *timer =
+
+/*
+		// construct a key, by runinng all key fetchers
+		key_t k;
+
+		for (size_t i = 0, i_end = conf_->key_fetchers.size(); i < i_end; ++i)
+		{
+			auto const& fetcher = conf_->key_fetchers[i];
+
+			report_key_fetch_res_t const r = fetcher.fetcher(packet);
+			if (!r.found)
+			{
+				ff::fmt(stdout, "packet {0} skipped by key fetcher {1}\n", packet, fetcher.name);
+				return;
+			}
+
+			k.push_back(r.key_value);
+		}
+*/
+		// finally - find and update item
+		item_t& item = raw_[k];
+		item.data_increment(packet);
+
+		if (info_.hv_enabled)
+		{
+			item.hv_increment(packet, conf_->hv_bucket_count, conf_->hv_bucket_d);
+		}
+	}
+
+};
+#endif
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class SinkT>
 SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_ref name = {})
@@ -822,31 +806,12 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 		{
 		case REPORT_KIND__BY_REQUEST_DATA:
 		{
-			// uint32_t    req_count;
-			// double      req_per_sec;
-			// duration_t  req_time_total;
-			// // double      req_time_percent;
-			// duration_t  req_time_per_sec;
-			// duration_t  req_time_median;
-
-			// duration_t  ru_utime_total;
-			// // double      ru_utime_percent;
-			// duration_t  ru_utime_per_sec;
-
-			// duration_t  ru_stime_total;
-			// // double      ru_stime_percent;
-			// duration_t  ru_stime_per_sec;
-
-			// uint64_t    traffic_total;
-			// // double      traffic_percent;
-			// uint64_t    traffic_per_sec;
-			// uint64_t    memory_footprint_total;
-			// // double      memory_footprint_percent;
-
 			auto const *row = reinterpret_cast<report_row___by_request_t*>(snapshot->get_data(pos));
+			auto const& data = row->data;
+
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} } [",
-				row->req_count, row->req_time_total, row->ru_utime_total, row->ru_stime_total,
-				row->traffic_total, row->memory_footprint_total);
+				data.req_count, data.req_time, data.ru_utime, data.ru_stime,
+				data.traffic_kb, data.mem_usage);
 
 			auto const *hv = snapshot->get_histogram(pos);
 			if (NULL != hv)
@@ -904,7 +869,7 @@ try
 	};
 
 	report_conf_t report_conf = {};
-	// report_conf.time_window     = 60 * d_second,    // 1 minute aggregation window
+	report_conf.time_window     = 60 * d_second,
 	report_conf.ts_count        = 5;
 	report_conf.hv_bucket_d     = 1 * d_microsecond;
 	report_conf.hv_bucket_count = 1 * 1000 * 1000;
@@ -969,7 +934,7 @@ try
 		// },
 	};
 
-	auto report = meow::make_unique<report___by_request_data_t>(&report_conf);
+	auto report = meow::make_unique<report___by_request_t>(&report_conf);
 	report->ticks_init(os_unix::clock_monotonic_now());
 
 	report->add(&packet);
