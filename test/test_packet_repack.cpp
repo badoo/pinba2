@@ -16,10 +16,8 @@
 #include "pinba/collector.h"
 #include "pinba/packet.h"
 
-// this builtin is unavailable in C++ mode, so have to disable
-// #define __builtin_types_compatible_p(a, b) true
-#include "nmpa.h"
-#include "nmpa_pba.h"
+#include "misc/nmpa.h"
+#include "misc/nmpa_pba.h"
 
 using meow::string_ref;
 

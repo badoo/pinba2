@@ -19,8 +19,8 @@
 #include "pinba/collector.h"
 #include "proto/pinba.pb-c.h"
 
-#include "nmpa.h"
-#include "nmpa_pba.h"
+#include "misc/nmpa.h"
+#include "misc/nmpa_pba.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

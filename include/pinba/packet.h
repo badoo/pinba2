@@ -12,11 +12,7 @@
 #include "pinba/globals.h"
 #include "proto/pinba.pb-c.h"
 
-// this builtin is unavailable in C++ mode, so have to disable
-// #ifndef __builtin_types_compatible_p
-// #define __builtin_types_compatible_p(a, b) true
-// #endif
-#include "nmpa.h"
+#include "misc/nmpa.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO: maybe move this to it's own header

@@ -1,11 +1,6 @@
 
 EXTRA_DIST = include/*.h
 
-# FIXME: need to add this to configure and maybe move code to this repo completely
-hardcoded_deps = \
-	-I$(top_srcdir)/../misc \
-	#
-
 cflags = \
 	$(CXXFLAGS) \
 	-O0 -g3 -mtune=native \
@@ -13,7 +8,6 @@ cflags = \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	$(hardcoded_deps) \
 	#
 
 AM_CXXFLAGS = \
