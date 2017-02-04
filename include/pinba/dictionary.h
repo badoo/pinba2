@@ -35,9 +35,13 @@ struct dictionary_t
 
 	str_ref get_word(uint32_t word_id)
 	{
-		if (word_id >= words.size())
+		if (word_id > words.size())
 			return {};
-		return words[word_id];
+
+		if (word_id == 0)
+			return str_ref{};
+
+		return words[word_id-1];
 	}
 
 	uint32_t get_or_add(str_ref const word)
@@ -91,9 +95,13 @@ struct dictionary_t
 
 	str_ref get_word(uint32_t word_id)
 	{
-		if (word_id >= words.size())
+		if (word_id == 0)
 			return {};
-		return words[word_id];
+
+		if (word_id > words.size())
+			return {};
+
+		return words[word_id-1];
 	}
 
 	uint32_t get_or_add(str_ref const word)
@@ -112,8 +120,8 @@ struct dictionary_t
 		// insert new element
 		words.push_back(word.str());
 
+		// word_id starts with 1, since 0 is reserved for empty
 		assert(words.size() < size_t(INT_MAX));
-
 		auto const word_id = static_cast<uint32_t>(words.size());
 
 		++this->insert_count;

@@ -72,7 +72,7 @@ struct packed_tag_t
 static_assert(sizeof(packed_tag_t) == 8, "make sure packed_tag_t has no padding inside");
 static_assert(std::is_standard_layout<packed_tag_t>::value == true, "packed_tag_t must be a standard layout type");
 
-struct packed_timer_t // sizeof == 40bytes (can reduce further using microseconds_t)
+struct packed_timer_t // sizeof == 40bytes (can reduce further using microseconds_t and using uint16_t tag_count)
 {
 	uint32_t        hit_count;
 	uint32_t        tag_count;
@@ -154,9 +154,61 @@ inline void for_each_timer(Pinba__Request *r, Function const& cb)
 	}
 };
 
+template<class SinkT>
+inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nmpa = NULL)
+{
+	auto const n_timer_tags = [&]()
+	{
+		uint32_t result = 0;
+		for (unsigned i = 0; i < packet->timer_count; i++)
+			result += packet->timers[i].tag_count;
+		return result;
+	}();
+
+	// if (nmpa)
+	// {
+	// 	ff::fmt(sink, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
+	// }
+
+	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packet->tags[0]));
+	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
+		packet->host_id, packet->dictionary->get_word(packet->host_id),
+		packet->server_id, packet->dictionary->get_word(packet->server_id),
+		packet->script_id, packet->dictionary->get_word(packet->script_id),
+		packet->timer_count, packet->tag_count, n_timer_tags);
+
+	for (unsigned i = 0; i < packet->tag_count; i++)
+	{
+		auto const& tag = packet->tags[i];
+		ff::fmt(sink, "  tag[{0}]: {{ {1}:{2} -> {3}:{4} }\n",
+			i,
+			tag.name_id, packet->dictionary->get_word(tag.name_id),
+			tag.value_id, packet->dictionary->get_word(tag.value_id));
+	}
+	ff::fmt(sink, "\n");
+
+	for (unsigned i = 0; i < packet->timer_count; i++)
+	{
+		auto const& t = packet->timers[i];
+
+		ff::fmt(sink, "  t[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
+		for (unsigned j = 0; j < t.tag_count; j++)
+		{
+			auto const& tag = t.tags[j];
+
+			ff::fmt(sink, "    {0}:{1} -> {2}:{3}\n",
+				tag.name_id, packet->dictionary->get_word(tag.name_id),
+				tag.value_id, packet->dictionary->get_word(tag.value_id));
+		}
+		ff::fmt(sink, "\n");
+	}
+
+	return sink;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-MEOW_DEFINE_SMART_ENUM(packet_validate_result,
+MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((okay,                      "okay"))
 					((bad_hit_count,             "bad_hit_count"))
 					((bad_tag_count,             "bad_tag_count"))
@@ -164,9 +216,10 @@ MEOW_DEFINE_SMART_ENUM(packet_validate_result,
 					((not_enough_tag_values,     "not_enough_tag_values"))
 					// ((bad_timer_ru_utime_count,  "bad_timer_ru_utime_count"))
 					// ((bad_timer_ru_stime_count,  "bad_timer_ru_stime_count"))
+					((bad_timer_hit_count,       "bad_timer_hit_count"))
 					);
 
-packet_validate_result_t validate_packet(Pinba__Request *r);
+request_validate_result_t pinba_validate_request(Pinba__Request *r);
 packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmpa_s *nmpa);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

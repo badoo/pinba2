@@ -10,6 +10,8 @@
 #include <boost/intrusive_ptr.hpp>
 #include <boost/smart_ptr/intrusive_ref_counter.hpp>
 
+#include <meow/format/format_to_string.hpp>
+
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 

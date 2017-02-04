@@ -19,11 +19,11 @@ AM_CPPFLAGS = \
 
 AM_LDFLAGS = \
 	-flto \
-	$(DEPS_LIBS) \
 	#
 
-LDADD = \
+LIBS = \
 	$(top_srcdir)/src/libpinba2.a \
+	$(DEPS_LIBS) \
 	#
 
 noinst_PROGRAMS = \

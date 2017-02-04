@@ -261,7 +261,8 @@ dnl }}}
 AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build it statically)])],
 [
 	CXXFLAGS="$CXXFLAGS -pthread -I$with_nanomsg/include"
-	LDFLAGS="$LDFLAGS $with_nanomsg/lib/libnanomsg.a -lanl"
+	LDFLAGS="$LDFLAGS -lanl"
+	DEPS_LIBS="$DEPS_LIBS $with_nanomsg/lib/libnanomsg.a"
 ])
 
 AC_ARG_WITH(sparsehash, [AS_HELP_STRING([--with-sparsehash], [path to sparsehash library])],

@@ -22,6 +22,7 @@ AM_CPPFLAGS = \
 # the base library
 lib_LIBRARIES = libpinba2.a
 libpinba2_a_SOURCES = \
+	globals.cpp \
 	handler.cpp \
 	collector.cpp \
 	packet.cpp \

@@ -17,6 +17,7 @@
 #include <meow/format/format_to_string.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/dictionary.h"
 #include "pinba/packet.h"
 #include "pinba/report.h"
 
@@ -45,7 +46,7 @@ struct report_row___by_request_t
 	histogram_t                     hv;
 };
 
-struct report_row___by_timer_t
+struct report_row_data___by_timer_t
 {
 	uint32_t    req_count;   // number of requests timer with such tag was present in
 	uint32_t    hit_count;   // timer hit X times
@@ -55,6 +56,11 @@ struct report_row___by_timer_t
 	duration_t  ru_stime;    // same for rusage system
 };
 
+struct report_row___by_timer_t
+{
+	report_row_data___by_timer_t  data;
+	histogram_t                   hv;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -70,11 +76,11 @@ struct report_key__hasher_t
 struct report_key__equal_t
 {
 	template<size_t N>
-	inline constexpr bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
+	inline bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
 	{
 		return (l.size() != r.size())
-				? false
-				: (0 == memcmp(l.data(), r.data(), (l.size() * sizeof(typename report_key_base_t<N>::value_type)) ))
+				? (0 == memcmp(l.data(), r.data(), (l.size() * sizeof(typename report_key_base_t<N>::value_type)) ))
+				: false
 				;
 	}
 };
@@ -87,6 +93,19 @@ std::string report_key_to_string(report_key_base_t<N> const& k)
 	for (size_t i = 0; i < k.size(); ++i)
 	{
 		ff::write(result, (i == 0) ? "" : "|", k[i]);
+	}
+
+	return result;
+}
+
+template<size_t N>
+std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t *dict)
+{
+	std::string result;
+
+	for (size_t i = 0; i < k.size(); ++i)
+	{
+		ff::fmt(result, "{0}{1}<{2}>", (i == 0) ? "" : "|", k[i], dict->get_word(k[i]));
 	}
 
 	return result;
@@ -130,7 +149,7 @@ inline report_selector_descriptor_t report_selector__by_req_time_min(duration_t 
 inline report_selector_descriptor_t report_selector__by_req_time_max(duration_t max_time)
 {
 	return report_selector_descriptor_t {
-		.name = ff::fmt_str("by_min_time/<{0}", max_time),
+		.name = ff::fmt_str("by_max_time/<{0}", max_time),
 		.func = [=](packet_t *packet)
 		{
 			return (packet->request_time < max_time);
@@ -631,7 +650,41 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
+
+// RKD = Report Key Descriptor
+#define RKD_REQUEST_TAG   0
+#define RKD_REQUEST_FIELD 1
+#define RKD_TIMER_TAG     2
+
+struct report_key_timer_descriptor_t
+{
+	std::string name;
+	int         kind;  // see defines above
+	union {
+		uint32_t             timer_tag;
+		uint32_t             request_tag;
+		uint32_t packet_t::* request_field;
+	};
+};
+
+struct report___by_timer_conf_t
+{
+	std::string name;
+
+	duration_t  time_window;      // total time window this report covers (report host uses this for ticking)
+	uint32_t    ts_count;         // number of timeslices to store
+
+	uint32_t    hv_bucket_count;  // number of histogram buckets, each bucket is hv_bucket_d 'wide'
+	duration_t  hv_bucket_d;      // width of each hv_bucket
+
+	// functions to select if we're interested in packet at all
+	std::vector<report_selector_descriptor_t> selectors;
+
+	// this describes how to form the report key
+	// must have at least one element with RKD_TIMER_TAG
+	std::vector<report_key_timer_descriptor_t> key_d;
+};
+
 struct report___by_timer_t : public report_t
 {
 	typedef report___by_timer_t           self_t;
@@ -641,6 +694,12 @@ struct report___by_timer_t : public report_t
 	struct item_t
 		: private boost::noncopyable
 	{
+		// last unique packet we've incremented data from
+		//  this one is used to detect multiple timers being merged from one packet_t
+		//  and we need to increment data.req_count only once per add() call
+		//
+		uint64_t    last_unique;
+
 		data_t      data;
 		histogram_t hv;
 
@@ -673,13 +732,27 @@ struct report___by_timer_t : public report_t
 			hv.map.swap(other.hv.map);  // real move
 		}
 
-		void data_increment(packet_t *packet)
+		void data_increment(packed_timer_t const *timer)
 		{
+			data.hit_count  += timer->hit_count;
+			data.time_total += timer->value;
+			data.ru_utime   += timer->ru_utime;
+			data.ru_stime   += timer->ru_stime;
 		}
 
-		void hv_increment(packet_t *packet, uint32_t hv_bucket_count, duration_t hv_bucket_d)
+		void packet_increment(packet_t *packet, uint64_t unique)
 		{
-			uint32_t const id = packet->request_time.nsec / hv_bucket_d.nsec;
+			if (unique == last_unique)
+				return;
+
+			data.req_count  += 1;
+
+			last_unique     = unique;
+		}
+
+		void hv_increment(packed_timer_t const *timer, uint32_t hv_bucket_count, duration_t hv_bucket_d)
+		{
+			uint32_t const id = (timer->value.nsec / timer->hit_count) / hv_bucket_d.nsec;
 			uint32_t const bucket_id = (id < hv_bucket_count)
 										? id + 1 // known tick bucket
 										: id;    // infinity
@@ -692,7 +765,7 @@ struct report___by_timer_t : public report_t
 			// data
 			data.req_count  += other.data.req_count;
 			data.hit_count  += other.data.hit_count;
-			data.req_time   += other.data.req_time;
+			data.time_total += other.data.time_total;
 			data.ru_utime   += other.data.ru_utime;
 			data.ru_stime   += other.data.ru_stime;
 
@@ -726,14 +799,253 @@ public:
 
 	typedef std::vector<timeslice_ptr> ticks_t; // constant size
 
+public:
+
+	typedef meow::string_ref<report_key_t::value_type> key_subrange_t;
+
+	struct key_info_t
+	{
+		template<class T>
+		using chunk_t = meow::chunk<T, key_t::static_size, uint32_t>;
+
+		struct descriptor_t
+		{
+			report_key_timer_descriptor_t d;
+			uint32_t                remap_from;  // offset in split_key_d
+			uint32_t                remap_to;    // offset in conf.key_d
+		};
+
+		typedef chunk_t<descriptor_t>          rkd_chunk_t;
+		typedef meow::string_ref<descriptor_t> rkd_range_t;
+
+		// key descriptors grouped by kind
+		rkd_chunk_t split_key_d;
+
+		// these are ranges, describing which keys are where in split_key_d
+		rkd_range_t request_tag_r;
+		rkd_range_t request_field_r;
+		rkd_range_t timer_tag_r;
+
+		void from_config(report___by_timer_conf_t const& conf)
+		{
+			request_tag_r   = split_descriptors_by_kind(conf, RKD_REQUEST_TAG);
+			request_field_r = split_descriptors_by_kind(conf, RKD_REQUEST_FIELD);
+			timer_tag_r     = split_descriptors_by_kind(conf, RKD_TIMER_TAG);
+		}
+
+		// copy all descriptors with given kind to split_key_d
+		// and return range pointing to where they are now
+		// also updates remap_key_d with data to reverse the mapping
+		rkd_range_t split_descriptors_by_kind(report___by_timer_conf_t const& conf, int kind)
+		{
+			auto const& key_d = conf.key_d;
+			uint32_t const size_before = split_key_d.size();
+
+			for (uint32_t i = 0; i < key_d.size(); ++i)
+			{
+				if (key_d[i].kind == kind)
+				{
+					descriptor_t const d = {
+						.d          = key_d[i],
+						.remap_from = split_key_d.size(),
+						.remap_to   = i,
+					};
+
+					// ff::fmt(stdout, "d: {{ {0}, {1}, {2}, {3} }\n", d.d.kind, d.d.timer_tag, d.remap_from, d.remap_to);
+
+					split_key_d.push_back(d);
+				}
+			}
+
+			return rkd_range_t { split_key_d.begin() + size_before, split_key_d.size() - size_before };
+		}
+
+		key_subrange_t rtag_key_subrange(key_t& k) const
+		{
+			return { k.begin() + (request_tag_r.begin() - split_key_d.begin()), request_tag_r.size() };
+		}
+
+		key_subrange_t rfield_key_subrange(key_t& k) const
+		{
+			return { k.begin() + (request_field_r.begin() - split_key_d.begin()), request_field_r.size() };
+		}
+
+		key_subrange_t timertag_key_subrange(key_t& k) const
+		{
+			return { k.begin() + (timer_tag_r.begin() - split_key_d.begin()), timer_tag_r.size() };
+		}
+
+		key_t remap_key(key_t const& flat_key) const
+		{
+			key_t result;
+
+			for (uint32_t i = 0; i < flat_key.size(); i++)
+				result.push_back();
+
+			for (auto const& d : split_key_d)
+			{
+				result[d.remap_to] = flat_key[d.remap_from];
+			}
+
+			return result;
+		}
+	};
+
 private:
-	report_conf_t *conf_;
+
+	struct snapshot_t : public report_snapshot_t
+	{
+		typedef raw_t                   parent_raw_t;
+		typedef parent_raw_t::key_type  key_t;
+
+		typedef std::unordered_map<
+								  key_t
+								, report_row___by_request_t
+								, report_key__hasher_t
+								, report_key__equal_t
+							> hash_t;
+
+		typedef hash_t::const_iterator iterator_t;
+
+	private:
+
+		hash_t        data_;   // real data we iterate over
+		ticks_t       ticks_;  // ticks we merge our data from (in other thread potentially)
+		report_info_t rinfo_;  // report info, immutable copy taken in ctor
+
+	public:
+
+		snapshot_t(ticks_t ticks, report_info_t const& rinfo)
+			: data_()
+			, ticks_(std::move(ticks))  // get a copy, and move explicitly
+			, rinfo_(rinfo)
+		{
+		}
+
+	private:
+		// get global snapshot data
+		// this function is here (and not JUST in report_t), to avoid race conditions,
+		// i.e. report_info() and get_snapshot() returning slightly different data,
+		// due to those being 2 separate function calls (and some packets might get processed in the middle)
+		virtual report_info_t const* report_info() const override {}
+
+		// prepare snapshot for use
+		// MUST be called before any of the functions below
+		// this exists primarily to allow preparation to take place in a thread
+		// different from the one handling report data (more parallelism, yey)
+		virtual void prepare() override {}
+
+		// iteration, this should be very cheap
+		virtual position_t pos_first() override {}
+		virtual position_t pos_last() override {}
+		virtual position_t pos_next(position_t const&) override {}
+		virtual position_t pos_prev(position_t const&) override {}
+		virtual bool       pos_equal(position_t const&, position_t const&) const override {}
+
+		// key handling
+		virtual report_key_t     get_key(position_t const&) const override {}
+		virtual report_key_str_t get_key_str(position_t const&) const override {}
+
+		// data handling
+		virtual int   data_kind() const override {}
+		virtual void* get_data(position_t const&) override {}
+
+		// histograms
+		virtual histogram_t const* get_histogram(position_t const&) override {}
+	};
+
+private:
+	pinba_globals_t           *globals_;
+	report___by_timer_conf_t  *conf_;
+
 	report_info_t  info_;
+	key_info_t     ki_;
 
 	ticks_t        ticks_;
 
 	raw_t          raw_;
 	timeval_t      raw_start_tv_; // timeval we've started gathering raw data
+
+	uint64_t       packet_unqiue_;
+
+public:
+
+	report___by_timer_t(pinba_globals_t *globals, report___by_timer_conf_t *conf)
+		: globals_(globals)
+		, conf_(conf)
+		, raw_start_tv_{0}
+		, packet_unqiue_{0}
+	{
+		// validate config
+		if (conf_->key_d.size() > key_t::static_size)
+		{
+			throw std::runtime_error(ff::fmt_str(
+				"required keys ({0}) > supported keys ({1})", conf_->key_d.size(), key_t::static_size));
+		}
+
+		// dense_hash_map specific
+		raw_.set_empty_key(key_t());
+
+		info_ = report_info_t {
+			.kind            = REPORT_KIND__BY_TIMER_DATA,
+			.timeslice_count = conf_->ts_count,
+			.time_window     = conf_->time_window,
+			.n_key_parts     = (uint32_t)conf_->key_d.size(),
+			.hv_enabled      = (conf_->hv_bucket_count > 0),
+		};
+
+		ki_.from_config(*conf);
+	}
+
+	virtual str_ref name() const override
+	{
+		return conf_->name;
+	}
+
+	virtual report_info_t const* info() const override
+	{
+		return &info_;
+	}
+
+	virtual int kind() const override
+	{
+		return info_.kind;
+	}
+
+public:
+
+	virtual void ticks_init(timeval_t curr_tv) override
+	{
+		for (uint32_t i = 0; i < conf_->ts_count; i++)
+		{
+			ticks_.push_back({});
+		}
+
+		raw_start_tv_ = curr_tv;
+	}
+
+	virtual void tick_now(timeval_t curr_tv) override
+	{
+		timeslice_ptr timeslice { new timeslice_t() };
+		timeslice->start_tv = raw_start_tv_;
+		timeslice->end_tv   = curr_tv;
+		timeslice->items.swap(raw_); // effectively - grab current raw_, replacing it with empty hash
+
+		raw_.set_empty_key(key_t());
+
+		raw_start_tv_ = curr_tv;
+
+		ticks_.push_back(timeslice);
+		if (ticks_.size() >  conf_->ts_count)
+		{
+			ticks_.erase(ticks_.begin()); // FIXME: O(N)
+		}
+	}
+
+	virtual report_snapshot_ptr get_snapshot() override
+	{
+		return meow::make_unique<snapshot_t>(ticks_, info_);
+	}
 
 public:
 
@@ -750,38 +1062,179 @@ public:
 			}
 		}
 
-		packed_timer_t *timer =
-
-/*
-		// construct a key, by runinng all key fetchers
-		key_t k;
-
-		for (size_t i = 0, i_end = conf_->key_fetchers.size(); i < i_end; ++i)
+		// finds timer with required tags
+		auto const fetch_by_timer_tags = [&](key_info_t const& ki, key_subrange_t out_range, packed_timer_t const *t) -> bool
 		{
-			auto const& fetcher = conf_->key_fetchers[i];
+			uint32_t const n_tags_required = out_range.size();
+			uint32_t       n_tags_found = 0;
+			std::fill(out_range.begin(), out_range.end(), 0);
 
-			report_key_fetch_res_t const r = fetcher.fetcher(packet);
-			if (!r.found)
+			for (uint32_t i = 0; i < n_tags_required; ++i)
 			{
-				ff::fmt(stdout, "packet {0} skipped by key fetcher {1}\n", packet, fetcher.name);
-				return;
+				for (uint32_t tag_i = 0; tag_i < t->tag_count; ++tag_i)
+				{
+					if (t->tags[tag_i].name_id != ki.timer_tag_r[i].d.timer_tag)
+						continue;
+
+					n_tags_found++;
+					out_range[i] = t->tags[tag_i].value_id;
+
+					if (n_tags_found == n_tags_required)
+						return true;
+				}
 			}
 
-			k.push_back(r.key_value);
-		}
-*/
-		// finally - find and update item
-		item_t& item = raw_[k];
-		item.data_increment(packet);
+			return (n_tags_found == n_tags_required);
+		};
 
-		if (info_.hv_enabled)
+		auto const find_request_tags = [&](key_info_t const& ki, key_t *out_key) -> bool
 		{
-			item.hv_increment(packet, conf_->hv_bucket_count, conf_->hv_bucket_d);
+			key_subrange_t out_range = ki_.rtag_key_subrange(*out_key);
+
+			uint32_t const n_tags_required = out_range.size();
+			uint32_t       n_tags_found = 0;
+			std::fill(out_range.begin(), out_range.end(), 0);
+
+			for (uint32_t tag_i = 0; tag_i < n_tags_required; ++tag_i)
+			{
+				for (uint16_t i = 0, i_end = packet->tag_count; i < i_end; ++i)
+				{
+					if (packet->tags[i].name_id != ki.request_tag_r[tag_i].d.request_tag)
+						continue;
+
+					n_tags_found++;
+					out_range[tag_i] = packet->tags[i].value_id;
+
+					if (n_tags_found == n_tags_required)
+						return true;
+				}
+			}
+
+			return (n_tags_found == n_tags_required);
+		};
+
+		auto const find_request_fields = [&](key_info_t const& ki, key_t *out_key) -> bool
+		{
+			key_subrange_t out_range = ki_.rfield_key_subrange(*out_key);
+
+			for (uint32_t i = 0; i < ki.request_field_r.size(); ++i)
+			{
+				out_range[i] = packet->*ki.request_field_r[i].d.request_field;
+
+				if (out_range[i] == 0)
+					return false;
+			}
+
+			return true;
+		};
+
+		key_t key_inprogress;
+		for (uint32_t i = 0; i < info_.n_key_parts; ++i) // zerofill the key for now
+			key_inprogress.push_back();
+
+		bool const tags_found = find_request_tags(ki_, &key_inprogress);
+		if (!tags_found)
+		{
+			ff::fmt(stdout, "packet rejected, required request tags not found\n");
+			return;
+		}
+
+		bool const fields_found = find_request_fields(ki_, &key_inprogress);
+		if (!fields_found)
+		{
+			ff::fmt(stdout, "packet rejected, required request fields not found\n");
+			return;
+		}
+
+		// need to scan all timers, find matching and increment for each one
+		{
+			packet_unqiue_++; // next unique, since this is the new packet add
+
+			key_subrange_t timer_key_range = ki_.timertag_key_subrange(key_inprogress);
+
+			for (uint16_t i = 0; i < packet->timer_count; ++i)
+			{
+				packed_timer_t const *timer = &packet->timers[i];
+
+				bool const timer_found = fetch_by_timer_tags(ki_, timer_key_range, timer);
+				if (!timer_found)
+					continue;
+
+				// ff::fmt(stdout, "found key: {0}\n", report_key_to_string(key_inprogress, globals_->dictionary()));
+
+				key_t const k = ki_.remap_key(key_inprogress);
+
+				// ff::fmt(stdout, "real key: {0}\n", report_key_to_string(k, globals_->dictionary()));
+
+				// finally - find and update item
+				item_t& item = raw_[k];
+				item.data_increment(timer);
+
+				item.packet_increment(packet, packet_unqiue_);
+
+				if (info_.hv_enabled)
+				{
+					item.hv_increment(timer, conf_->hv_bucket_count, conf_->hv_bucket_d);
+				}
+			}
 		}
 	}
 
+	virtual void add_multi(packet_t **packets, uint32_t packet_count) override
+	{
+		// TODO: maybe optimize this we can
+		for (uint32_t i = 0; i < packet_count; ++i)
+			this->add(packets[i]);
+	}
+
+	void serialize(FILE *f, str_ref name = {})
+	{
+		uint32_t   hit_count_total = 0;
+		duration_t hit_time_total  = {0};
+		duration_t time_window     = {0};
+
+		ff::fmt(f, ">> {0} ----------------------->\n", name);
+		for (unsigned i = 0; i < ticks_.size(); i++)
+		{
+			ff::fmt(f, "items[{0}]\n", i);
+
+			auto const& timeslice = ticks_[i];
+
+			if (!timeslice)
+				continue;
+
+			time_window += duration_from_timeval(timeslice->end_tv - timeslice->start_tv);
+
+			for (auto const& pair : timeslice->items)
+			{
+				auto const& key  = pair.first;
+				auto const& item = pair.second;
+				auto const& data = item.data;
+
+				hit_count_total += data.req_count;
+				hit_time_total  += data.time_total;
+
+				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4}, {5} } [",
+					report_key_to_string(key, globals_->dictionary()),
+					data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
+
+				for (auto it = item.hv.map.begin(), it_end = item.hv.map.end(); it != it_end; ++it)
+				{
+					ff::fmt(f, "{0}{1}: {2}", (item.hv.map.begin() == it)?"":", ", it->first, it->second);
+				}
+				ff::fmt(f, "]\n");
+			}
+		}
+
+		duration_t const avg_hit_time = (hit_count_total) ? hit_time_total / hit_count_total : duration_t{0};
+		double const avg_hits_per_sec = ((double)hit_count_total / time_window.nsec) * nsec_in_sec; // gives 'weird' results for time_window < 1second
+
+		ff::fmt(f, "<< avg_hit_time: {0}, tw: {1}, avg_hits_per_sec (expected): {2} -------<\n",
+			avg_hit_time , time_window, avg_hits_per_sec);
+		ff::fmt(f, "\n");
+	}
 };
-#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class SinkT>
@@ -850,7 +1303,10 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 int main(int argc, char const *argv[])
 try
 {
-	auto packet = packet_t {
+	pinba_options_t options = {};
+	pinba_globals_ptr globals = pinba_init(&options);
+
+	auto packet_data = packet_t {
 		.host_id = 1,
 		.server_id = 0,
 		.script_id = 7,
@@ -867,6 +1323,26 @@ try
 		.tags = NULL,
 		.timers = NULL,
 	};
+
+	packet_t *packet = &packet_data;
+
+	if (argc >= 2)
+	{
+		FILE *f = fopen(argv[1], "r");
+		uint8_t buf[16 * 1024];
+		size_t n = fread(buf, 1, sizeof(buf), f);
+
+		auto request = pinba__request__unpack(NULL, n, buf);
+		if (!request)
+			throw std::runtime_error("request unpack error");
+
+		struct nmpa_s nmpa;
+		nmpa_init(&nmpa, 1024);
+
+		packet = pinba_request_to_packet(request, globals->dictionary(), &nmpa);
+
+		debug_dump_packet(stdout, packet);
+	}
 
 	report_conf_t report_conf = {};
 	report_conf.time_window     = 60 * d_second,
@@ -934,16 +1410,79 @@ try
 		// },
 	};
 
-	auto report = meow::make_unique<report___by_request_t>(&report_conf);
+	// auto report = meow::make_unique<report___by_request_t>(&report_conf);
+
+	report___by_timer_conf_t rconf_timer = [&]()
+	{
+		report___by_timer_conf_t conf = {};
+		conf.time_window     = 60 * d_second,
+		conf.ts_count        = 5;
+		conf.hv_bucket_d     = 1 * d_microsecond;
+		conf.hv_bucket_count = 1 * 1000 * 1000;
+
+		// conf.min_time = 100 * d_millisecond;
+		// conf.max_time = 300 * d_millisecond;
+
+		conf.selectors = {
+			// {
+			// 	"request_time/>=100ms/<300ms",
+			// 	[](packet_t *packet)
+			// 	{
+			// 		static constexpr duration_t const min_time = 100 * d_millisecond;
+			// 		static constexpr duration_t const max_time = 300 * d_millisecond;
+
+			// 		return (packet->request_time >= min_time && packet->request_time < max_time);
+			// 	},
+			// },
+		};
+
+		auto const make_timertag_kd = [&](str_ref tag_name)
+		{
+			report_key_timer_descriptor_t r;
+			r.name = ff::fmt_str("timertag/{0}", tag_name);
+			r.kind = RKD_TIMER_TAG;
+			r.timer_tag = globals->dictionary()->get_or_add(tag_name);
+			return r;
+		};
+
+		auto const make_rtag_kd = [&](str_ref tag_name)
+		{
+			report_key_timer_descriptor_t r;
+			r.name = ff::fmt_str("rtag/{0}", tag_name);
+			r.kind = RKD_REQUEST_TAG;
+			r.request_tag = globals->dictionary()->get_or_add(tag_name);
+			return r;
+		};
+
+		auto const make_rfield_kd = [&](str_ref tag_name, uint32_t packet_t:: *field_ptr)
+		{
+			report_key_timer_descriptor_t r;
+			r.name = ff::fmt_str("rfield/{0}", tag_name);
+			r.kind = RKD_REQUEST_FIELD;
+			r.request_field = field_ptr;
+			return r;
+		};
+
+		conf.key_d.push_back(make_timertag_kd("group"));
+		// conf.key_d.push_back(make_rtag_kd("app_label"));
+		// conf.key_d.push_back(make_rfield_kd("script_name", &packet_t::script_id));
+		// conf.key_d.push_back(make_rfield_kd("server_name", &packet_t::server_id));
+		// conf.key_d.push_back(make_rfield_kd("host_name", &packet_t::host_id));
+		conf.key_d.push_back(make_timertag_kd("server"));
+
+		return conf;
+	}();
+
+	auto report = meow::make_unique<report___by_timer_t>(globals.get(), &rconf_timer);
 	report->ticks_init(os_unix::clock_monotonic_now());
 
-	report->add(&packet);
+	report->add(packet);
 	report->tick_now(os_unix::clock_monotonic_now());
 	report->serialize(stdout, "first");
 
-	report->add(&packet);
-	report->add(&packet);
-	report->add(&packet);
+	report->add(packet);
+	report->add(packet);
+	report->add(packet);
 	report->tick_now(os_unix::clock_monotonic_now());
 	report->serialize(stdout, "second");
 
@@ -955,8 +1494,8 @@ try
 		serialize_report_snapshot(stdout, snapshot.get(), "snapshot_1");
 	}
 
-	report->add(&packet);
-	report->add(&packet);
+	report->add(packet);
+	report->add(packet);
 	report->tick_now(os_unix::clock_monotonic_now());
 	report->serialize(stdout, "third");
 	report->tick_now(os_unix::clock_monotonic_now());

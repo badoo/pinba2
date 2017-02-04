@@ -181,10 +181,10 @@ private:
 				{
 					auto const pb_req = req->requests[i];
 
-					auto const vr = validate_packet(pb_req);
-					if (vr != packet_validate_result::okay)
+					auto const vr = pinba_validate_request(pb_req);
+					if (vr != request_validate_result::okay)
 					{
-						ff::fmt(stderr, "packet validation failed: {0}\n", vr);
+						ff::fmt(stderr, "request validation failed: {0}\n", vr);
 						continue;
 					}
 
@@ -279,7 +279,7 @@ public:
 
 		report_ = move(report_conf->report);
 		report_name_ = ff::fmt_str("rh/{0}/{1}", thread_id, report_conf->report_name);
-		ticker_chan_ = globals_->ticker->subscribe(report_conf->tick_interval, report_name_);
+		ticker_chan_ = globals_->ticker()->subscribe(report_conf->tick_interval, report_name_);
 
 		std::thread t([this, thread_id]()
 		{
@@ -373,7 +373,7 @@ struct coordinator_t : private boost::noncopyable
 				pthread_setname_np(pthread_self(), thr_name.c_str());
 			}
 
-			auto const tick_chan = globals_->ticker->subscribe(1000 * d_millisecond, "coordinator_thread");
+			auto const tick_chan = globals_->ticker()->subscribe(1000 * d_millisecond, "coordinator_thread");
 
 			uint64_t total_packets = 0;
 			uint64_t n_small_batches = 0;
@@ -485,8 +485,8 @@ private:
 int main(int argc, char const *argv[])
 try
 {
-	pinba_globals_t globals = {};
-	globals.ticker = meow::make_unique<nmsg_ticker___single_thread_t>();
+	pinba_options_t options = {};
+	auto globals = pinba_init(&options);
 
 	collector_conf_t collector_conf = {
 		.address       = "0.0.0.0",
@@ -496,7 +496,7 @@ try
 		.batch_size    = 128,
 		.batch_timeout = 10 * d_millisecond,
 	};
-	auto collector = create_collector(&globals, &collector_conf);
+	auto collector = create_collector(globals.get(), &collector_conf);
 
 	repacker_conf_t repacker_conf = {
 		.nn_input        = collector_conf.nn_output,
@@ -506,7 +506,7 @@ try
 		.batch_size      = 1024,
 		.batch_timeout   = 100 * d_millisecond,
 	};
-	auto repacker = meow::make_unique<repacker_t>(&globals, &repacker_conf);
+	auto repacker = meow::make_unique<repacker_t>(globals.get(), &repacker_conf);
 
 	coordinator_conf_t coordinator_conf = {
 		.nn_input                = repacker_conf.nn_output,
@@ -515,7 +515,7 @@ try
 		.nn_report_output        = "inproc://coordinator/report-data",
 		.nn_report_output_buffer = 16,
 	};
-	auto coordinator = meow::make_unique<coordinator_t>(&globals, &coordinator_conf);
+	auto coordinator = meow::make_unique<coordinator_t>(globals.get(), &coordinator_conf);
 
 	coordinator->startup();
 	repacker->startup();

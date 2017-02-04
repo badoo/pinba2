@@ -33,6 +33,7 @@ struct pinba_options_t
 };
 
 struct nmsg_ticker_t;
+struct dictionary_t;
 
 // TODO: maybe have this as global registry for all threaded objects here
 //       and not just explicit stats, but everything (and ticker for example!)
@@ -52,8 +53,16 @@ struct pinba_globals_t
 		std::atomic<uint64_t> packets_processed;
 	} repacker;
 
-	std::unique_ptr<nmsg_ticker_t> ticker;
+	virtual ~pinba_globals_t() {}
+
+	virtual void startup() = 0;
+
+	virtual nmsg_ticker_t* ticker() const = 0;
+	virtual dictionary_t*  dictionary() const = 0;
 };
+typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
+
+pinba_globals_ptr pinba_init(pinba_options_t*);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

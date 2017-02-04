@@ -7,19 +7,25 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-packet_validate_result_t validate_packet(Pinba__Request *r)
+request_validate_result_t pinba_validate_request(Pinba__Request *r)
 {
 	if (r->n_timer_value != r->n_timer_hit_count) // all timers have hit counts
-		return packet_validate_result::bad_hit_count;
+		return request_validate_result::bad_hit_count;
 
 	if (r->n_timer_value != r->n_timer_tag_count) // all timers have tag counts
-		return packet_validate_result::bad_tag_count;
+		return request_validate_result::bad_tag_count;
 
 	// if (r->n_timer_value != r->n_timer_ru_utime)
-	// 	return packet_validate_result::bad_timer_ru_utime_count;
+	// 	return request_validate_result::bad_timer_ru_utime_count;
 
 	// if (r->n_timer_value != r->n_timer_ru_stime)
-	// 	return packet_validate_result::bad_timer_ru_stime_count;
+	// 	return request_validate_result::bad_timer_ru_stime_count;
+
+	// all timer hit counts are > 0
+	for (unsigned i = 0; i < r->n_timer_hit_count; i++) {
+		if (r->timer_hit_count[i] <= 0)
+			return request_validate_result::bad_timer_hit_count;
+	}
 
 	auto const total_tag_count = [](Pinba__Request *r)
 	{
@@ -31,12 +37,12 @@ packet_validate_result_t validate_packet(Pinba__Request *r)
 	}(r);
 
 	if (total_tag_count != r->n_timer_tag_name) // all tags have names
-		return packet_validate_result::not_enough_tag_names;
+		return request_validate_result::not_enough_tag_names;
 
 	if (total_tag_count != r->n_timer_tag_value) // all tags have values
-		return packet_validate_result::not_enough_tag_values;
+		return request_validate_result::not_enough_tag_values;
 
-	return packet_validate_result::okay;
+	return request_validate_result::okay;
 }
 
 
@@ -49,6 +55,7 @@ packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmp
 	for (unsigned i = 0; i < r->n_dictionary; i++)
 	{
 		td[i] = d->get_or_add(r->dictionary[i]);
+		// ff::fmt(stdout, "{0}; dict xform {1} -> {2}\n", __func__, r->dictionary[i], td[i]);
 	}
 
 	p->host_id      = d->get_or_add(r->hostname);
