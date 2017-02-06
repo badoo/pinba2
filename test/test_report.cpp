@@ -54,6 +54,12 @@ struct report_row_data___by_timer_t
 	// timeval_t   time_total;  // sum of all timer values (i.e. total time spent in this timer)
 	duration_t  ru_utime;    // same for rusage user
 	duration_t  ru_stime;    // same for rusage system
+
+	report_row_data___by_timer_t()
+	{
+		// FIXME: add a failsafe for memset
+		memset(this, 0, sizeof(*this));
+	}
 };
 
 struct report_row___by_timer_t
@@ -69,6 +75,7 @@ struct report_key__hasher_t
 	template<size_t N>
 	inline constexpr size_t operator()(report_key_base_t<N> const& key) const
 	{
+		// TODO: try a "better" hash function here, like https://github.com/leo-yuriev/t1ha
 		return meow::hash_blob(key.data(), N);
 	}
 };
@@ -78,7 +85,7 @@ struct report_key__equal_t
 	template<size_t N>
 	inline bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
 	{
-		return (l.size() != r.size())
+		return (l.size() == r.size())
 				? (0 == memcmp(l.data(), r.data(), (l.size() * sizeof(typename report_key_base_t<N>::value_type)) ))
 				: false
 				;
@@ -99,7 +106,7 @@ std::string report_key_to_string(report_key_base_t<N> const& k)
 }
 
 template<size_t N>
-std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t *dict)
+std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t const *dict)
 {
 	std::string result;
 
@@ -110,6 +117,237 @@ std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t *di
 
 	return result;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+struct report_snapshot_traits___example
+{
+	using src_ticks_t = ; // source ticks_ringbuffer_t
+	using hashtable_t = ; // result hashtable (that we're going to iterate over)
+
+	// merge full tick from src ringbuffer to current hashtable_t state
+	// from can be NULL (when there is no timeslice for this interval)
+	static void merge_from_to(report_info_t& rinfo, typename src_ticks_t::value_t const *from, hashtable_t& to);
+};
+*/
+
+template<class Traits>
+struct report_snapshot__impl_t : public report_snapshot_t
+{
+	using src_ticks_t = typename Traits::src_ticks_t;
+	using hashtable_t = typename Traits::hashtable_t;
+	using iterator_t  = typename hashtable_t::iterator;
+
+public:
+
+	report_snapshot__impl_t(src_ticks_t ticks, report_info_t const& rinfo, dictionary_t *d)
+		: data_()
+		, ticks_(std::move(ticks))  // get a copy, and move explicitly
+		, rinfo_(rinfo)
+		, dictionary_(d)
+	{
+	}
+
+private:
+
+	virtual report_info_t const* report_info() const override
+	{
+		return &rinfo_;
+	}
+
+	virtual dictionary_t const* dictionary() const override
+	{
+		return dictionary_;
+	}
+
+	virtual void prepare() override
+	{
+		if (ticks_.empty())
+			throw std::logic_error(ff::fmt_str("{0}: trying to merge report snapshot a second time", __PRETTY_FUNCTION__));
+
+		// TODO: add rusage tracking to this function
+
+		for (auto& tick : ticks_)
+		{
+			// perform merge
+			Traits::merge_from_to(rinfo_, tick.get(), data_);
+
+			// release ref counted pointer as soon as we're done merging a tick
+			// this allows to reduce memory footprint when merging in other thread
+			// since report is working and ticks are being erased from it
+			// (but this merge is holding them alive still)
+			tick.reset();
+		}
+
+		ticks_.clear();
+	}
+
+private:
+
+	union real_position_t
+	{
+		static_assert(sizeof(iterator_t) <= sizeof(position_t), "position_t must be able to hold iterator contents");
+
+		real_position_t(iterator_t i) : it(i) {}
+		real_position_t(position_t p) : pos(p) {}
+
+		position_t pos;
+		iterator_t it;
+	};
+
+	position_t position_from_iterator(iterator_t const& it)
+	{
+		real_position_t p { it };
+		return p.pos;
+	}
+
+private:
+
+	virtual position_t pos_first() override
+	{
+		return position_from_iterator(data_.begin());
+	}
+
+	virtual position_t pos_last() override
+	{
+		return position_from_iterator(data_.end());
+	}
+
+	virtual position_t pos_next(position_t const& pos) override
+	{
+		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		return position_from_iterator(std::next(it));
+	}
+
+	virtual position_t pos_prev(position_t const& pos) override
+	{
+		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		return position_from_iterator(std::prev(it));
+	}
+
+	virtual bool pos_equal(position_t const& l, position_t const& r) const override
+	{
+		auto const& l_it = reinterpret_cast<iterator_t const&>(l);
+		auto const& r_it = reinterpret_cast<iterator_t const&>(r);
+		return (l_it == r_it);
+	}
+
+	virtual report_key_t get_key(position_t const& pos) const override
+	{
+		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		return it->first;
+	}
+
+	virtual report_key_str_t get_key_str(position_t const& pos) const override
+	{
+		report_key_t k = this->get_key(pos);
+
+		report_key_str_t result;
+		for (uint32_t i = 0; i < k.size(); ++i)
+		{
+			result.push_back(dictionary_->get_word(k[i]));
+		}
+		return result;
+	}
+
+	virtual int data_kind() const override
+	{
+		return rinfo_.kind;
+	}
+
+	virtual void* get_data(position_t const& pos) override
+	{
+		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		return (void*)&it->second; // FIXME: const
+	}
+
+	virtual histogram_t const* get_histogram(position_t const& pos) override
+	{
+		if (!rinfo_.hv_enabled)
+			return NULL;
+
+		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		return &it->second.hv;
+	}
+
+private:
+	hashtable_t    data_;         // real data we iterate over
+	src_ticks_t    ticks_;        // ticks we merge our data from (in other thread potentially)
+	report_info_t  rinfo_;        // report info, immutable copy taken in ctor
+	dictionary_t   *dictionary_;  // dictionary used to transform string ids to their values
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+template<class T>
+struct ticks_ringbuffer_t : private boost::noncopyable
+{
+	using data_t = T;
+
+	struct tick_t
+		: boost::intrusive_ref_counter<tick_t>
+	{
+		timeval_t  start_tv;
+		timeval_t  end_tv;
+		data_t     data;
+
+		tick_t(timeval_t curr_tv)
+			: start_tv(curr_tv)
+			, end_tv({0,0})
+			, data()
+		{
+		}
+	};
+
+	using tick_ptr     = boost::intrusive_ptr<tick_t> ;
+	using ringbuffer_t = std::vector<tick_ptr>;
+
+public:
+
+	ticks_ringbuffer_t(uint32_t tick_count)
+		: tick_count_(tick_count)
+	{
+	}
+
+	void init(timeval_t curr_tv)
+	{
+		for (uint32_t i = 0; i < tick_count_; i++)
+			ticks_.push_back({});
+
+		curr_tick_.reset(new tick_t(curr_tv));
+	}
+
+	void tick(timeval_t curr_tv)
+	{
+		curr_tick_->end_tv = curr_tv;           // finish current tick
+
+		ticks_.push_back(curr_tick_);           // copy tick to history
+		curr_tick_.reset(new tick_t(curr_tv));  // and create new tick at 'current'
+
+		// maybe truncate history, if it has grown too long
+		if (ticks_.size() >  tick_count_)
+		{
+			ticks_.erase(ticks_.begin()); // XXX: O(N)
+		}
+	}
+
+	ringbuffer_t const& get_internal_buffer() const
+	{
+		return ticks_;
+	}
+
+	tick_t& current()
+	{
+		return *curr_tick_;
+	}
+
+private:
+	uint32_t      tick_count_;
+	ringbuffer_t  ticks_;
+	tick_ptr      curr_tick_;
+};
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -196,7 +434,6 @@ struct report___by_request_t : public report_t
 		}
 
 		// FIXME: only used by dense_hash_map for set_empty_key()
-		//        !!! AND swap() FOR SOME REASON !!!
 		//        should not be called often with huge histograms, so expect it to be ok :(
 		//        sparsehash with c++11 support (https://github.com/sparsehash/sparsehash-c11) fixes this
 		//        but gcc 4.9.4 doesn't support the type_traits it requires
@@ -233,7 +470,7 @@ struct report___by_request_t : public report_t
 			uint32_t const id = packet->request_time.nsec / hv_bucket_d.nsec;
 			uint32_t const bucket_id = (id < hv_bucket_count)
 										? id + 1 // known tick bucket
-										: id;    // infinity
+										: 0;     // infinity
 
 			hv.map[bucket_id] += 1;
 		}
@@ -256,207 +493,80 @@ struct report___by_request_t : public report_t
 		}
 	};
 
-public:
+public: // ticks
 
-	// FIXME: need a better name for this and item_t
-	// typedef std::unordered_map<
-	typedef google::dense_hash_map<
-						  key_t
-						, item_t
-						, report_key__hasher_t
-						, report_key__equal_t
-					> raw_t;
+	using raw_hashtable_t = google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>;
 
-	struct timeslice_t
-		: boost::intrusive_ref_counter<timeslice_t>
+	struct hashtable_t : public raw_hashtable_t
 	{
-		timeval_t start_tv = {0};
-		timeval_t end_tv   = {0};
-		raw_t     items;
+		hashtable_t()
+		{
+			this->set_empty_key(key_t{});
+		}
 	};
-	typedef boost::intrusive_ptr<timeslice_t> timeslice_ptr;
 
-	typedef std::vector<timeslice_ptr> ticks_t; // constant size
+	using ticks_t       = ticks_ringbuffer_t<hashtable_t>;
+	using tick_t        = ticks_t::tick_t;
+	using ticks_list_t  = ticks_t::ringbuffer_t;
 
-private:
-	report_conf_t *conf_;
-	report_info_t  info_;
+public: // snapshot
 
-	ticks_t        ticks_;
-
-	raw_t          raw_;
-	timeval_t      raw_start_tv_; // timeval we've started gathering raw data
-
-public: // should be private really
-
-	struct snapshot_t : public report_snapshot_t
+	struct snapshot_traits
 	{
-		typedef raw_t                   parent_raw_t;
-		typedef parent_raw_t::key_type  key_t;
+		using src_ticks_t = ticks_list_t;
 
-		typedef std::unordered_map<
-								  key_t
-								, report_row___by_request_t
-								, report_key__hasher_t
-								, report_key__equal_t
-							> hash_t;
-
-		typedef hash_t::const_iterator iterator_t;
-
-	private:
-
-		hash_t        data_;   // real data we iterate over
-		ticks_t       ticks_;  // ticks we merge our data from (in other thread potentially)
-		report_info_t rinfo_;  // report info, immutable copy taken in ctor
-
-	public:
-
-		snapshot_t(ticks_t ticks, report_info_t const& rinfo)
-			: data_()
-			, ticks_(std::move(ticks))  // get a copy, and move explicitly
-			, rinfo_(rinfo)
+		struct hashtable_t : public google::dense_hash_map<
+											  key_t
+											, report_row___by_request_t
+											, report_key__hasher_t
+											, report_key__equal_t>
 		{
-		}
-
-	private:
-
-		virtual void prepare() override
-		{
-			// TODO: release ref counted pointer as soon as we're done merging a tick
-			//       this allows to reduce memory footprint when merging in other thread
-			//       since report is working and ticks are being erased from it
-			//       (but this merge is holding them alive still)
-
-			for (size_t i = 0; i < ticks_.size(); ++i)
-			{
-				auto const& timeslice = ticks_[i];
-
-				if (!timeslice)
-					continue;
-
-				for (auto const& item_pair : timeslice->items)
-				{
-					report_row___by_request_t& row = data_[item_pair.first];
-					auto const& item_data = item_pair.second.data;
-
-					row.data.req_count  += item_data.req_count;
-					row.data.req_time   += item_data.req_time;
-					row.data.ru_utime   += item_data.ru_utime;
-					row.data.ru_stime   += item_data.ru_stime;
-					row.data.traffic_kb += item_data.traffic_kb;
-					row.data.mem_usage  += item_data.mem_usage;
-
-					if (rinfo_.hv_enabled)
-					{
-						for (auto const& hv_pair : item_pair.second.hv.map)
-							row.hv.map[hv_pair.first] += hv_pair.second;
-					}
-				}
-			}
-
-			ticks_.clear();
-		}
-
-		virtual report_info_t const* report_info() const override
-		{
-			return &rinfo_;
-		}
-
-	private:
-
-		union real_position_t
-		{
-			static_assert(sizeof(iterator_t) <= sizeof(position_t), "position_t must be able to hold iterator contents");
-
-			real_position_t(iterator_t i) : it(i) {}
-			real_position_t(position_t p) : pos(p) {}
-
-			position_t pos;
-			iterator_t it;
+			hashtable_t() { this->set_empty_key(key_t{}); }
 		};
 
-		position_t position_from_iterator(iterator_t const& it)
+		// merge full tick from src ringbuffer to current hashtable_t state
+		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
 		{
-			real_position_t p { it };
-			return p.pos;
-		}
+			if (!from)
+				return;
 
-	private:
-
-		virtual position_t pos_first() override
-		{
-			return position_from_iterator(data_.begin());
-		}
-
-		virtual position_t pos_last() override
-		{
-			return position_from_iterator(data_.end());
-		}
-
-		virtual position_t pos_next(position_t const& pos) override
-		{
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return position_from_iterator(std::next(it));
-		}
-
-		virtual position_t pos_prev(position_t const& pos) override
-		{
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return position_from_iterator(std::prev(it));
-		}
-
-		virtual bool pos_equal(position_t const& l, position_t const& r) const override
-		{
-			auto const& l_it = reinterpret_cast<iterator_t const&>(l);
-			auto const& r_it = reinterpret_cast<iterator_t const&>(r);
-			return (l_it == r_it);
-		}
-
-		virtual report_key_t get_key(position_t const& pos) const override
-		{
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return it->first;
-		}
-
-		virtual report_key_str_t get_key_str(position_t const& pos) const override
-		{
-			report_key_t k = this->get_key(pos);
-
-			// FIXME: implement dictionary here
-			report_key_str_t result;
-			for (uint32_t i = 0; i < k.size(); ++i)
+			for (auto const& from_pair : from->data)
 			{
-				result.push_back(meow::ref_lit("-"));
+				auto const& src = from_pair.second;
+				auto      & dst = to[from_pair.first];
+
+				dst.data.req_count  += src.data.req_count;
+				dst.data.req_time   += src.data.req_time;
+				dst.data.ru_utime   += src.data.ru_utime;
+				dst.data.ru_stime   += src.data.ru_stime;
+				dst.data.traffic_kb += src.data.traffic_kb;
+				dst.data.mem_usage  += src.data.mem_usage;
+
+				if (rinfo.hv_enabled)
+				{
+					for (auto const& hv_pair : src.hv.map)
+						dst.hv.map[hv_pair.first] += hv_pair.second;
+				}
 			}
-			return result;
-		}
-
-		virtual int data_kind() const override
-		{
-			return REPORT_KIND__BY_REQUEST_DATA;
-		}
-
-		virtual void* get_data(position_t const& pos) override
-		{
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return (void*)&it->second; // FIXME: const
-		}
-
-		virtual histogram_t const* get_histogram(position_t const& pos) override
-		{
-			if (!rinfo_.hv_enabled)
-				return NULL;
-
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return &it->second.hv;
 		}
 	};
 
+	using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
+
+private:
+	pinba_globals_t  *globals_;
+	report_conf_t    *conf_;
+
+	report_info_t    info_;
+
+	ticks_t          ticks_;
+
 public:
 
-	report___by_request_t(report_conf_t *conf)
-		: conf_(conf)
-		, raw_start_tv_{0}
+	report___by_request_t(pinba_globals_t *globals, report_conf_t *conf)
+		: globals_(globals)
+		, conf_(conf)
+		, ticks_(conf_->ts_count)
 	{
 		// validate config
 		if (conf_->key_fetchers.size() > key_t::static_size)
@@ -464,9 +574,6 @@ public:
 			throw std::runtime_error(ff::fmt_str(
 				"required keys ({0}) > supported keys ({1})", conf_->key_fetchers.size(), key_t::static_size));
 		}
-
-		// dense_hash_map specific
-		raw_.set_empty_key(key_t());
 
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_REQUEST_DATA,
@@ -496,35 +603,17 @@ public:
 
 	virtual void ticks_init(timeval_t curr_tv) override
 	{
-		for (uint32_t i = 0; i < conf_->ts_count; i++)
-		{
-			ticks_.push_back({});
-		}
-
-		raw_start_tv_ = curr_tv;
+		ticks_.init(curr_tv);
 	}
 
 	virtual void tick_now(timeval_t curr_tv) override
 	{
-		timeslice_ptr timeslice { new timeslice_t() };
-		timeslice->start_tv = raw_start_tv_;
-		timeslice->end_tv   = curr_tv;
-		timeslice->items.swap(raw_); // effectively - grab current raw_, replacing it with empty hash
-
-		raw_.set_empty_key(key_t());
-
-		raw_start_tv_ = curr_tv;
-
-		ticks_.push_back(timeslice);
-		if (ticks_.size() >  conf_->ts_count)
-		{
-			ticks_.erase(ticks_.begin()); // FIXME: O(N)
-		}
+		ticks_.tick(curr_tv);
 	}
 
 	virtual report_snapshot_ptr get_snapshot() override
 	{
-		return meow::make_unique<snapshot_t>(ticks_, info_);
+		return meow::make_unique<snapshot_t>(ticks_.get_internal_buffer(), info_, globals_->dictionary());
 	}
 
 public:
@@ -560,7 +649,7 @@ public:
 		}
 
 		// finally - find and update item
-		item_t& item = raw_[k];
+		item_t& item = ticks_.current().data[k];
 		item.data_increment(packet);
 
 		if (info_.hv_enabled)
@@ -584,19 +673,21 @@ public:
 		duration_t req_time_total  = {0};
 		duration_t time_window     = {0};
 
-		ff::fmt(f, ">> {0} ----------------------->\n", name);
-		for (unsigned i = 0; i < ticks.size(); i++)
-		{
-			ff::fmt(f, "items[{0}]\n", i);
+		auto const& tlist = ticks.get_internal_buffer();
 
-			auto const& timeslice = ticks[i];
+		ff::fmt(f, ">> {0} ----------------------->\n", name);
+		for (unsigned i = 0; i < tlist.size(); i++)
+		{
+			ff::fmt(f, "ticks[{0}]\n", i);
+
+			auto const& timeslice = tlist[i];
 
 			if (!timeslice)
 				continue;
 
 			time_window += duration_from_timeval(timeslice->end_tv - timeslice->start_tv);
 
-			for (auto const& pair : timeslice->items)
+			for (auto const& pair : timeslice->data)
 			{
 				auto const& key  = pair.first;
 				auto const& item = pair.second;
@@ -619,27 +710,6 @@ public:
 
 		ff::fmt(f, "<< avg_req_time: {0}, tw: {1}, avg_rps (expected): {2} -------<\n",
 			avg_req_time , time_window, avg_rps);
-		ff::fmt(f, "\n");
-	}
-
-	static void do_serialize_raw(FILE *f, raw_t const& raw, str_ref name)
-	{
-		ff::fmt(f, ">> {0} ----------------------->\n", name);
-		for (auto const& pair : raw)
-		{
-			auto const& key  = pair.first;
-			auto const& item = pair.second;
-			auto const& data = item.data;
-
-			ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4} } [", report_key_to_string(key), data.req_count, data.req_time, data.ru_utime, data.ru_stime);
-			for (auto it = item.hv.map.begin(), it_end = item.hv.map.end(); it != it_end; ++it)
-			{
-				ff::fmt(f, "{0}{1}: {2}", (item.hv.map.begin() == it)?"":", ", it->first, it->second);
-			}
-			ff::fmt(f, "]\n");
-		}
-
-		ff::fmt(f, "<<-----------------------<\n");
 		ff::fmt(f, "\n");
 	}
 
@@ -755,7 +825,7 @@ struct report___by_timer_t : public report_t
 			uint32_t const id = (timer->value.nsec / timer->hit_count) / hv_bucket_d.nsec;
 			uint32_t const bucket_id = (id < hv_bucket_count)
 										? id + 1 // known tick bucket
-										: id;    // infinity
+										: 0;     // infinity
 
 			hv.map[bucket_id] += 1;
 		}
@@ -777,29 +847,66 @@ struct report___by_timer_t : public report_t
 		}
 	};
 
-public:
+public: // ticks
 
-	// FIXME: need a better name for this and item_t
-	// typedef std::unordered_map<
-	typedef google::dense_hash_map<
-						  key_t
-						, item_t
-						, report_key__hasher_t
-						, report_key__equal_t
-					> raw_t;
+	using raw_hashtable_t = google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>;
 
-	struct timeslice_t
-		: boost::intrusive_ref_counter<timeslice_t>
+	struct hashtable_t : public raw_hashtable_t
 	{
-		timeval_t start_tv = {0};
-		timeval_t end_tv   = {0};
-		raw_t     items;
+		hashtable_t()
+		{
+			this->set_empty_key(key_t{});
+		}
 	};
-	typedef boost::intrusive_ptr<timeslice_t> timeslice_ptr;
 
-	typedef std::vector<timeslice_ptr> ticks_t; // constant size
+	using ticks_t       = ticks_ringbuffer_t<hashtable_t>;
+	using tick_t        = ticks_t::tick_t;
+	using ticks_list_t  = ticks_t::ringbuffer_t;
 
-public:
+public: // snapshot
+
+	struct snapshot_traits
+	{
+		using src_ticks_t = ticks_list_t;
+
+		struct hashtable_t : public google::dense_hash_map<
+											  key_t
+											, report_row___by_timer_t
+											, report_key__hasher_t
+											, report_key__equal_t>
+		{
+			hashtable_t() { this->set_empty_key(key_t{}); }
+		};
+
+		// merge full tick from src ringbuffer to current hashtable_t state
+		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
+		{
+			if (!from)
+				return;
+
+			for (auto const& from_pair : from->data)
+			{
+				auto const& src = from_pair.second;
+				auto      & dst = to[from_pair.first];
+
+				dst.data.req_count  += src.data.req_count;
+				dst.data.hit_count  += src.data.hit_count;
+				dst.data.time_total += src.data.time_total;
+				dst.data.ru_utime   += src.data.ru_utime;
+				dst.data.ru_stime   += src.data.ru_stime;
+
+				if (rinfo.hv_enabled)
+				{
+					for (auto const& hv_pair : src.hv.map)
+						dst.hv.map[hv_pair.first] += hv_pair.second;
+				}
+			}
+		}
+	};
+
+	using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
+
+public: // key extraction and transformation
 
 	typedef meow::string_ref<report_key_t::value_type> key_subrange_t;
 
@@ -892,69 +999,6 @@ public:
 	};
 
 private:
-
-	struct snapshot_t : public report_snapshot_t
-	{
-		typedef raw_t                   parent_raw_t;
-		typedef parent_raw_t::key_type  key_t;
-
-		typedef std::unordered_map<
-								  key_t
-								, report_row___by_request_t
-								, report_key__hasher_t
-								, report_key__equal_t
-							> hash_t;
-
-		typedef hash_t::const_iterator iterator_t;
-
-	private:
-
-		hash_t        data_;   // real data we iterate over
-		ticks_t       ticks_;  // ticks we merge our data from (in other thread potentially)
-		report_info_t rinfo_;  // report info, immutable copy taken in ctor
-
-	public:
-
-		snapshot_t(ticks_t ticks, report_info_t const& rinfo)
-			: data_()
-			, ticks_(std::move(ticks))  // get a copy, and move explicitly
-			, rinfo_(rinfo)
-		{
-		}
-
-	private:
-		// get global snapshot data
-		// this function is here (and not JUST in report_t), to avoid race conditions,
-		// i.e. report_info() and get_snapshot() returning slightly different data,
-		// due to those being 2 separate function calls (and some packets might get processed in the middle)
-		virtual report_info_t const* report_info() const override {}
-
-		// prepare snapshot for use
-		// MUST be called before any of the functions below
-		// this exists primarily to allow preparation to take place in a thread
-		// different from the one handling report data (more parallelism, yey)
-		virtual void prepare() override {}
-
-		// iteration, this should be very cheap
-		virtual position_t pos_first() override {}
-		virtual position_t pos_last() override {}
-		virtual position_t pos_next(position_t const&) override {}
-		virtual position_t pos_prev(position_t const&) override {}
-		virtual bool       pos_equal(position_t const&, position_t const&) const override {}
-
-		// key handling
-		virtual report_key_t     get_key(position_t const&) const override {}
-		virtual report_key_str_t get_key_str(position_t const&) const override {}
-
-		// data handling
-		virtual int   data_kind() const override {}
-		virtual void* get_data(position_t const&) override {}
-
-		// histograms
-		virtual histogram_t const* get_histogram(position_t const&) override {}
-	};
-
-private:
 	pinba_globals_t           *globals_;
 	report___by_timer_conf_t  *conf_;
 
@@ -963,9 +1007,6 @@ private:
 
 	ticks_t        ticks_;
 
-	raw_t          raw_;
-	timeval_t      raw_start_tv_; // timeval we've started gathering raw data
-
 	uint64_t       packet_unqiue_;
 
 public:
@@ -973,7 +1014,7 @@ public:
 	report___by_timer_t(pinba_globals_t *globals, report___by_timer_conf_t *conf)
 		: globals_(globals)
 		, conf_(conf)
-		, raw_start_tv_{0}
+		, ticks_(conf_->ts_count)
 		, packet_unqiue_{0}
 	{
 		// validate config
@@ -982,9 +1023,6 @@ public:
 			throw std::runtime_error(ff::fmt_str(
 				"required keys ({0}) > supported keys ({1})", conf_->key_d.size(), key_t::static_size));
 		}
-
-		// dense_hash_map specific
-		raw_.set_empty_key(key_t());
 
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_TIMER_DATA,
@@ -1016,35 +1054,17 @@ public:
 
 	virtual void ticks_init(timeval_t curr_tv) override
 	{
-		for (uint32_t i = 0; i < conf_->ts_count; i++)
-		{
-			ticks_.push_back({});
-		}
-
-		raw_start_tv_ = curr_tv;
+		ticks_.init(curr_tv);
 	}
 
 	virtual void tick_now(timeval_t curr_tv) override
 	{
-		timeslice_ptr timeslice { new timeslice_t() };
-		timeslice->start_tv = raw_start_tv_;
-		timeslice->end_tv   = curr_tv;
-		timeslice->items.swap(raw_); // effectively - grab current raw_, replacing it with empty hash
-
-		raw_.set_empty_key(key_t());
-
-		raw_start_tv_ = curr_tv;
-
-		ticks_.push_back(timeslice);
-		if (ticks_.size() >  conf_->ts_count)
-		{
-			ticks_.erase(ticks_.begin()); // FIXME: O(N)
-		}
+		ticks_.tick(curr_tv);
 	}
 
 	virtual report_snapshot_ptr get_snapshot() override
 	{
-		return meow::make_unique<snapshot_t>(ticks_, info_);
+		return meow::make_unique<snapshot_t>(ticks_.get_internal_buffer(), info_, globals_->dictionary());
 	}
 
 public:
@@ -1167,7 +1187,7 @@ public:
 				// ff::fmt(stdout, "real key: {0}\n", report_key_to_string(k, globals_->dictionary()));
 
 				// finally - find and update item
-				item_t& item = raw_[k];
+				item_t& item = ticks_.current().data[k];
 				item.data_increment(timer);
 
 				item.packet_increment(packet, packet_unqiue_);
@@ -1193,19 +1213,21 @@ public:
 		duration_t hit_time_total  = {0};
 		duration_t time_window     = {0};
 
+		auto const& tlist = ticks_.get_internal_buffer();
+
 		ff::fmt(f, ">> {0} ----------------------->\n", name);
-		for (unsigned i = 0; i < ticks_.size(); i++)
+		for (unsigned i = 0; i < tlist.size(); i++)
 		{
-			ff::fmt(f, "items[{0}]\n", i);
+			ff::fmt(f, "tick[{0}]\n", i);
 
-			auto const& timeslice = ticks_[i];
+			auto const& tick = tlist[i];
 
-			if (!timeslice)
+			if (!tick)
 				continue;
 
-			time_window += duration_from_timeval(timeslice->end_tv - timeslice->start_tv);
+			time_window += duration_from_timeval(tick->end_tv - tick->start_tv);
 
-			for (auto const& pair : timeslice->items)
+			for (auto const& pair : tick->data)
 			{
 				auto const& key  = pair.first;
 				auto const& item = pair.second;
@@ -1251,7 +1273,7 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 	for (auto pos = snapshot->pos_first(), end = snapshot->pos_last(); !snapshot->pos_equal(pos, end); pos = snapshot->pos_next(pos))
 	{
 		auto const key = snapshot->get_key(pos);
-		ff::fmt(sink, "[{0}] -> ", report_key_to_string(key));
+		ff::fmt(sink, "[{0}] -> ", report_key_to_string(key, snapshot->dictionary()));
 
 		auto const data_kind = snapshot->data_kind();
 
@@ -1275,15 +1297,30 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 				}
 			}
 
-			ff::fmt(sink, "]\n");
+			ff::fmt(sink, "]");
 		}
 		break;
 
-		// case REPORT_KIND__BY_TIMER_DATA:
-		// {
-		// 	ff::fmt(sink, "");
-		// }
-		// break;
+		case REPORT_KIND__BY_TIMER_DATA:
+		{
+			auto const *row = reinterpret_cast<report_row___by_timer_t*>(snapshot->get_data(pos));
+			auto const& data = row->data;
+
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3} } [",
+				data.req_count, data.time_total, data.ru_utime, data.ru_stime);
+
+			auto const *hv = snapshot->get_histogram(pos);
+			if (NULL != hv)
+			{
+				for (auto it = hv->map.begin(), it_end = hv->map.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hv->map.begin() == it)?"":", ", it->first, it->second);
+				}
+			}
+
+			ff::fmt(sink, "]");
+		}
+		break;
 
 		default:
 			// assert(!"unknown report snapshot data_kind()");
@@ -1463,8 +1500,9 @@ try
 			return r;
 		};
 
+		conf.key_d.push_back(make_rfield_kd("script_name", &packet_t::script_id));
 		conf.key_d.push_back(make_timertag_kd("group"));
-		// conf.key_d.push_back(make_rtag_kd("app_label"));
+		// conf.key_d.push_back(make_rtag_kd("type"));
 		// conf.key_d.push_back(make_rfield_kd("script_name", &packet_t::script_id));
 		// conf.key_d.push_back(make_rfield_kd("server_name", &packet_t::server_id));
 		// conf.key_d.push_back(make_rfield_kd("host_name", &packet_t::host_id));

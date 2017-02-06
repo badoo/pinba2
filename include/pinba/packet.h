@@ -209,14 +209,32 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 MEOW_DEFINE_SMART_ENUM(request_validate_result,
-					((okay,                      "okay"))
-					((bad_hit_count,             "bad_hit_count"))
-					((bad_tag_count,             "bad_tag_count"))
-					((not_enough_tag_names,      "not_enough_tag_names"))
-					((not_enough_tag_values,     "not_enough_tag_values"))
-					// ((bad_timer_ru_utime_count,  "bad_timer_ru_utime_count"))
-					// ((bad_timer_ru_stime_count,  "bad_timer_ru_stime_count"))
-					((bad_timer_hit_count,       "bad_timer_hit_count"))
+					((okay,                           "okay"))
+					((bad_hit_count,                  "bad_hit_count"))
+					((bad_tag_count,                  "bad_tag_count"))
+					((not_enough_tag_names,           "not_enough_tag_names"))
+					((not_enough_tag_values,          "not_enough_tag_values"))
+					// ((bad_timer_ru_utime_count,     "bad_timer_ru_utime_count"))
+					// ((bad_timer_ru_stime_count,     "bad_timer_ru_stime_count"))
+					((bad_timer_hit_count,            "bad_timer_hit_count"))
+
+					((bad_float_request_time,         "bad_float_request_time"))
+					((negative_float_request_time,    "negative_float_request_time"))
+
+					((bad_float_ru_utime,             "bad_float_ru_utime"))
+					((negative_float_ru_utime,        "negative_float_ru_utime"))
+
+					((bad_float_ru_stime,             "bad_float_ru_stime"))
+					((negative_float_ru_stime,        "negative_float_ru_stime"))
+
+					((bad_float_timer_value,          "bad_float_timer_value"))
+					((negative_float_timer_value,     "negative_float_timer_value"))
+
+					((bad_float_timer_ru_utime,       "bad_float_timer_ru_utime"))
+					((negative_float_timer_ru_utime,  "negative_float_timer_ru_utime"))
+
+					((bad_float_timer_ru_stime,       "bad_float_timer_ru_stime"))
+					((negative_float_timer_ru_stime,  "negative_float_timer_ru_stime"))
 					);
 
 request_validate_result_t pinba_validate_request(Pinba__Request *r);

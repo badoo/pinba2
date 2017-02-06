@@ -1,3 +1,4 @@
+#include <cmath>
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
@@ -41,6 +42,28 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 
 	if (total_tag_count != r->n_timer_tag_value) // all tags have values
 		return request_validate_result::not_enough_tag_values;
+
+	// float validation
+#define VALIDATE_FLOAT_V(value, name)                           \
+	if (std::isnormal(value) == 0)                              \
+		return request_validate_result::bad_float_##name;       \
+	if (std::signbit(value) == 1)                               \
+		return request_validate_result::negative_float_##name;  \
+/**/
+
+#define VALIDATE_FLOATS_IN_ARRAY(array_name)            \
+	for (unsigned i = 0; i < r->n_##array_name; i++) {  \
+		VALIDATE_FLOAT_V(r->array_name[i], array_name)  \
+	}                                                   \
+/**/
+
+	VALIDATE_FLOAT_V(r->request_time, request_time);
+	VALIDATE_FLOAT_V(r->ru_utime, ru_utime);
+	VALIDATE_FLOAT_V(r->ru_stime, ru_stime);
+
+	VALIDATE_FLOATS_IN_ARRAY(timer_value);
+	VALIDATE_FLOATS_IN_ARRAY(timer_ru_utime);
+	VALIDATE_FLOATS_IN_ARRAY(timer_ru_stime);
 
 	return request_validate_result::okay;
 }

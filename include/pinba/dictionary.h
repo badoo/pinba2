@@ -93,7 +93,7 @@ struct dictionary_t
 		hash.set_empty_key(str_ref{});
 	}
 
-	str_ref get_word(uint32_t word_id)
+	str_ref get_word(uint32_t word_id) const
 	{
 		if (word_id == 0)
 			return {};

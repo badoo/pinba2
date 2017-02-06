@@ -44,6 +44,10 @@ struct report_snapshot_t
 	// due to those being 2 separate function calls (and some packets might get processed in the middle)
 	virtual report_info_t const* report_info() const = 0;
 
+	// get dictionary used to translate ids to names
+	// debug purposes only
+	virtual dictionary_t const* dictionary() const = 0;
+
 	// prepare snapshot for use
 	// MUST be called before any of the functions below
 	// this exists primarily to allow preparation to take place in a thread
