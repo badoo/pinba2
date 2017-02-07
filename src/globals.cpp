@@ -11,6 +11,7 @@
 #include "pinba/coordinator.h"
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
+#include "pinba/report_by_request.h"
 
 #include "pinba/nmsg_ticker.h"
 
@@ -23,7 +24,10 @@ struct pinba_globals_impl_t : public pinba_globals_t
 	{
 		ticker_ = meow::make_unique<nmsg_ticker___single_thread_t>();
 		dictionary_ = meow::make_unique<dictionary_t>();
+	}
 
+	virtual void startup()
+	{
 		static collector_conf_t collector_conf = {
 			.address       = options_->net_address,
 			.port          = options_->net_port,
@@ -52,10 +56,7 @@ struct pinba_globals_impl_t : public pinba_globals_t
 			.nn_report_output_buffer = 16,
 		};
 		coordinator_ = create_coordinator(this, &coordinator_conf);
-	}
 
-	virtual void startup()
-	{
 		coordinator_->startup();
 		repacker_->startup();
 		collector_->startup();
@@ -64,10 +65,10 @@ struct pinba_globals_impl_t : public pinba_globals_t
 	virtual nmsg_ticker_t* ticker() const override { return ticker_.get(); }
 	virtual dictionary_t*  dictionary() const override { return dictionary_.get(); }
 
-	virtual bool create_report_by_request(report_conf__by_request_t *conf) override
+	virtual bool create_report_by_request(report_conf___by_request_t *conf) override
 	{
 		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-		// req->report = meow::make_unique<report___by_request_t>(conf);
+		req->report = meow::make_unique<report___by_request_t>(this, conf);
 
 		auto const result = coordinator_->request(req);
 
@@ -77,7 +78,7 @@ struct pinba_globals_impl_t : public pinba_globals_t
 		throw std::runtime_error(ff::fmt_str("create_report_by_request; error: {0}", result->err.what()));
 	}
 
-	virtual bool create_report_by_timer(report_conf__by_timer_t *conf) override
+	virtual bool create_report_by_timer(report_conf___by_timer_t *conf) override
 	{
 		return false;
 	}

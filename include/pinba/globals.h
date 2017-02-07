@@ -42,8 +42,8 @@ struct pinba_options_t
 struct nmsg_ticker_t;
 struct dictionary_t;
 
-struct report_conf__by_request_t;
-struct report_conf__by_timer_t;
+struct report_conf___by_request_t;
+struct report_conf___by_timer_t;
 
 // TODO: maybe have this as global registry for all threaded objects here
 //       and not just explicit stats, but everything (and ticker for example!)
@@ -72,8 +72,8 @@ struct pinba_globals_t
 	virtual nmsg_ticker_t* ticker() const = 0;
 	virtual dictionary_t*  dictionary() const = 0;
 
-	virtual bool create_report_by_request(report_conf__by_request_t*) = 0;
-	virtual bool create_report_by_timer(report_conf__by_timer_t*) = 0;
+	virtual bool create_report_by_request(report_conf___by_request_t*) = 0;
+	virtual bool create_report_by_timer(report_conf___by_timer_t*) = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 
