@@ -69,6 +69,13 @@ int ha_pinba::rnd_init(bool scan)
 	DBUG_RETURN(0);
 }
 
+int ha_pinba::rnd_end()
+{
+  DBUG_ENTER(__PRETTY_FUNCTION__);
+  DBUG_RETURN(0);
+}
+
+
 /**
   @brief
   This is called for each row of the table scan. When you run out of records
@@ -83,12 +90,6 @@ int ha_pinba::rnd_init(bool scan)
   @see
   filesort.cc, records.cc, sql_handler.cc, sql_select.cc, sql_table.cc and sql_update.cc
 */
-int ha_pinba::rnd_end()
-{
-	DBUG_ENTER(__PRETTY_FUNCTION__);
-	DBUG_RETURN(0);
-}
-
 int ha_pinba::rnd_next(uchar *buf)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);

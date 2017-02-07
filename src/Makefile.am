@@ -25,6 +25,8 @@ libpinba2_a_SOURCES = \
 	globals.cpp \
 	handler.cpp \
 	collector.cpp \
+	repacker.cpp \
+	coordinator.cpp \
 	packet.cpp \
 	$(top_srcdir)/proto/pinba.pb-c.c \
 	#
@@ -48,8 +50,8 @@ pinba2_SOURCES = \
 	#
 
 pinba2_LDADD = \
-	$(DEPS_LIBS) \
 	libpinba2.a \
+	$(DEPS_LIBS) \
 	#
 
 # the mysql plugin
@@ -63,6 +65,6 @@ libpinba_engine2_la_LDFLAGS = \
 	-module
 
 libpinba_engine2_la_LIBADD = \
-	$(DEPS_LIBS) \
 	libpinba2.a \
+	$(DEPS_LIBS) \
 	#

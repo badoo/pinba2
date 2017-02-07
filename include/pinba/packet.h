@@ -10,6 +10,7 @@
 #include <meow/smart_enum.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/dictionary.h"
 #include "proto/pinba.pb-c.h"
 
 #include "misc/nmpa.h"
@@ -219,6 +220,7 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((bad_timer_hit_count,            "bad_timer_hit_count"))
 
 					((bad_float_request_time,         "bad_float_request_time"))
+					((zero_float_request_time,         "zero_float_request_time"))
 					((negative_float_request_time,    "negative_float_request_time"))
 
 					((bad_float_ru_utime,             "bad_float_ru_utime"))
@@ -228,6 +230,7 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((negative_float_ru_stime,        "negative_float_ru_stime"))
 
 					((bad_float_timer_value,          "bad_float_timer_value"))
+					((zero_float_timer_value,         "zero_float_timer_value"))
 					((negative_float_timer_value,     "negative_float_timer_value"))
 
 					((bad_float_timer_ru_utime,       "bad_float_timer_ru_utime"))

@@ -452,7 +452,7 @@ struct report___by_request_t : public report_t
 		void operator=(item_t&& other)
 		{
 			data = other.data;          // a copy
-			hv.map.swap(other.hv.map);  // real move
+			hv   = std::move(other.hv); // real move
 		}
 
 		void data_increment(packet_t *packet)
@@ -467,12 +467,7 @@ struct report___by_request_t : public report_t
 
 		void hv_increment(packet_t *packet, uint32_t hv_bucket_count, duration_t hv_bucket_d)
 		{
-			uint32_t const id = packet->request_time.nsec / hv_bucket_d.nsec;
-			uint32_t const bucket_id = (id < hv_bucket_count)
-										? id + 1 // known tick bucket
-										: 0;     // infinity
-
-			hv.map[bucket_id] += 1;
+			hv.increment({hv_bucket_count, hv_bucket_d}, packet->request_time);
 		}
 
 		void merge_other(item_t const& other)
@@ -486,10 +481,7 @@ struct report___by_request_t : public report_t
 			data.mem_usage  += other.data.mem_usage;
 
 			// hv
-			for (auto const& hv_pair : other.hv.map)
-			{
-				hv.map[hv_pair.first] += hv_pair.second;
-			}
+			hv.merge_other(other.hv);
 		}
 	};
 
@@ -544,8 +536,7 @@ public: // snapshot
 
 				if (rinfo.hv_enabled)
 				{
-					for (auto const& hv_pair : src.hv.map)
-						dst.hv.map[hv_pair.first] += hv_pair.second;
+					dst.hv.merge_other(src.hv);
 				}
 			}
 		}
@@ -697,9 +688,11 @@ public:
 				req_time_total  += data.req_time;
 
 				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4} } [", report_key_to_string(key), data.req_count, data.req_time, data.ru_utime, data.ru_stime);
-				for (auto it = item.hv.map.begin(), it_end = item.hv.map.end(); it != it_end; ++it)
+
+				auto const& hv_map = item.hv.map_cref();
+				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
 				{
-					ff::fmt(f, "{0}{1}: {2}", (item.hv.map.begin() == it)?"":", ", it->first, it->second);
+					ff::fmt(f, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
 				}
 				ff::fmt(f, "]\n");
 			}
@@ -798,8 +791,8 @@ struct report___by_timer_t : public report_t
 
 		void operator=(item_t&& other)
 		{
-			data = other.data;          // a copy
-			hv.map.swap(other.hv.map);  // real move
+			data = other.data;           // a copy
+			hv   = std::move(other.hv);  // real move
 		}
 
 		void data_increment(packed_timer_t const *timer)
@@ -822,12 +815,7 @@ struct report___by_timer_t : public report_t
 
 		void hv_increment(packed_timer_t const *timer, uint32_t hv_bucket_count, duration_t hv_bucket_d)
 		{
-			uint32_t const id = (timer->value.nsec / timer->hit_count) / hv_bucket_d.nsec;
-			uint32_t const bucket_id = (id < hv_bucket_count)
-										? id + 1 // known tick bucket
-										: 0;     // infinity
-
-			hv.map[bucket_id] += 1;
+			hv.increment({hv_bucket_count, hv_bucket_d}, (timer->value / timer->hit_count));
 		}
 
 		void merge_other(item_t const& other)
@@ -840,10 +828,7 @@ struct report___by_timer_t : public report_t
 			data.ru_stime   += other.data.ru_stime;
 
 			// hv
-			for (auto const& hv_pair : other.hv.map)
-			{
-				hv.map[hv_pair.first] += hv_pair.second;
-			}
+			hv.merge_other(other.hv);
 		}
 	};
 
@@ -897,8 +882,7 @@ public: // snapshot
 
 				if (rinfo.hv_enabled)
 				{
-					for (auto const& hv_pair : src.hv.map)
-						dst.hv.map[hv_pair.first] += hv_pair.second;
+					dst.hv.merge_other(src.hv);
 				}
 			}
 		}
@@ -1240,9 +1224,10 @@ public:
 					report_key_to_string(key, globals_->dictionary()),
 					data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
 
-				for (auto it = item.hv.map.begin(), it_end = item.hv.map.end(); it != it_end; ++it)
+				auto const& hv_map = item.hv.map_cref();
+				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
 				{
-					ff::fmt(f, "{0}{1}: {2}", (item.hv.map.begin() == it)?"":", ", it->first, it->second);
+					ff::fmt(f, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
 				}
 				ff::fmt(f, "]\n");
 			}
@@ -1259,6 +1244,12 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+template<class T>
+inline double operator/(T const& value, duration_t d)
+{
+	return ((double)value / d.nsec) * nsec_in_sec;
+}
+
 template<class SinkT>
 SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_ref name = {})
 {
@@ -1269,6 +1260,22 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 		snapshot->prepare();
 		ff::fmt(sink, ">> merge took {0} --------->\n", sw.stamp());
 	}
+
+	auto const write_hv = [&](report_snapshot_t::position_t const& pos)
+	{
+		ff::fmt(sink, " [");
+		auto const *hv = snapshot->get_histogram(pos);
+		if (NULL != hv)
+		{
+			auto const& hv_map = hv->map_cref();
+			for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+			{
+				ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+			}
+		}
+
+		ff::fmt(sink, "]");
+	};
 
 	for (auto pos = snapshot->pos_first(), end = snapshot->pos_last(); !snapshot->pos_equal(pos, end); pos = snapshot->pos_next(pos))
 	{
@@ -1281,44 +1288,39 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 		{
 		case REPORT_KIND__BY_REQUEST_DATA:
 		{
-			auto const *row = reinterpret_cast<report_row___by_request_t*>(snapshot->get_data(pos));
-			auto const& data = row->data;
+			auto const *rinfo = snapshot->report_info();
 
-			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} } [",
+			auto const *row   = reinterpret_cast<report_row___by_request_t*>(snapshot->get_data(pos));
+			auto const& data  = row->data;
+
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
 				data.req_count, data.req_time, data.ru_utime, data.ru_stime,
 				data.traffic_kb, data.mem_usage);
 
-			auto const *hv = snapshot->get_histogram(pos);
-			if (NULL != hv)
-			{
-				for (auto it = hv->map.begin(), it_end = hv->map.end(); it != it_end; ++it)
-				{
-					ff::fmt(sink, "{0}{1}: {2}", (hv->map.begin() == it)?"":", ", it->first, it->second);
-				}
-			}
+			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
+			ff::fmt(sink, " {{ rps: {0}, tps: {1} }",
+				ff::as_printf("%.06lf", data.req_count / time_window));
 
-			ff::fmt(sink, "]");
+			write_hv(pos);
 		}
 		break;
 
 		case REPORT_KIND__BY_TIMER_DATA:
 		{
-			auto const *row = reinterpret_cast<report_row___by_timer_t*>(snapshot->get_data(pos));
-			auto const& data = row->data;
+			auto const *rinfo = snapshot->report_info();
 
-			ff::fmt(sink, "{{ {0}, {1}, {2}, {3} } [",
-				data.req_count, data.time_total, data.ru_utime, data.ru_stime);
+			auto const *row   = reinterpret_cast<report_row___by_timer_t*>(snapshot->get_data(pos));
+			auto const& data  = row->data;
 
-			auto const *hv = snapshot->get_histogram(pos);
-			if (NULL != hv)
-			{
-				for (auto it = hv->map.begin(), it_end = hv->map.end(); it != it_end; ++it)
-				{
-					ff::fmt(sink, "{0}{1}: {2}", (hv->map.begin() == it)?"":", ", it->first, it->second);
-				}
-			}
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4} }",
+				data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
 
-			ff::fmt(sink, "]");
+			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
+			ff::fmt(sink, " {{ rps: {0}, tps: {1} }",
+				ff::as_printf("%.06lf", data.req_count / time_window),
+				ff::as_printf("%.06lf", data.hit_count / time_window));
+
+			write_hv(pos);
 		}
 		break;
 

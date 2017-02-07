@@ -5,7 +5,7 @@
 #include <cassert>
 
 #include <atomic>
-#include <memory> // unique_ptr
+#include <memory>      // unique_ptr
 
 #include <meow/str_ref.hpp>
 #include <meow/std_unique_ptr.hpp>
@@ -27,13 +27,23 @@ struct pinba_options_t
 	std::string net_address;
 	std::string net_port;
 
-	uint32_t    reader_threads;
-	uint32_t    reader_batch_messages;
-	duration_t  reader_batch_timeout;
+	uint32_t    udp_threads;
+	uint32_t    udp_batch_messages;
+	duration_t  udp_batch_timeout;
+
+	uint32_t    repacker_threads;
+	uint32_t    repacker_input_buffer;
+	uint32_t    repacker_batch_messages;
+	duration_t  repacker_batch_timeout;
+
+	uint32_t    coordinator_input_buffer;
 };
 
 struct nmsg_ticker_t;
 struct dictionary_t;
+
+struct report_conf__by_request_t;
+struct report_conf__by_timer_t;
 
 // TODO: maybe have this as global registry for all threaded objects here
 //       and not just explicit stats, but everything (and ticker for example!)
@@ -57,8 +67,13 @@ struct pinba_globals_t
 
 	virtual void startup() = 0;
 
+	// virtual logger_t* logger() const = 0;
+
 	virtual nmsg_ticker_t* ticker() const = 0;
 	virtual dictionary_t*  dictionary() const = 0;
+
+	virtual bool create_report_by_request(report_conf__by_request_t*) = 0;
+	virtual bool create_report_by_timer(report_conf__by_timer_t*) = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 
