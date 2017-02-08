@@ -75,7 +75,8 @@ namespace { namespace aux {
 			packet_batch_ptr batch = create_batch();
 			timeval_t next_tick_tv = os_unix::clock_monotonic_now() + conf_->batch_timeout;
 
-			dictionary_t thread_local_dict;
+			// dictionary_t thread_local_dict;
+			dictionary_t *dictionary = globals_->dictionary(); // &thread_local_dict;
 
 			struct nn_pollfd pfd[] = {
 				{ .fd = *in_sock, .events = NN_POLLIN, .revents = 0, },
@@ -131,8 +132,7 @@ namespace { namespace aux {
 							continue;
 						}
 
-						// packet_t *packet = pinba_request_to_packet(pb_req, &dictionary_, &batch->nmpa);
-						packet_t *packet = pinba_request_to_packet(pb_req, &thread_local_dict, &batch->nmpa);
+						packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
 
 						++globals_->repacker.packets_processed;
 
@@ -162,7 +162,7 @@ namespace { namespace aux {
 		pinba_globals_t  *globals_;
 		repacker_conf_t  *conf_;
 
-		dictionary_t     dictionary_;
+		dictionary_t     *dictionary_;
 
 		std::vector<std::thread> threads_;
 	};

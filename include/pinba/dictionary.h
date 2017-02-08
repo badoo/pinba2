@@ -2,7 +2,11 @@
 #define PINBA__DICTIONARY_H_
 
 #include <string>
-#include <vector>
+#include <deque>
+
+#include <pthread.h> // need rwlock, which is only available since C++14
+
+#include <sparsehash/dense_hash_map>
 
 #include <meow/str_ref.hpp>
 #include <meow/hash/hash.hpp>
@@ -11,73 +15,77 @@
 #include "pinba/globals.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
 
-#include <unordered_map>
-
-struct dictionary_t
+struct rw_mutex_t
 {
-	typedef std::vector<std::string>                                   words_t;
-	typedef std::unordered_map<str_ref, uint32_t, meow::hash<str_ref>> hash_t;
-
-	words_t  words;
-	hash_t   hash;
-
-	uint64_t lookup_count;
-	uint64_t insert_count;
-
-	dictionary_t()
-		: hash(64 * 1024)
-		, lookup_count(0)
-		, insert_count(0)
+	rw_mutex_t()
 	{
+		pthread_rwlock_init(&mtx_, NULL);
 	}
 
-	str_ref get_word(uint32_t word_id)
+	~rw_mutex_t()
 	{
-		if (word_id > words.size())
-			return {};
-
-		if (word_id == 0)
-			return str_ref{};
-
-		return words[word_id-1];
+		pthread_rwlock_destroy(&mtx_);
 	}
 
-	uint32_t get_or_add(str_ref const word)
+	void rd_lock()
 	{
-		if (!word)
-			return 0;
+		pthread_rwlock_rdlock(&mtx_);
+	}
 
-		++this->lookup_count;
-		auto const it = hash.find(word);
+	void wr_lock()
+	{
+		pthread_rwlock_wrlock(&mtx_);
+	}
 
-		if (hash.end() != it)
-		{
-			return it->second;
-		}
+	void unlock()
+	{
+		pthread_rwlock_unlock(&mtx_);
+	}
 
-		// insert new element
-		words.push_back(word.str());
+private:
+	pthread_rwlock_t mtx_;
+};
 
-		assert(words.size() < size_t(INT_MAX));
+struct scoped_read_lock_t
+{
+	rw_mutex_t *mtx_;
 
-		auto const word_id = static_cast<uint32_t>(words.size()); // start with 1, since 0 is reserved for empty
+	scoped_read_lock_t(rw_mutex_t& mtx)
+		: mtx_(&mtx)
+	{
+		mtx_->rd_lock();
+	}
 
-		++this->insert_count;
-		hash.insert({words.back(), word_id});
-		return word_id;
+	~scoped_read_lock_t()
+	{
+		mtx_->unlock();
+	}
+
+	void upgrade_to_wrlock()
+	{
+		mtx_->unlock();
+		mtx_->wr_lock();
 	}
 };
 
-#else // TODO: add configure/build support for densehash
+////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <sparsehash/dense_hash_map>
+struct dictionary_get_result_t
+{
+	uint32_t id;
+	uint32_t found : 1;
+};
+static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t));
 
 struct dictionary_t
 {
-	typedef std::vector<std::string>                                   words_t;
-	typedef google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>> hash_t;
+	// deque is important here, since we return str_ref-s to std::strings stored in it
+	// and must guarantee that these str_ref-s are valid essentialy forever
+	using words_t = std::deque<std::string>;
+	using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
+
+	mutable rw_mutex_t mtx_;
 
 	words_t  words;
 	hash_t   hash;
@@ -93,10 +101,18 @@ struct dictionary_t
 		hash.set_empty_key(str_ref{});
 	}
 
+	uint32_t size() const
+	{
+		scoped_read_lock_t lock_(mtx_);
+		return words_.size();
+	}
+
 	str_ref get_word(uint32_t word_id) const
 	{
 		if (word_id == 0)
 			return {};
+
+		scoped_read_lock_t lock_(mtx_);
 
 		if (word_id > words.size())
 			return {};
@@ -109,13 +125,24 @@ struct dictionary_t
 		if (!word)
 			return 0;
 
+		// fastpath
+		scoped_read_lock_t lock_(mtx_);
+
+		{
+			++this->lookup_count;
+			auto const it = hash.find(word);
+			if (hash.end() != it)
+				return it->second;
+		}
+
+		// slowpath
+		lock_.upgrade_to_wrlock();
+
+		// check again, as hash might've changed!
 		++this->lookup_count;
 		auto const it = hash.find(word);
-
 		if (hash.end() != it)
-		{
 			return it->second;
-		}
 
 		// insert new element
 		words.push_back(word.str());
@@ -129,7 +156,7 @@ struct dictionary_t
 		return word_id;
 	}
 };
-#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 #endif // PINBA__DICTIONARY_H_

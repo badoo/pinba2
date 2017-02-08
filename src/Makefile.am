@@ -28,6 +28,7 @@ libpinba2_a_SOURCES = \
 	repacker.cpp \
 	coordinator.cpp \
 	packet.cpp \
+	report_snapshot.cpp \
 	$(top_srcdir)/proto/pinba.pb-c.c \
 	#
 

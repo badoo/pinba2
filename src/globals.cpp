@@ -72,15 +72,40 @@ struct pinba_globals_impl_t : public pinba_globals_t
 
 		auto const result = coordinator_->request(req);
 
-		if (COORDINATOR_STATUS__OK == result->status)
+		assert(COORDINATOR_RES__GENERIC == result->type);
+		auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+
+		if (COORDINATOR_STATUS__OK == r->status)
 			return true;
 
-		throw std::runtime_error(ff::fmt_str("create_report_by_request; error: {0}", result->err.what()));
+		throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
 	}
 
 	virtual bool create_report_by_timer(report_conf___by_timer_t *conf) override
 	{
 		return false;
+	}
+
+	virtual report_snapshot_ptr get_report_snapshot(str_ref name) override
+	{
+		auto req = meow::make_intrusive<coordinator_request___get_report_snapshot_t>();
+		req->report_name = name.str();
+
+		auto const result = coordinator_->request(req);
+
+		if (COORDINATOR_RES__REPORT_SNAPSHOT == result->type)
+		{
+			auto *r = static_cast<coordinator_response___report_snapshot_t*>(result.get());
+			return move(r->snapshot);
+		}
+		else
+		{
+			assert(COORDINATOR_RES__GENERIC == result->type);
+			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+			throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
+		}
+
+		assert(!"unreachable");
 	}
 
 private:

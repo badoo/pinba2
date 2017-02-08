@@ -7,6 +7,7 @@
 
 #include <boost/noncopyable.hpp>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/format/format_to_string.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
@@ -27,6 +28,8 @@
 #include "pinba/collector.h"
 #include "pinba/dictionary.h"
 #include "pinba/packet.h"
+#include "pinba/coordinator.h"
+#include "pinba/report_by_request.h"
 
 #include "pinba/nmsg_socket.h"
 #include "pinba/nmsg_ticker.h"
@@ -225,7 +228,7 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
+#if 0
 struct report_t
 {
 };
@@ -472,7 +475,7 @@ private:
 	nmsg_socket_t    control_sock_;
 	nmsg_socket_t    report_sock_;
 };
-
+#endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // typedef std::unordered_map<std::string, report_ptr> reports_map_t;
@@ -515,37 +518,38 @@ try
 		.nn_report_output        = "inproc://coordinator/report-data",
 		.nn_report_output_buffer = 16,
 	};
-	auto coordinator = meow::make_unique<coordinator_t>(globals.get(), &coordinator_conf);
+	auto coordinator = create_coordinator(globals.get(), &coordinator_conf);
 
 	coordinator->startup();
 	repacker->startup();
 	collector->startup();
 
-	// coordinator->add_report(report_conf_t{
-	// 	.report_name    = "test",
-	// 	.report         = meow::make_unique<report_t>(),
-	// 	.tick_interval  = 100 * d_millisecond,
-	// 	.total_time     = 60  * d_second,
-	// });
-
 	{
-		nmsg_socket_t sock;
-		sock.open(AF_SP, NN_REQ).connect(coordinator_conf.nn_control.c_str());
+		static report_conf___by_request_t conf = {
+			.name            = "test_report",
+			.time_window     = 60 * d_second,
+			.ts_count        = 60,
+			.hv_bucket_count = 1 * 1000 * 1000,
+			.hv_bucket_d     = 1 * d_microsecond,
 
-		for (uint32_t i = 0; i < 4; i++)
-		{
+			.filters = {
+				report_conf___by_request_t::make_filter___by_max_time(1 * d_second),
+			},
 
-			coordinator_control_request_ptr r { new coordinator_control_request_t() };
-			r->type                      = COORD_REQ__ADD_REPORT;
-			r->report_conf.report_name   = ff::fmt_str("test/{0}", i);
-			r->report_conf.report        = meow::make_unique<report_t>();
-			r->report_conf.tick_interval = 1000 * d_millisecond;
+			.keys = {
+				report_conf___by_request_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
+			},
+		};
 
-			sock.send_message(r);
+		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
+		req->report = meow::make_unique<report___by_request_t>(globals.get(), &conf);
 
-			auto const response = sock.recv<coordinator_control_response_ptr>();
-			ff::fmt(stdout, "got control response: {0}\n", response->status);
-		}
+		auto const result = coordinator->request(req);
+
+		assert(COORDINATOR_RES__GENERIC == result->type);
+		auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+
+		ff::fmt(stdout, "got coordinator control response: {0}, {1}\n", r->status, r->err.what());
 	}
 
 	getchar();

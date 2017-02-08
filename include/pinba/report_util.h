@@ -8,6 +8,7 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/sparse_hash_map>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -24,7 +25,7 @@ struct report_key__hasher_t
 	inline constexpr size_t operator()(report_key_base_t<N> const& key) const
 	{
 		// TODO: try a "better" hash function here, like https://github.com/leo-yuriev/t1ha
-		return meow::hash_blob(key.data(), N);
+		return meow::hash_blob(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type));
 	}
 };
 
@@ -89,9 +90,9 @@ struct report_snapshot__impl_t : public report_snapshot_t
 
 public:
 
-	report_snapshot__impl_t(src_ticks_t ticks, report_info_t const& rinfo, dictionary_t *d)
+	report_snapshot__impl_t(src_ticks_t const& ticks, report_info_t const& rinfo, dictionary_t *d)
 		: data_()
-		, ticks_(std::move(ticks))  // get a copy, and move explicitly
+		, ticks_(ticks)
 		, rinfo_(rinfo)
 		, dictionary_(d)
 	{
@@ -111,10 +112,8 @@ private:
 
 	virtual void prepare() override
 	{
-		if (ticks_.empty())
-			throw std::logic_error(ff::fmt_str("{0}: trying to merge report snapshot a second time", __PRETTY_FUNCTION__));
-
-		// TODO: add rusage tracking to this function
+		if (this->is_prepared())
+			return;
 
 		for (auto& tick : ticks_)
 		{
@@ -129,6 +128,11 @@ private:
 		}
 
 		ticks_.clear();
+	}
+
+	virtual bool is_prepared() const override
+	{
+		return ticks_.empty();
 	}
 
 private:

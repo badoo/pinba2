@@ -25,6 +25,9 @@ struct report_info_t
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct packet_t;
+struct dictionary_t;
+
 struct report_snapshot_t
 {
 	// this struct is just a placeholder, same size as real hashtable iterator
@@ -44,8 +47,7 @@ struct report_snapshot_t
 	// due to those being 2 separate function calls (and some packets might get processed in the middle)
 	virtual report_info_t const* report_info() const = 0;
 
-	// get dictionary used to translate ids to names
-	// debug purposes only
+	// get dictionary used to translate ids to names, read only
 	virtual dictionary_t const* dictionary() const = 0;
 
 	// prepare snapshot for use
@@ -53,6 +55,7 @@ struct report_snapshot_t
 	// this exists primarily to allow preparation to take place in a thread
 	// different from the one handling report data (more parallelism, yey)
 	virtual void prepare() = 0;
+	virtual bool is_prepared() const = 0;
 
 	// iteration, this should be very cheap
 	virtual position_t pos_first() = 0;
@@ -73,6 +76,8 @@ struct report_snapshot_t
 	virtual histogram_t const* get_histogram(position_t const&) = 0;
 };
 typedef std::unique_ptr<report_snapshot_t> report_snapshot_ptr;
+
+void debug_dump_report_snapshot(FILE*, report_snapshot_t*);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

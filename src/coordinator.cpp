@@ -1,5 +1,6 @@
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #include <nanomsg/pipeline.h>
 #include <nanomsg/pubsub.h>
@@ -23,17 +24,39 @@ namespace { namespace aux {
 	struct report_host_conf_t
 	{
 		std::string name;
+		std::string thread_name;
+
+		std::string nn_reqrep;          // control messages and stuff
 
 		std::string nn_packets;         // get packet_batch_ptr from this endpoint as fast as possible (SUB, pair to coodinator PUB)
 		size_t      nn_packets_buffer;  // NN_RCVBUF on nn_packets
 	};
 
+	using report_host_call_func_t = std::function<void(report_t*)>;
+
 	struct report_host_t
 	{
 		virtual ~report_host_t() {}
 		virtual void startup(report_ptr) = 0;
+		virtual void call_with_report(report_host_call_func_t const&) = 0;
 	};
 	typedef std::unique_ptr<report_host_t> report_host_ptr;
+
+	struct report_host_req_t : public nmsg_message_t
+	{
+		report_host_call_func_t func;
+
+		template<class Function>
+		report_host_req_t(Function const& f)
+			: func(f)
+		{
+		}
+	};
+	typedef boost::intrusive_ptr<report_host_req_t> report_host_req_ptr;
+
+	struct report_host_result_t : public nmsg_message_t
+	{};
+	typedef boost::intrusive_ptr<report_host_result_t> report_host_result_ptr;
 
 	struct report_host___new_thread_t : public report_host_t
 	{
@@ -41,6 +64,7 @@ namespace { namespace aux {
 		report_host_conf_t     conf_;
 
 		nmsg_socket_t          packets_sock_;
+		nmsg_socket_t          reqrep_sock_;
 		nmsg_ticker_chan_ptr   ticker_chan_;
 
 		report_ptr             report_;
@@ -58,9 +82,15 @@ namespace { namespace aux {
 				.set_option(NN_SUB, NN_SUB_SUBSCRIBE, "")
 				.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, "report_handler_t::in_sock")
 				.connect(conf_.nn_packets);
+
+			reqrep_sock_
+				.open(AF_SP, NN_REP)
+				.bind(conf_.nn_reqrep);
 		}
 
-		void startup(report_ptr incoming_report)
+	public:
+
+		virtual void startup(report_ptr incoming_report) override
 		{
 			if (report_)
 				throw std::logic_error(ff::fmt_str("report handler {0} is already started", conf_.name));
@@ -76,11 +106,19 @@ namespace { namespace aux {
 
 			std::thread t([this]()
 			{
+				{
+					pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
+				}
+
+				report_->ticks_init(os_unix::clock_monotonic_now());
+
 				nmsg_poller_t()
 					.read(*ticker_chan_, [&](nmsg_ticker_chan_t& chan, timeval_t now)
 					{
 						chan.recv();
 						ff::fmt(stdout, "{0}; {1}; received {2} packets\n", conf_.name, now, packets_received);
+
+						report_->tick_now(os_unix::clock_monotonic_now());
 					})
 					.read_sock(*packets_sock_, [&](timeval_t now)
 					{
@@ -89,9 +127,25 @@ namespace { namespace aux {
 
 						report_->add_multi(batch->packets, batch->packet_count);
 					})
+					.read_sock(*reqrep_sock_, [&](timeval_t now)
+					{
+						auto const req = reqrep_sock_.recv<report_host_req_ptr>();
+						req->func(report_.get());
+						reqrep_sock_.send(meow::make_intrusive<report_host_result_t>());
+					})
 					.loop();
 			});
 			t.detach();
+		}
+
+		virtual void call_with_report(std::function<void(report_t*)> const& func) override
+		{
+			// FIXME: do not reconnect all the time
+			nmsg_socket_t sock;
+			sock.open(AF_SP, NN_REQ).connect(conf_.nn_reqrep);
+
+			sock.send_message(meow::make_intrusive<report_host_req_t>(func));
+			sock.recv<report_host_result_ptr>();
 		}
 	};
 
@@ -127,8 +181,12 @@ namespace { namespace aux {
 
 		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
 		{
-			control_sock_.send_message(req);
-			return control_sock_.recv<coordinator_response_ptr>();
+			// FIXME: do not reconnect all the time
+			nmsg_socket_t sock;
+			sock.open(AF_SP, NN_REQ).connect(conf_->nn_control);
+
+			sock.send_message(req);
+			return sock.recv<coordinator_response_ptr>();
 		}
 
 	private:
@@ -138,16 +196,21 @@ namespace { namespace aux {
 			return control_sock_.recv<coordinator_request_ptr>();
 		}
 
-		template<class... A>
-		void control_send(A&&... args)
+		void control_send(coordinator_response_ptr response)
 		{
-			this->control_send<coordinator_response_t>(std::forward<A>(args)...);
+			control_sock_.send_message(response);
 		}
 
 		template<class T, class... A>
 		void control_send(A&&... args)
 		{
-			control_sock_.send_message(meow::make_intrusive<T>(std::forward<A>(args)...));
+			this->control_send(meow::make_intrusive<T>(std::forward<A>(args)...));
+		}
+
+		template<class... A>
+		void control_send_generic(A&&... args)
+		{
+			this->control_send<coordinator_response___generic_t>(std::forward<A>(args)...);
 		}
 
 		void worker_thread()
@@ -201,48 +264,75 @@ namespace { namespace aux {
 					// (might also try avoid blocking with threads/polls, but this might get too complicated)
 					// and _add_ref() should be called only if send was successful (with NN_DONTWAIT ofc), to avoid the need to call _release()
 					// note that this requires multiple calls to _add_ref() instead of single one
-					// {
-					// 	for (size_t i = 0; i < report_handlers_.size(); i++)
-					// 		intrusive_ptr_add_ref(batch.get());
+					{
+						for (size_t i = 0, i_end = report_hosts_.size(); i < i_end; i++)
+							intrusive_ptr_add_ref(batch.get());
 
-					// 	report_sock_.send_ex(batch, 0);
-					// }
+						report_sock_.send_ex(batch, 0);
+					}
 				})
 				.read_sock(*control_sock_, [&](timeval_t now)
 				{
 					auto const req = this->control_recv();
 
-					ff::fmt(stdout, "coordinator_thread; received control request: {0}\n", req->type);
+					// ff::fmt(stdout, "coordinator_thread; received control request: {0}\n", req->type);
 
-					switch (req->type)
+					try
 					{
-						case COORDINATOR_REQ__ADD_REPORT:
-						try
+						switch (req->type)
 						{
-							auto *r = static_cast<coordinator_request___add_report_t*>(req.get());
+							case COORDINATOR_REQ__ADD_REPORT:
+							{
+								auto *r = static_cast<coordinator_request___add_report_t*>(req.get());
 
-							report_host_conf_t rh_conf = {
-								.name = ff::fmt_str("rh/{0}/{1}", r->report->name()),
-								.nn_packets        = conf_->nn_report_output,
-								.nn_packets_buffer = conf_->nn_report_output_buffer,
-							};
+								auto const report_name = r->report->name().str();
+								auto const thr_name = ff::fmt_str("rh/{0}", report_hosts_.size()/*thread_id*/);
+								auto const rh_name = ff::fmt_str("rh/{0}/{1}", report_hosts_.size()/*thread_id*/, report_name);
 
-							auto rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
-							rh->startup(move(r->report));
+								report_host_conf_t const rh_conf = {
+									.name              = rh_name,
+									.thread_name       = thr_name,
+									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
+									.nn_packets        = conf_->nn_report_output,
+									.nn_packets_buffer = conf_->nn_report_output_buffer,
+								};
 
-							report_handlers_.push_back(move(rh));
+								auto rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
+								rh->startup(move(r->report));
 
-							this->control_send(COORDINATOR_STATUS__OK);
-						}
-						catch (std::exception const& e)
-						{
-							this->control_send(COORDINATOR_STATUS__ERROR, e.what());
-						}
-						break;
+								report_hosts_.emplace(report_name, move(rh));
 
-						default:
-							ff::fmt(stderr, "unknown coordinator_control_request type: {0}\n", req->type);
+								this->control_send_generic(COORDINATOR_STATUS__OK);
+							}
 							break;
+
+							case COORDINATOR_REQ__GET_REPORT_SNAPSHOT:
+							{
+								auto *r = static_cast<coordinator_request___get_report_snapshot_t*>(req.get());
+
+								report_host_t *host = report_hosts_[r->report_name].get();
+
+								report_snapshot_ptr snapshot;
+								host->call_with_report([&](report_t *report)
+								{
+									snapshot = report->get_snapshot();
+								});
+
+								auto response = meow::make_intrusive<coordinator_response___report_snapshot_t>();
+								response->snapshot = move(snapshot);
+
+								this->control_send(response);
+							}
+							break;
+
+							default:
+								ff::fmt(stderr, "unknown coordinator_control_request type: {0}\n", req->type);
+								break;
+						}
+					}
+					catch (std::exception const& e)
+					{
+						this->control_send_generic(COORDINATOR_STATUS__ERROR, e.what());
 					}
 				})
 				.loop();
@@ -252,7 +342,9 @@ namespace { namespace aux {
 		pinba_globals_t     *globals_;
 		coordinator_conf_t  *conf_;
 
-		std::vector<report_host_ptr> report_handlers_;
+		// report_name -> report_host
+		using report_host_map_t = std::unordered_map<std::string, report_host_ptr>;
+		report_host_map_t report_hosts_;
 
 		nmsg_socket_t    in_sock_;
 		nmsg_socket_t    control_sock_;

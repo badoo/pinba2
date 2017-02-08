@@ -247,7 +247,9 @@ public:
 	template<class T>
 	bool send_message(boost::intrusive_ptr<T> const& value, int flags = 0)
 	{
-		static_assert(std::is_base_of<nmsg_message_ex_t<T>, T>::value, "send_message expects an intrusive_ptr to something derived from nmsg_message_t");
+		static_assert(
+			(std::is_base_of<nmsg_message_ex_t<T>, T>::value || std::is_base_of<nmsg_message_t, T>::value),
+			"send_message expects an intrusive_ptr to something derived from nmsg_message_t");
 
 		intrusive_ptr_add_ref(value.get());
 		return this->send_ex(value, flags);

@@ -12,6 +12,8 @@
 #include <meow/format/format.hpp>
 #include <meow/unix/time.hpp>
 
+#include "pinba/report.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace ff = meow::format;
@@ -74,6 +76,8 @@ struct pinba_globals_t
 
 	virtual bool create_report_by_request(report_conf___by_request_t*) = 0;
 	virtual bool create_report_by_timer(report_conf___by_timer_t*) = 0;
+
+	virtual report_snapshot_ptr get_report_snapshot(str_ref name) = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 

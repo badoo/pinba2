@@ -12,6 +12,7 @@
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
 #include "pinba/histogram.h"
+#include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"
 
@@ -119,6 +120,17 @@ public: // key fetchers, from packet fields and tags
 					}
 				}
 				return { 0, false };
+			},
+		};
+	}
+
+	static inline key_descriptor_t key_descriptor_by_request_field(str_ref field_name, uint32_t packet_t::* field_ptr)
+	{
+		return report_conf___by_request_t::key_descriptor_t {
+			.name    = ff::fmt_str("request_field/{0}", field_name),
+			.fetcher = [=](packet_t *packet) -> key_fetch_result_t
+			{
+				return { packet->*field_ptr, true };
 			},
 		};
 	}
