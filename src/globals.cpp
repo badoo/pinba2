@@ -12,6 +12,7 @@
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
 #include "pinba/report_by_request.h"
+#include "pinba/report_by_timer.h"
 
 #include "pinba/nmsg_ticker.h"
 
@@ -83,7 +84,18 @@ struct pinba_globals_impl_t : public pinba_globals_t
 
 	virtual bool create_report_by_timer(report_conf___by_timer_t *conf) override
 	{
-		return false;
+		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
+		req->report = meow::make_unique<report___by_timer_t>(this, conf);
+
+		auto const result = coordinator_->request(req);
+
+		assert(COORDINATOR_RES__GENERIC == result->type);
+		auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+
+		if (COORDINATOR_STATUS__OK == r->status)
+			return true;
+
+		throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
 	}
 
 	virtual report_snapshot_ptr get_report_snapshot(str_ref name) override

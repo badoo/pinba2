@@ -76,7 +76,7 @@ struct dictionary_get_result_t
 	uint32_t id;
 	uint32_t found : 1;
 };
-static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t));
+static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t), "no padding expected");
 
 struct dictionary_t
 {
@@ -104,7 +104,7 @@ struct dictionary_t
 	uint32_t size() const
 	{
 		scoped_read_lock_t lock_(mtx_);
-		return words_.size();
+		return words.size();
 	}
 
 	str_ref get_word(uint32_t word_id) const

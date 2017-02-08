@@ -7,7 +7,6 @@
 #include <boost/noncopyable.hpp>
 
 #include <sparsehash/dense_hash_map>
-#include <sparsehash/sparse_hash_map>
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
@@ -105,7 +104,7 @@ public: // key fetchers, from packet fields and tags
 
 	std::vector<key_descriptor_t> keys;
 
-
+	// some builtins
 	static inline key_descriptor_t key_descriptor_by_request_tag(str_ref tag_name, uint32_t tag_name_id)
 	{
 		return report_conf___by_request_t::key_descriptor_t {

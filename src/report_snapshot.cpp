@@ -2,6 +2,7 @@
 #include "pinba/report.h"
 #include "pinba/report_util.h"
 #include "pinba/report_by_request.h"
+#include "pinba/report_by_timer.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -56,7 +57,7 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 			write_hv(pos);
 		}
 		break;
-#if 0
+
 		case REPORT_KIND__BY_TIMER_DATA:
 		{
 			auto const *rinfo = snapshot->report_info();
@@ -75,7 +76,7 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 			write_hv(pos);
 		}
 		break;
-#endif
+
 		default:
 			// assert(!"unknown report snapshot data_kind()");
 			ff::fmt(sink, "unknown report snapshot data_kind(): {0}", data_kind);

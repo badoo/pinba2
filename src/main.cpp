@@ -8,6 +8,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/report_by_request.h"
+#include "pinba/report_by_timer.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -31,12 +32,37 @@ int main(int argc, char const *argv[])
 		.coordinator_input_buffer = 32,
 	};
 
-	auto pinba = pinba_init(&options);
+	static auto pinba = pinba_init(&options);
 	pinba->startup();
+
+	auto const threaded_print_report_snapshot = [&](std::string report_name)
+	{
+		std::thread([&]()
+		{
+			FILE *sink = stdout;
+
+			while (true)
+			{
+				sleep(1);
+				auto const snapshot = pinba->get_report_snapshot(report_name);
+
+				ff::fmt(stdout, "got snapshot for report {0}, {1}\n", report_name, snapshot.get());
+				{
+					meow::stopwatch_t sw;
+
+					ff::fmt(sink, ">> {0} ----------------------->\n", report_name);
+					snapshot->prepare();
+					ff::fmt(sink, ">> merge took {0} --------->\n", sw.stamp());
+				}
+
+				debug_dump_report_snapshot(sink, snapshot.get());
+			}
+		}).detach();
+	};
 
 	{
 		static report_conf___by_request_t conf = {
-			.name            = "test_report",
+			.name            = "scripts",
 			.time_window     = 60 * d_second,
 			.ts_count        = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
@@ -52,30 +78,30 @@ int main(int argc, char const *argv[])
 		};
 		pinba->create_report_by_request(&conf);
 
-		std::thread([&]()
-		{
-			FILE *sink = stdout;
+		threaded_print_report_snapshot(conf.name);
+	}
 
-			while (true)
-			{
-				sleep(1);
-				auto const snapshot = pinba->get_report_snapshot(conf.name);
-#if 1
-				ff::fmt(stdout, "got snapshot for report {0}, {1}\n", conf.name, snapshot.get());
+	{
+		static report_conf___by_timer_t conf = {
+			.name            = "script+tag10",
+			.time_window     = 60 * d_second,
+			.ts_count        = 60,
+			.hv_bucket_count = 1 * 1000 * 1000,
+			.hv_bucket_d     = 1 * d_microsecond,
 
-				{
-					meow::stopwatch_t sw;
+			.filters = {
+				report_conf___by_timer_t::make_filter___by_max_time(1 * d_second),
+			},
 
-					ff::fmt(sink, ">> {0} ----------------------->\n", conf.name);
-					snapshot->prepare();
-					ff::fmt(sink, ">> merge took {0} --------->\n", sw.stamp());
-				}
+			.keys = {
+				report_conf___by_timer_t::key_descriptor_by_request_field("hostname", &packet_t::host_id),
+				report_conf___by_timer_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
+				report_conf___by_timer_t::key_descriptor_by_timer_tag("tag10", pinba->dictionary()->get_or_add("tag10")),
+			},
+		};
+		pinba->create_report_by_timer(&conf);
 
-				debug_dump_report_snapshot(sink, snapshot.get());
-#endif
-			}
-		}).detach();
-
+		threaded_print_report_snapshot(conf.name);
 	}
 
 	getchar();
