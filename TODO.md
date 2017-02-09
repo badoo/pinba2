@@ -29,6 +29,7 @@
   - report has it's own bloom, filled with tag names it's interested in
   - compare those 2, if no match - packet doesn't need to be inspected
   - might be memory intensive and not worth it
+  - might also take a look if something like https://en.wikipedia.org/wiki/MinHash would work
 - (easy, worth it?) per repacker dictionary caches (reduces locking on global dictionary)
 - (medium, worth it?) per snapshot merger dicttionary caches
 

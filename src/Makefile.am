@@ -5,7 +5,6 @@ cflags = \
 	$(CXXFLAGS) \
 	-D_GNU_SOURCE \
 	-O0 -g3 -mtune=native \
- 	$(MYSQL_INC) \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
@@ -24,13 +23,12 @@ AM_CPPFLAGS = \
 lib_LIBRARIES = libpinba2.a
 libpinba2_a_SOURCES = \
 	globals.cpp \
-	handler.cpp \
 	collector.cpp \
 	repacker.cpp \
 	coordinator.cpp \
 	packet.cpp \
 	report_snapshot.cpp \
-	$(top_srcdir)/proto/pinba.pb-c.c \
+	../proto/pinba.pb-c.c \
 	#
 
 libpinba2_a_CXXFLAGS = \
@@ -52,21 +50,6 @@ pinba2_SOURCES = \
 	#
 
 pinba2_LDADD = \
-	libpinba2.a \
-	$(DEPS_LIBS) \
-	#
-
-# the mysql plugin
-lib_LTLIBRARIES = libpinba_engine2.la
-
-libpinba_engine2_la_SOURCES = \
-	ha_pinba.cpp \
-	#
-
-libpinba_engine2_la_LDFLAGS = \
-	-module
-
-libpinba_engine2_la_LIBADD = \
 	libpinba2.a \
 	$(DEPS_LIBS) \
 	#
