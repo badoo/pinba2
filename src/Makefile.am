@@ -3,6 +3,7 @@ EXTRA_DIST = include/*.h
 
 cflags = \
 	$(CXXFLAGS) \
+	-D_GNU_SOURCE \
 	-O0 -g3 -mtune=native \
  	$(MYSQL_INC) \
 	$(DEPS_CFLAGS) \

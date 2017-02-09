@@ -80,9 +80,7 @@ static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t), "no padding e
 
 struct dictionary_t
 {
-	// deque is important here, since we return str_ref-s to std::strings stored in it
-	// and must guarantee that these str_ref-s are valid essentialy forever
-	using words_t = std::deque<std::string>;
+	using words_t = std::deque<std::string>; // deque to save a lil on push_back reallocs
 	using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
 
 	mutable rw_mutex_t mtx_;

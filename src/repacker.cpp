@@ -43,7 +43,7 @@ namespace { namespace aux {
 				// start detached worker thread
 				// since we're targeting c++11 - can't use lambda capture like 'in_sock = move(in_sock)' here :(
 				int const sock_fd = in_sock.release();
-				std::thread t([i, this, sock_fd]()
+				std::thread t([this, i, sock_fd]()
 				{
 					this->worker_thread(i, nmsg_socket_t(sock_fd));
 				});

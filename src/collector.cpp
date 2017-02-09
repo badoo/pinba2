@@ -86,7 +86,25 @@ namespace { namespace aux {
 			fd_ = fd.release();
 		}
 
+		void send_current_batch(uint32_t thread_id, raw_request_ptr& req)
+		{
+			bool const success = out_sock_.send_message(req, NN_DONTWAIT);
+			if (!success)
+			{
+				int const err = EAGAIN;
+				ff::fmt(stderr, "nn_send(eat_udp:{0}) failed: {1}: {2}\n", thread_id, err, nn_strerror(err));
+			}
+
+			req.reset(); // signal the need to reinit
+		}
+
 		void eat_udp(uint32_t const thread_id)
+		{
+			// this->eat_udp_recv(thread_id);
+			this->eat_udp_recvmmsg(thread_id);
+		}
+
+		void eat_udp_recv(uint32_t const thread_id)
 		{
 			static constexpr size_t const read_buffer_size = 64 * 1024; // max udp message size
 			char buf[read_buffer_size];
@@ -97,18 +115,6 @@ namespace { namespace aux {
 				.alloc = nmpa___pba_alloc,
 				.free = nmpa___pba_free,
 				.allocator_data = NULL, // changed in progress
-			};
-
-			auto const send_current_requests = [&]()
-			{
-				bool const success = out_sock_.send_message(req, NN_DONTWAIT);
-				if (!success)
-				{
-					int const err = EAGAIN;
-					ff::fmt(stderr, "nn_send(eat_udp:{0}) failed: {1}: {2}\n", thread_id, err, nn_strerror(err));
-				}
-
-				req.reset(); // signal the need to reinit
 			};
 
 			while (true)
@@ -145,7 +151,7 @@ namespace { namespace aux {
 
 					if (req->request_count >= conf_->batch_size)
 					{
-						send_current_requests();
+						this->send_current_batch(thread_id, req);
 					}
 
 					continue;
@@ -163,7 +169,7 @@ namespace { namespace aux {
 						// need to send current batch if we've got anything
 						if (req && req->request_count > 0)
 						{
-							send_current_requests();
+							this->send_current_batch(thread_id, req);
 						}
 						continue;
 					}
@@ -176,6 +182,113 @@ namespace { namespace aux {
 					return;
 				}
 			}
+		}
+
+		void eat_udp_recvmmsg(uint32_t const thread_id)
+		{
+			size_t const max_message_size   = 64 * 1024; // max udp message size
+			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this
+
+			auto *hdr = (struct mmsghdr*)calloc(max_dgrams_to_recv, sizeof(struct mmsghdr));
+			auto *iov = (struct iovec*)calloc(max_dgrams_to_recv, sizeof(struct iovec));
+
+			for (unsigned i = 0; i < max_dgrams_to_recv; i++)
+			{
+				iov[i].iov_base           = malloc(max_message_size);
+				iov[i].iov_len            = max_message_size;
+
+				hdr[i].msg_hdr.msg_iov    = &iov[i];
+				hdr[i].msg_hdr.msg_iovlen = 1;
+			}
+
+			raw_request_ptr req;
+
+			ProtobufCAllocator request_unpack_pba = {
+				.alloc = nmpa___pba_alloc,
+				.free = nmpa___pba_free,
+				.allocator_data = NULL, // changed in progress
+			};
+
+			auto const recv_loop = [&]()
+			{
+				while (true)
+				{
+					++globals_->udp.recv_total;
+					++globals_->udp.recv_nonblocking;
+					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+					if (n > 0)
+					{
+						for (int i = 0; i < n; i++)
+						{
+							++globals_->udp.packets_received;
+
+							if (!req)
+							{
+								req.reset(new raw_request_t(conf_->batch_size, 16 * 1024));
+								request_unpack_pba.allocator_data = &req->nmpa;
+							}
+
+							str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
+
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
+							if (request == NULL) {
+								ff::fmt(stderr, "packet decode failed\n");
+								return true;
+							}
+
+							req->requests[req->request_count] = request;
+							req->request_count++;
+
+							if (req->request_count >= conf_->batch_size)
+							{
+								this->send_current_batch(thread_id, req);
+							}
+						}
+
+						return true;
+					}
+
+					if (n < 0)
+					{
+						if (errno == EINTR) {
+							return true;
+						}
+
+						if (errno == EAGAIN)
+						{
+							++globals_->udp.recv_eagain;
+
+							// need to send current batch if we've got anything
+							if (req && req->request_count > 0)
+							{
+								this->send_current_batch(thread_id, req);
+							}
+							return true;
+						}
+
+						ff::fmt(stderr, "recv failed: {0}:{1}\n", errno, strerror(errno));
+						return false;
+					}
+
+					if (n == 0){
+						return false;
+					}
+				} // recv loop
+			};
+
+			constexpr struct timespec const sleep_for = {
+				.tv_sec = 0,
+				.tv_nsec = 1 * 1000 * 1000,
+			};
+
+			while (true)
+			{
+				nanosleep(&sleep_for, NULL);
+
+				bool const should_continue = recv_loop();
+				if (!should_continue)
+					return;
+			} // sleep loop
 		}
 
 	private:

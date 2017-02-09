@@ -140,7 +140,6 @@ namespace { namespace aux {
 
 		virtual void call_with_report(std::function<void(report_t*)> const& func) override
 		{
-			// FIXME: do not reconnect all the time
 			nmsg_socket_t sock;
 			sock.open(AF_SP, NN_REQ).connect(conf_.nn_reqrep);
 
@@ -172,7 +171,7 @@ namespace { namespace aux {
 		{
 			in_sock_.connect(conf_->nn_input.c_str());
 
-			std::thread t([&]()
+			std::thread t([this]()
 			{
 				this->worker_thread();
 			});
@@ -181,7 +180,6 @@ namespace { namespace aux {
 
 		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
 		{
-			// FIXME: do not reconnect all the time
 			nmsg_socket_t sock;
 			sock.open(AF_SP, NN_REQ).connect(conf_->nn_control);
 
