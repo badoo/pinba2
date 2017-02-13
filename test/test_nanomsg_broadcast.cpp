@@ -37,7 +37,7 @@ try
 				ff::fmt(stdout, "[{0}] sending: {1}\n", id, data);
 
 				int n = nn_send(sock, data.c_str(), data.size(), 0);
-				assert(n == data.size());
+				assert(size_t(n) == data.size());
 				sleep(1);
 			}
 		}

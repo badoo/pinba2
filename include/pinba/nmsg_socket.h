@@ -65,6 +65,7 @@ public:
 	{
 		using std::swap;
 		swap(fd_, other.fd_);
+		return *this;
 	}
 
 	int operator*() const

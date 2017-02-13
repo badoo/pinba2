@@ -762,6 +762,8 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 
 	ff::fmt(sink, "<<-----------------------<\n");
 	ff::fmt(sink, "\n");
+
+	return sink;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

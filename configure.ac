@@ -30,12 +30,17 @@ CFLAGS=`echo "$CFLAGS" | sed -e 's/ -DNDEBUG//g'`
 changequote([,])
 #CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
 CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN"
+CXXFLAGS="$CXXFLAGS -Wall -Wformat-security -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Werror"
 #CFLAGS="$CFLAGS -DNDEBUG"
 
 AX_CONFIG_NICE([config.nice])
 
 dnl check for floor and libm
 AC_CHECK_LIB([m], [floor], [LIBS="$LIBS -lm"], [AC_MSG_ERROR([can't continue without libm])])
+
+AC_CHECK_LIB([pthread], [pthread_setname_np], [
+	AC_DEFINE([HAVE_PTHREAD_SETNAME_NP], [1], [Whether pthread_setname_np() is available])
+], [AC_MSG_NOTICE([can't find pthread_setname_np()])])
 
 AC_CHECK_LIB([pthread], [pthread_setaffinity_np], [
 	AC_DEFINE([HAVE_PTHREAD_SETAFFINITY_NP], [1], [Whether pthread_setaffinity_np() is available])
@@ -263,6 +268,7 @@ AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library 
 	CXXFLAGS="$CXXFLAGS -pthread -I$with_nanomsg/include"
 	LDFLAGS="$LDFLAGS -lanl"
 	DEPS_LIBS="$DEPS_LIBS $with_nanomsg/lib/libnanomsg.a"
+	#DEPS_LIBS="$DEPS_LIBS -L$with_nanomsg/lib -lnanomsg"
 ])
 
 AC_ARG_WITH(sparsehash, [AS_HELP_STRING([--with-sparsehash], [path to sparsehash library])],

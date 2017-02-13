@@ -245,7 +245,7 @@ namespace { namespace aux {
 							}
 						}
 
-						return true;
+						continue;
 					}
 
 					if (n < 0)

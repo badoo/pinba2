@@ -156,7 +156,7 @@ private:
 
 		timeval_t const now = os_unix::clock_monotonic_now();
 
-		for (int i = 0; i < pfd_size; i++)
+		for (size_t i = 0; i < pfd_size; i++)
 		{
 			if ((pfd[i].revents & pfd[i].events) == 0)
 				continue;
@@ -183,7 +183,7 @@ private:
 
 		timeval_t const now = os_unix::clock_monotonic_now();
 
-		for (int i = 0; i < pfd_size; i++)
+		for (size_t i = 0; i < pfd_size; i++)
 		{
 			if ((pfd[i].revents & pfd[i].events) == 0)
 				continue;

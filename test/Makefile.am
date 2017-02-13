@@ -22,7 +22,7 @@ AM_LDFLAGS = \
 	#
 
 LIBS = \
-	../src/libpinba2.a \
+	../src/libpinba2.la \
 	$(DEPS_LIBS) \
 	#
 

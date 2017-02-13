@@ -5,6 +5,7 @@ cflags = \
 	$(CXXFLAGS) \
 	-D_GNU_SOURCE \
 	-O0 -g3 -mtune=native \
+	-fPIC -DPIC \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
@@ -20,8 +21,8 @@ AM_CPPFLAGS = \
 	#
 
 # the base library
-lib_LIBRARIES = libpinba2.a
-libpinba2_a_SOURCES = \
+lib_LTLIBRARIES = libpinba2.la
+libpinba2_la_SOURCES = \
 	globals.cpp \
 	collector.cpp \
 	repacker.cpp \
@@ -31,12 +32,12 @@ libpinba2_a_SOURCES = \
 	../proto/pinba.pb-c.c \
 	#
 
-libpinba2_a_CXXFLAGS = \
+libpinba2_la_CXXFLAGS = \
 	$(AM_CXXFLAGS) \
 	-fPIC -DPIC \
 	#
 
-libpinba2_a_LIBADD = \
+libpinba2_la_LIBADD = \
 	$(DEPS_LIBS) \
 	#
 
@@ -50,6 +51,6 @@ pinba2_SOURCES = \
 	#
 
 pinba2_LDADD = \
-	libpinba2.a \
+	libpinba2.la \
 	$(DEPS_LIBS) \
 	#
