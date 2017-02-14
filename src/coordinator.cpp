@@ -228,18 +228,21 @@ namespace { namespace aux {
 				.read(*tick_chan, [&](nmsg_ticker_chan_t& chan, timeval_t now)
 				{
 					chan.recv(); // MUST do this, or chan will stay readable
-					ff::fmt(stdout, "{0}; {1}; processed {2} packets, n_sm_b: {3}, sb_pkt = {4}\n",
-						chan.endpoint(), now, total_packets, n_small_batches, small_batch_packets);
 
-					auto const *udp_stats = &globals_->udp;
-					ff::fmt(stdout, "{0}; {1}; udp recv: {2}, nonblock: {3}, eagain: {4}, processed: {5}\n",
-						chan.endpoint(), now, (uint64_t)udp_stats->recv_total, (uint64_t)udp_stats->recv_nonblocking,
-						(uint64_t)udp_stats->recv_eagain, (uint64_t)udp_stats->packets_received);
+					auto const stats = globals_->stats();
 
-					auto const *repack_stats = &globals_->repacker;
-					ff::fmt(stdout, "{0}; {1}; repacker poll: {2}, recv: {3}, eagain: {4}, processed: {5}\n",
-						chan.endpoint(), now, (uint64_t)repack_stats->poll_total, (uint64_t)repack_stats->recv_total,
-						(uint64_t)repack_stats->recv_eagain, (uint64_t)repack_stats->packets_processed);
+					// ff::fmt(stdout, "{0}; {1}; processed {2} packets, n_sm_b: {3}, sb_pkt = {4}\n",
+					// 	chan.endpoint(), now, total_packets, n_small_batches, small_batch_packets);
+
+					// auto const *udp_stats = &stats.udp;
+					// ff::fmt(stdout, "{0}; {1}; udp recv: {2}, nonblock: {3}, eagain: {4}, processed: {5}\n",
+					// 	chan.endpoint(), now, (uint64_t)udp_stats->recv_total, (uint64_t)udp_stats->recv_nonblocking,
+					// 	(uint64_t)udp_stats->recv_eagain, (uint64_t)udp_stats->packets_received);
+
+					// auto const *repack_stats = &stats.repacker;
+					// ff::fmt(stdout, "{0}; {1}; repacker poll: {2}, recv: {3}, eagain: {4}, processed: {5}\n",
+					// 	chan.endpoint(), now, (uint64_t)repack_stats->poll_total, (uint64_t)repack_stats->recv_total,
+					// 	(uint64_t)repack_stats->recv_eagain, (uint64_t)repack_stats->packets_processed);
 				})
 				.read_sock(*in_sock_, [&](timeval_t now)
 				{

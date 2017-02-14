@@ -2,6 +2,7 @@
 #include <sql/structs.h>
 #include <sql/handler.h>
 #include <my_pthread.h>
+#include <include/mysqld_error.h>
 
 #include <meow/str_ref_algo.hpp>
 #include <meow/convert/number_from_string.hpp>
@@ -9,11 +10,9 @@
 #include "pinba/globals.h"
 #include "pinba/packet.h"
 #include "pinba/report_by_request.h"
+#include "pinba/report_by_timer.h"
+
 #include "mysql_engine/handler.h"
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-pinba_mysql_ctx_t *pinba_MYSQL = NULL; // extern instance
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -29,11 +28,363 @@ pinba_share_t::~pinba_share_t()
 	thr_lock_delete(&this->lock);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct pinba_table_kind
+{
+	enum type : uint32_t
+	{
+		stats                  = 0,
+		active_reports         = 1,
+		report_by_request_data = 2,
+		report_by_timer_data   = 3,
+	};
+};
+typedef pinba_table_kind::type pinba_table_kind_t;
+
+struct pinba_table_conf_t
+{
+	pinba_table_kind_t         kind;
+
+	report_conf___by_request_t by_request_conf;
+	report_conf___by_timer_t   by_timer_conf;
+};
+
+static pinba_table_conf_t pinba_parse_table_conf(str_ref table_name, str_ref conf_string)
+{
+	// table comment describes the report we're going to create
+	// comment structure is as follows (this should look like EBNF, but i cba being strict about this):
+	//  v2/<report_type>[/<agg_window>/<key_spec>/<histogram_spec>/<filters>]
+	//  report_type = [ request, timer, active, stats ]
+	//
+	//  -- examples --
+	//  request/60,60/~host,~script,~status,+app_type/hv_range=0.0-1.5,p99,p100/min_time=0.0,max_time=1.5,~server=www1.mlan
+	//  timer/60,60/~script,+app_type,group,server/hv_range=0.0-5.0,p99,p100/min_time=0.0,max_time=10.0
+	//  timer/60,120/~script,group,server/p99,p100/min_time=0.0,max_time=10.0
+	//
+	//  -- basic stuff --
+	//  key_name = <request_field> | <request_tag> | <timer_tag>
+	//  request_field = '~' ( host | script | server | schema | status )
+	//  request_tag   = '+' [a-zA-Z_-]{1,64}
+	//  timer_tag     =     [a-zA-Z_-]{1,64}
+	//  seconds_spec  = [0-9]{1,5} ( '.' [0-9]{1,6})?
+	//
+	//  -- histogram/percentiles --
+	//  hv_spec          = 'hv_range=' <hv_min_time> '-' <hv_max_time> [ <hv_res_spec> ]
+	//  hv_res_spec      = 'hv_resolution=' <hv_res_time>
+	//  hv_res_time      = <seconds_spec>     // histogram resolution (aka percentile calculation precision)
+	//  hv_min_time      = <seconds_spec>     // min time to record in time histogram
+	//  hv_max_time      = <seconds_spec>     // max time to record in time histogram
+	//  percentile_spec  = 'p' [0-9]{1,3}     // percentile to calculate for this report
+	//  percentile_multi = <percentile_spec>[,<percentile_spec>[...]]
+	//  histogram_spec   = 'no_percentiles' | [<hv_spec>,]<percentile_multi>
+	//
+	//  key_spec = <key_name>[,<key_name>[...]]
+	//
+
+	logger_t *log_ = P_CTX_(logger).get();
+	pinba_table_conf_t result = {};
+
+	auto const parts = meow::split_ex(conf_string, "/");
+
+	LOG_DEBUG(log_, "{0}; got comment: {1}", __func__, conf_string);
+
+	for (unsigned i = 0; i < parts.size(); i++)
+		LOG_DEBUG(log_, "{0}; parts[{1}] = '{2}'", __func__, i, parts[i]);
+
+	if (parts.size() < 2 || parts[0] != "v2")
+		throw std::runtime_error("comment should have at least 'v2/<report_type>");
+
+	auto const report_type = parts[1];
+
+	if (report_type == "stats")
+	{
+		result.kind = pinba_table_kind::stats;
+		return result;
+	}
+
+	if (report_type == "active")
+	{
+		result.kind = pinba_table_kind::active_reports;
+		return result;
+	}
+
+	if (report_type == "request")
+	{
+		if (parts.size() != 6)
+			throw std::runtime_error("'request' report options are: <aggregation_spec>/<key_spec>/<histogram_spec>/<filters>");
+
+		auto const aggregation_spec = parts[2];
+		auto const key_spec         = parts[3];
+		auto const histogram_spec   = parts[4];
+		auto const filters_spec     = parts[5];
+
+		result.kind = pinba_table_kind::report_by_request_data;
+
+		auto *conf = &result.by_request_conf;
+		conf->name = table_name.str();
+
+		// aggregation window
+		{
+			auto const time_window_v = meow::split_ex(aggregation_spec, ",");
+			if (time_window_v.size() == 0)
+				throw std::runtime_error("aggregation_spec/time_window must be set");
+
+			auto const time_window_s = time_window_v[0];
+			{
+				uint32_t time_window;
+				if (!meow::number_from_string(&time_window, time_window_s))
+				{
+					throw std::runtime_error(ff::fmt_str(
+						"bad seconds_spec for aggregation_spec/time_window '{0}', expected int number of seconds",
+						time_window_s));
+				}
+
+				conf->time_window = time_window * d_second;
+				conf->ts_count    = time_window; // i.e. ticks are always 1 second wide
+			}
+		}
+
+		// keys
+		{
+			auto const keys_v = meow::split_ex(key_spec, ",");
+
+			for (auto const& key_s : keys_v)
+			{
+				if (key_s.size() == 0)
+					continue; // skip empty key
+
+				auto const kd = [&]()
+				{
+					if (key_s == "~host")
+						return report_conf___by_request_t::key_descriptor_by_request_field("host", &packet_t::host_id);
+					if (key_s == "~script")
+						return report_conf___by_request_t::key_descriptor_by_request_field("script", &packet_t::script_id);
+					if (key_s == "~server")
+						return report_conf___by_request_t::key_descriptor_by_request_field("server", &packet_t::server_id);
+					if (key_s == "~schema")
+						return report_conf___by_request_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
+					if (key_s == "~status")
+						return report_conf___by_request_t::key_descriptor_by_request_field("status", &packet_t::status);
+
+					if (key_s[0] == '+') // request_tag
+					{
+						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size() - 1);
+						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+
+						return report_conf___by_request_t::key_descriptor_by_request_tag(tag_name, tag_id);
+					}
+
+					// no support for timer tags, this is request based report
+
+					throw std::runtime_error(ff::fmt_str("key_spec/{0} not known (a timer tag in 'request' report?)", key_s));
+				}();
+
+				conf->keys.push_back(kd);
+			}
+
+			if (conf->keys.size() == 0)
+				throw std::runtime_error("key_spec must be non-empty");
+		}
+
+		// TODO: percentiles + filters
+
+		return result;
+	} // request options parsing
+
+	return result;
+};
+
+struct pinba_table___base_t : public pinba_table_t
+{
+	pinba_table___base_t(pinba_share_t *share)
+	{
+	}
+
+	virtual int  rnd_init(pinba_handler_t*, bool scan) override
+	{
+		return 0;
+	}
+
+	virtual int  rnd_end(pinba_handler_t*) override
+	{
+		return 0;
+	}
+
+	virtual int  rnd_next(pinba_handler_t*, uchar *buf) override
+	{
+		return HA_ERR_END_OF_FILE;
+	}
+
+	virtual int  rnd_pos(pinba_handler_t*, uchar *buf, uchar *pos) const override
+	{
+		return 0;
+	}
+
+	virtual void position(pinba_handler_t*, const uchar *record) const override
+	{
+		return;
+	}
+
+	virtual int  info(pinba_handler_t*, uint) const override
+	{
+		return 0;
+	}
+
+	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const override
+	{
+		return 0;
+	}
+};
+
+struct pinba_table___stats_t : public pinba_table___base_t
+{
+	bool output_done;
+
+	pinba_table___stats_t(pinba_share_t *share)
+		: pinba_table___base_t(share)
+	{
+	}
+
+	virtual int  rnd_init(pinba_handler_t*, bool scan) override
+	{
+		output_done = false;
+		return 0;
+	}
+
+	virtual int  rnd_end(pinba_handler_t*) override
+	{
+		return 0;
+	}
+
+	virtual int  rnd_next(pinba_handler_t *handler, uchar *buf) override
+	{
+		if (output_done)
+			return HA_ERR_END_OF_FILE;
+
+		auto const *stats = P_G_->stats();
+		auto *table = handler->current_table();
+
+		for (Field **field = table->field; *field; field++)
+		{
+			auto const field_index = (*field)->field_index;
+
+			if (!bitmap_is_set(table->read_set, field_index))
+				continue;
+
+			// mark field as writeable to avoid assert() in ::store() calls
+			// got no idea how to do this properly anyway
+			bitmap_set_bit(table->write_set, field_index);
+
+			switch(field_index)
+			{
+				case 0:
+				{
+					auto const uptime = os_unix::clock_monotonic_now() - stats->start_tv;
+					(*field)->set_notnull();
+					(*field)->store(timeval_to_double(uptime));
+				}
+				break;
+
+				case 1:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.recv_total);
+				break;
+
+				case 2:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.recv_nonblocking);
+				break;
+
+				case 3:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.recv_eagain);
+				break;
+
+				case 4:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.packets_received);
+				break;
+
+			default:
+				break;
+			}
+		}
+
+		output_done = true;
+		return 0;
+	}
+
+	virtual int  rnd_pos(pinba_handler_t*, uchar *buf, uchar *pos) const override
+	{
+		return 0;
+	}
+
+	virtual void position(pinba_handler_t*, const uchar *record) const override
+	{
+		return;
+	}
+
+	virtual int  info(pinba_handler_t*, uint) const override
+	{
+		return 0;
+	}
+
+	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const override
+	{
+		return 0;
+	}
+};
+struct pinba_table___active_reports_t : public pinba_table___base_t
+{
+	pinba_table___active_reports_t(pinba_share_t *share)
+		: pinba_table___base_t(share)
+	{
+	}
+};
+
+struct pinba_table___request_report_t : public pinba_table___base_t
+{
+	pinba_table___request_report_t(pinba_share_t *share)
+		: pinba_table___base_t(share)
+	{
+	}
+};
+
+struct pinba_table___timer_report_t : public pinba_table___base_t
+{
+	pinba_table___timer_report_t(pinba_share_t *share)
+		: pinba_table___base_t(share)
+	{
+	}
+};
+
+
+pinba_table_ptr pinba_table_create(pinba_share_t *share, pinba_table_conf_t const& conf)
+{
+	switch (conf.kind)
+	{
+	case pinba_table_kind::stats:
+		return meow::make_unique<pinba_table___stats_t>(share);
+	case pinba_table_kind::active_reports:
+		return meow::make_unique<pinba_table___active_reports_t>(share);
+	case pinba_table_kind::report_by_request_data:
+		return meow::make_unique<pinba_table___request_report_t>(share);
+	case pinba_table_kind::report_by_timer_data:
+		return meow::make_unique<pinba_table___timer_report_t>(share);
+
+	default:
+		assert(!"must not be reached");
+		return {};
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
-	, log_(pinba_MYSQL->log.get())
+	, log_(P_CTX_(logger).get())
 	, share_(nullptr)
 {
 }
@@ -46,16 +397,23 @@ pinba_share_t* pinba_handler_t::get_share(char const *table_name, TABLE *table)
 {
 	LOG_DEBUG(log_, "{0}; table_name: {1}, table: {2}", __func__, table_name, table);
 
-	std::unique_lock<std::mutex> lk_(pinba_MYSQL->lock);
+	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
 
-	auto const it = open_tables_.find(table_name);
-	if (it != open_tables_.end())
+	auto& open_shares = P_CTX_(open_shares);
+
+	auto const it = open_shares.find(table_name);
+	if (it != open_shares.end())
 		return it->second.get();
+
+	// share not found, create new one
 
 	auto share = meow::make_unique<pinba_share_t>(table_name);
 	auto *share_p = share.get(); // save raw pointer for return
 
-	open_tables_.emplace(table_name, move(share));
+	share->table_conf = nullptr;
+	share->report_active = false;
+
+	open_shares.emplace(table_name, move(share));
 
 	++share_p->ref_count;
 	return share_p;
@@ -65,13 +423,22 @@ void pinba_handler_t::free_share(pinba_share_t *share)
 {
 	LOG_DEBUG(log_, "{0}; share: {1}, share->table_name: {2}", __func__, share, (share) ? share->table_name : "");
 
-	std::unique_lock<std::mutex> lk_(pinba_MYSQL->lock);
+	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+
+	auto& open_shares = P_CTX_(open_shares);
 
 	if (--share->ref_count == 0)
 	{
-		size_t const n_erased = open_tables_.erase(share->table_name); // share pointer is invalid from now on
+		delete share->table_conf; // FIXME
+
+		size_t const n_erased = open_shares.erase(share->table_name); // share pointer is invalid from now on
 		assert(n_erased == 1);
 	}
+}
+
+TABLE* pinba_handler_t::current_table() const
+{
+	return this->table;
 }
 
 int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_INFO *create_info)
@@ -83,141 +450,28 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 		if (!table_arg->s)
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
-		// table comment describes the report we're going to create
-		// comment structure is as follows (this should look like EBNF, but i cba being strict about this):
-		//  v2/<report_type>[/<agg_window>/<key_spec>/<histogram_spec>/<filters>]
-		//  report_type = [ request, timer, active, stats ]
-		//
-		//  -- examples --
-		//  request/60,60/~host,~script,~status,+app_type/hv_range=0.0-1.5,p99,p100/min_time=0.0,max_time=1.5,~server=www1.mlan
-		//  timer/60,60/~script,+app_type,group,server/hv_range=0.0-5.0,p99,p100/min_time=0.0,max_time=10.0
-		//  timer/60,120/~script,group,server/p99,p100/min_time=0.0,max_time=10.0
-		//
-		//  -- basic stuff --
-		//  key_name = <request_field> | <request_tag> | <timer_tag>
-		//  request_field = '~' ( host | script | server | schema | status )
-		//  request_tag   = '+' [a-zA-Z_-]{1,64}
-		//  timer_tag     =     [a-zA-Z_-]{1,64}
-		//  seconds_spec  = [0-9]{1,5} ( '.' [0-9]{1,6})?
-		//
-		//  -- histogram/percentiles --
-		//  hv_spec          = 'hv_range=' <hv_min_time> '-' <hv_max_time> [ <hv_res_spec> ]
-		//  hv_res_spec      = 'hv_resolution=' <hv_res_time>
-		//  hv_res_time      = <seconds_spec>     // histogram resolution (aka percentile calculation precision)
-		//  hv_min_time      = <seconds_spec>     // min time to record in time histogram
-		//  hv_max_time      = <seconds_spec>     // max time to record in time histogram
-		//  percentile_spec  = 'p' [0-9]{1,3}     // percentile to calculate for this report
-		//  percentile_multi = <percentile_spec>[,<percentile_spec>[...]]
-		//  histogram_spec   = 'no_percentiles' | [<hv_spec>,]<percentile_multi>
-		//
-		//  key_spec = <key_name>[,<key_name>[...]]
-		//
-
 		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
-		auto const parts = meow::split_ex(comment, "/");
+		auto const table_conf = pinba_parse_table_conf(table_name, comment); // throws
 
-		LOG_DEBUG(log_, "{0}; got comment: {1}", __func__, comment);
+		// since we're in create mode, not going to start report just yet
+		// but will just save it, and start when first ::open() comes in (or maybe even select aka. rnd_init()?)
+		// not checking uniqueness here, since mysql does it for us
+		auto share = this->get_share(table_name, table_arg);
 
-		for (unsigned i = 0; i < parts.size(); i++)
-			LOG_DEBUG(log_, "{0}; parts[{1}] = '{2}'", __func__, i, parts[i]);
-
-		if (parts.size() < 2 || parts[0] != "v2")
-			throw std::runtime_error("comment should have at least 'v2/<report_type>");
-
-		auto const report_type = parts[1];
-		if (report_type == "request")
 		{
-			if (parts.size() != 6)
-				throw std::runtime_error("'request' report options are: <aggregation_spec>/<key_spec>/<histogram_spec>/<filters>");
+			std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+			share->table_conf = new pinba_table_conf_t(table_conf); // FIXME
+		}
 
-			auto const aggregation_spec = parts[2];
-			auto const key_spec         = parts[3];
-			auto const histogram_spec   = parts[4];
-			auto const filters_spec     = parts[5];
-
-			report_conf___by_request_t conf = {         // some reasonable defaults here
-				.name            = table_name,
-				.time_window     = 60 * d_second,       // 60s aggregation window, 1second interval
-				.ts_count        = 60,
-				.hv_bucket_count = 10 * 1000,           // 100us resolution for times < 1second, infinity otherwise
-				.hv_bucket_d     = 100 * d_microsecond,
-				.filters = {},
-				.keys = {},
-			};
-
-			// aggregation window
-			{
-				auto const time_window_v = meow::split_ex(aggregation_spec, ",");
-				if (time_window_v.size() == 0)
-					throw std::runtime_error("aggregation_spec/time_window must be set");
-
-				auto const time_window_s = time_window_v[0];
-				{
-					uint32_t time_window;
-					if (!meow::number_from_string(&time_window, time_window_s))
-					{
-						throw std::runtime_error(ff::fmt_str(
-							"bad seconds_spec for aggregation_spec/time_window '{0}', expected int number of seconds",
-							time_window_s));
-					}
-
-					conf.time_window = time_window * d_second;
-					conf.ts_count    = time_window; // i.e. ticks are always 1second wide
-				}
-			}
-
-			// keys
-			{
-				auto const keys_v = meow::split_ex(key_spec, ",");
-
-				for (auto const& key_s : keys_v)
-				{
-					if (key_s.size() == 0)
-						continue; // skip empty key
-
-					auto const kd = [&]()
-					{
-						if (key_s == "~host")
-							return report_conf___by_request_t::key_descriptor_by_request_field("host", &packet_t::host_id);
-						if (key_s == "~script")
-							return report_conf___by_request_t::key_descriptor_by_request_field("script", &packet_t::script_id);
-						if (key_s == "~server")
-							return report_conf___by_request_t::key_descriptor_by_request_field("server", &packet_t::server_id);
-						if (key_s == "~schema")
-							return report_conf___by_request_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
-						if (key_s == "~status")
-							return report_conf___by_request_t::key_descriptor_by_request_field("status", &packet_t::status);
-
-						if (key_s[0] == '+') // request_tag
-						{
-							auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size() - 1);
-							auto const tag_id = pinba_MYSQL->globals->dictionary()->get_or_add(tag_name);
-
-							return report_conf___by_request_t::key_descriptor_by_request_tag(tag_name, tag_id);
-						}
-
-						// no support for timer tags, this is request based report
-
-						throw std::runtime_error(ff::fmt_str("key_spec/{0} not known (a timer tag in 'request' report?)", key_s));
-					}();
-
-					conf.keys.push_back(kd);
-				}
-
-				if (conf.keys.size() == 0)
-					throw std::runtime_error("key_spec must be non-empty");
-			}
-		} // request options parsing
-
+		pinba_table_ = pinba_table_create(share, table_conf); // FIXME: might need to lock share here?
 	}
 	catch (std::exception const& e)
 	{
-		// FIXME: need to figure out, how to add our own error codes!
-
-		LOG_WARN(log_, "{0}; table: {1}, error: {2}", __func__, table_name, e.what());
+		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] %s", MYF(0), e.what());
 		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
 	}
 
+	// DBUG_RETURN(HA_ERR_UNSUPPORTED); // FIXME: change this to 0 when all code is implemented
 	DBUG_RETURN(0);
 }
 
@@ -236,12 +490,61 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 	@see
 	handler::ha_open() in handler.cc
 */
-int pinba_handler_t::open(const char *name, int mode, uint test_if_locked)
+int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	this->share_ = this->get_share(name, table);
+	// open will always come for either
+	//  - already active report (we've got 'share' open and stored in 'open_shares')
+	//  - table just created and not yet active, i.e. got parsed config and created report
+	//    but pinba engine is not aware of that report yet
+
+	this->share_ = this->get_share(table_name, table);
 	LOG_DEBUG(log_, "{0}; got share: {1}", __func__, share_);
+
+	// lock to use share, too coarse, but whatever
+	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+
+	try
+	{
+		// report not active - might need to activate
+		if (!share_->report_active)
+		{
+			// config NOT parsed yet (i.e. existing table after having been closed)
+			if (!share_->table_conf)
+			{
+				if (!current_table()->s)
+					throw std::runtime_error("pinba table must have a comment, please see docs");
+
+				str_ref const comment = { current_table()->s->comment.str, size_t(current_table()->s->comment.length) };
+				auto const table_conf = pinba_parse_table_conf(table_name, comment); // throws
+
+				share_->table_conf = new pinba_table_conf_t(table_conf); // FIXME
+
+				if (share_->table_conf->kind == pinba_table_kind::report_by_request_data)
+				{
+					share_->report = meow::make_unique<report___by_request_t>(P_G_, share_->table_conf->by_request_conf);
+				}
+				else if (share_->table_conf->kind == pinba_table_kind::report_by_timer_data)
+				{
+					share_->report = meow::make_unique<report___by_timer_t>(P_G_, share_->table_conf->by_timer_conf);
+				}
+			}
+
+			// TODO: activate the report
+		}
+
+		pinba_table_ = pinba_table_create(share_, *share_->table_conf);
+	}
+	catch (std::exception const& e)
+	{
+		// this MUST not happen in fact, since all tables should have been created
+		// and we do parse comments on create()
+		// might happen when pinba versions are upgraded or something, i guess?
+
+		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
+		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
+	}
 
 	thr_lock_data_init(&share_->lock, &this->lock_data, (void*)this);
 
@@ -267,11 +570,10 @@ int pinba_handler_t::close(void)
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
 	free_share(share_);
+	pinba_table_.reset();
 
 	DBUG_RETURN(0);
 }
-
-static int rows_returned_count = 0;
 
 /**
 	@brief
@@ -290,15 +592,23 @@ int pinba_handler_t::rnd_init(bool scan)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	rows_returned_count = 0;
+	// if (share_->report) // got stored, but not activated report
+	// {
+	// 	pinba_MYSQL()->globals->add_report(move(share_->report));
+	// }
 
-	DBUG_RETURN(0);
+	int const r = pinba_table_->rnd_init(this, scan);
+
+	DBUG_RETURN(r);
 }
 
 int pinba_handler_t::rnd_end()
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
-	DBUG_RETURN(0);
+
+	int const r = pinba_table_->rnd_end(this);
+
+	DBUG_RETURN(r);
 }
 
 
@@ -320,53 +630,9 @@ int pinba_handler_t::rnd_next(uchar *buf)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	if (rows_returned_count++ > 1)
-	{
-		DBUG_RETURN(HA_ERR_END_OF_FILE);
-	}
+	int const r = pinba_table_->rnd_next(this, buf);
 
-	// my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->write_set);
-	my_bitmap_map *old_map = tmp_use_all_columns(table, table->write_set);
-
-	for (Field **field = table->field; *field; field++)
-	{
-		auto const field_index = (*field)->field_index;
-
-		if (!bitmap_is_set(table->read_set, field_index))
-			continue;
-
-		// mark field as writeable to avoid assert() in ::store() calls
-		// got no idea how to do this properly anyway
-		bitmap_set_bit(table->write_set, field_index);
-
-		switch(field_index)
-		{
-			case 0:
-			{
-				// std::string const data = "test-value";
-				char const *data = strdup("test-value");
-				(*field)->set_notnull();
-				// (*field)->store(data.data(), data.size(), &my_charset_bin);
-				(*field)->store(data, strlen(data), &my_charset_bin);
-			}
-			break;
-
-			// case 1:
-			// {
-			// 	(*field)->set_notnull();
-			// 	(*field)->store(10);
-			// }
-			// break;
-
-		default:
-			break;
-		}
-	}
-
-	// dbug_tmp_restore_column_map(table->write_set, old_map);
-	tmp_restore_column_map(table->write_set, old_map);
-
-	DBUG_RETURN(0);
+	DBUG_RETURN(r);
 }
 
 /**
@@ -385,7 +651,10 @@ int pinba_handler_t::rnd_next(uchar *buf)
 int pinba_handler_t::rnd_pos(uchar *buf, uchar *pos)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
-	DBUG_RETURN(0);
+
+	int const r = pinba_table_->rnd_pos(this, buf, pos);
+
+	DBUG_RETURN(r);
 }
 
 /**
@@ -412,6 +681,9 @@ int pinba_handler_t::rnd_pos(uchar *buf, uchar *pos)
 void pinba_handler_t::position(const uchar *record)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
+
+	pinba_table_->position(this, record);
+
 	DBUG_VOID_RETURN;
 }
 
@@ -456,7 +728,10 @@ void pinba_handler_t::position(const uchar *record)
 int pinba_handler_t::info(uint flag)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
-	DBUG_RETURN(0);
+
+	int const r = pinba_table_->info(this, flag);
+
+	DBUG_RETURN(r);
 }
 
 
@@ -468,7 +743,10 @@ int pinba_handler_t::info(uint flag)
 int pinba_handler_t::extra(enum ha_extra_function operation)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
-	DBUG_RETURN(0);
+
+	int const r = pinba_table_->extra(this, operation);
+
+	DBUG_RETURN(r);
 }
 
 /*

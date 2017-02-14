@@ -376,7 +376,7 @@ public: // key extraction and transformation
 
 private:
 	pinba_globals_t           *globals_;
-	report_conf___by_timer_t  *conf_;
+	report_conf___by_timer_t  conf_;
 
 	report_info_t  info_;
 	key_info_t     ki_;
@@ -387,33 +387,33 @@ private:
 
 public:
 
-	report___by_timer_t(pinba_globals_t *globals, report_conf___by_timer_t *conf)
+	report___by_timer_t(pinba_globals_t *globals, report_conf___by_timer_t const& conf)
 		: globals_(globals)
 		, conf_(conf)
-		, ticks_(conf_->ts_count)
+		, ticks_(conf.ts_count)
 		, packet_unqiue_{0}
 	{
 		// validate config
-		if (conf_->keys.size() > key_t::static_size)
+		if (conf_.keys.size() > key_t::static_size)
 		{
 			throw std::runtime_error(ff::fmt_str(
-				"required keys ({0}) > supported keys ({1})", conf_->keys.size(), key_t::static_size));
+				"required keys ({0}) > supported keys ({1})", conf_.keys.size(), key_t::static_size));
 		}
 
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_TIMER_DATA,
-			.timeslice_count = conf_->ts_count,
-			.time_window     = conf_->time_window,
-			.n_key_parts     = (uint32_t)conf_->keys.size(),
-			.hv_enabled      = (conf_->hv_bucket_count > 0),
+			.timeslice_count = conf_.ts_count,
+			.time_window     = conf_.time_window,
+			.n_key_parts     = (uint32_t)conf_.keys.size(),
+			.hv_enabled      = (conf_.hv_bucket_count > 0),
 		};
 
-		ki_.from_config(*conf);
+		ki_.from_config(conf);
 	}
 
 	virtual str_ref name() const override
 	{
-		return conf_->name;
+		return conf_.name;
 	}
 
 	virtual report_info_t const* info() const override
@@ -448,9 +448,9 @@ public:
 	virtual void add(packet_t *packet)
 	{
 		// run all filters and check if packet is 'interesting to us'
-		for (size_t i = 0, i_end = conf_->filters.size(); i < i_end; ++i)
+		for (size_t i = 0, i_end = conf_.filters.size(); i < i_end; ++i)
 		{
-			auto const& filter = conf_->filters[i];
+			auto const& filter = conf_.filters[i];
 			if (!filter.func(packet))
 			{
 				ff::fmt(stdout, "packet {0} skipped by filter {1}\n", packet, filter.name);
@@ -570,7 +570,7 @@ public:
 
 				if (info_.hv_enabled)
 				{
-					item.hv_increment(timer, conf_->hv_bucket_count, conf_->hv_bucket_d);
+					item.hv_increment(timer, conf_.hv_bucket_count, conf_.hv_bucket_d);
 				}
 			}
 		}

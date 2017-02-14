@@ -51,7 +51,7 @@ struct report_row___by_timer_t
 struct report___by_request__test_t : public report___by_request_t
 {
 
-	report___by_request__test_t(pinba_globals_t *globals, report_conf___by_request_t *conf)
+	report___by_request__test_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 		: report___by_request_t(globals, conf)
 	{
 	}
@@ -772,7 +772,7 @@ int main(int argc, char const *argv[])
 try
 {
 	pinba_options_t options = {};
-	pinba_globals_ptr globals = pinba_init(&options);
+	pinba_globals_ptr globals = pinba_globals_init(&options);
 
 	auto packet_data = packet_t {
 		.host_id = 1,

@@ -34,6 +34,7 @@ namespace { namespace aux {
 	{
 		collector_impl_t(pinba_globals_t *globals, collector_conf_t *conf)
 			: globals_(globals)
+			, stats_(globals->stats())
 			, conf_(conf)
 		{
 			if (conf_->n_threads == 0 || conf_->n_threads > 1024)
@@ -123,15 +124,15 @@ namespace { namespace aux {
 				// EAGAIN handling will send the batch and reset the pointer, so we'll be blocking afterwards
 				int const recv_flags = (req) ? MSG_DONTWAIT : 0;
 
-				++globals_->udp.recv_total;
+				++stats_->udp.recv_total;
 
 				if (recv_flags == MSG_DONTWAIT)
-					++globals_->udp.recv_nonblocking;
+					++stats_->udp.recv_nonblocking;
 
 				int const n = recv(fd_, buf, sizeof(buf), recv_flags);
 				if (n > 0)
 				{
-					++globals_->udp.packets_received;
+					++stats_->udp.packets_received;
 
 					if (!req)
 					{
@@ -164,7 +165,7 @@ namespace { namespace aux {
 
 					if (errno == EAGAIN)
 					{
-						++globals_->udp.recv_eagain;
+						++stats_->udp.recv_eagain;
 
 						// need to send current batch if we've got anything
 						if (req && req->request_count > 0)
@@ -213,14 +214,21 @@ namespace { namespace aux {
 			{
 				while (true)
 				{
-					++globals_->udp.recv_total;
-					++globals_->udp.recv_nonblocking;
-					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+					// if we have a batch semi-filled -> be nonblocking to avoid hanging onto it for too long
+					// EAGAIN handling will send the batch and reset the pointer, so we'll be blocking afterwards
+					int recv_flags = (req) ? MSG_DONTWAIT : MSG_WAITFORONE;
+
+					++stats_->udp.recv_total;
+
+					if (recv_flags == MSG_DONTWAIT)
+						++stats_->udp.recv_nonblocking;
+
+					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, recv_flags, NULL);
 					if (n > 0)
 					{
 						for (int i = 0; i < n; i++)
 						{
-							++globals_->udp.packets_received;
+							++stats_->udp.packets_received;
 
 							if (!req)
 							{
@@ -256,7 +264,7 @@ namespace { namespace aux {
 
 						if (errno == EAGAIN)
 						{
-							++globals_->udp.recv_eagain;
+							++stats_->udp.recv_eagain;
 
 							// need to send current batch if we've got anything
 							if (req && req->request_count > 0)
@@ -270,7 +278,7 @@ namespace { namespace aux {
 						return false;
 					}
 
-					if (n == 0){
+					if (n == 0) {
 						return false;
 					}
 				} // recv loop
@@ -296,6 +304,7 @@ namespace { namespace aux {
 		nmsg_socket_t     out_sock_;
 
 		pinba_globals_t   *globals_;
+		pinba_stats_t     *stats_;
 		collector_conf_t  *conf_;
 
 		std::vector<std::thread> threads_;

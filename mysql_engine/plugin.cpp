@@ -9,6 +9,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+static std::unique_ptr<pinba_mysql_ctx_t> pinba_MYSQL__instance;
+
+pinba_mysql_ctx_t* pinba_MYSQL()
+{
+	return pinba_MYSQL__instance.get();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 static int pinba_engine_init(void *p)
 {
 	DBUG_ENTER(__func__);
@@ -36,25 +45,30 @@ static int pinba_engine_init(void *p)
 		.coordinator_input_buffer = 32,
 	};
 
-	static pinba_mysql_ctx_t ctx = {};
-	pinba_MYSQL = &ctx;
-
-	pinba_MYSQL->globals = pinba_init(&options);
-
-	pinba_MYSQL->log = [&]()
+	pinba_MYSQL__instance = [&]()
 	{
-		auto logger = meow::make_unique<meow::logging::logger_impl_t<meow::logging::default_prefix_t>>();
-
-		logger->set_level(meow::logging::log_level::debug);
-		logger->prefix().set_fields(meow::logging::prefix_field::_all);
-		logger->prefix().set_log_name("pinba");
-
-		logger->set_writer([](size_t total_len, str_ref const *slices, size_t n_slices)
+		auto PM = meow::make_unique<pinba_mysql_ctx_t>();
+		PM->logger = [&]()
 		{
-			for (size_t i = 0; i < n_slices; ++i)
-				ff::write(stderr, slices[i]);
-		});
-		return move(logger);
+			// TODO: this will suffice for now, but improve logger to look like mysql native thing
+			auto logger = meow::make_unique<meow::logging::logger_impl_t<meow::logging::default_prefix_t>>();
+
+			logger->set_level(meow::logging::log_level::debug);
+			logger->prefix().set_fields(meow::logging::prefix_field::_all);
+			logger->prefix().set_log_name("pinba");
+
+			logger->set_writer([](size_t total_len, str_ref const *slices, size_t n_slices)
+			{
+				for (size_t i = 0; i < n_slices; ++i)
+					ff::write(stderr, slices[i]);
+			});
+			return move(logger);
+		}();
+
+		PM->engine = pinba_engine_init(&options); // construct objects, validate things
+		PM->engine->startup();             // start kicking ass
+
+		return move(PM);
 	}();
 
 	DBUG_RETURN(0);
@@ -63,6 +77,11 @@ static int pinba_engine_init(void *p)
 static int pinba_engine_shutdown(void *p)
 {
 	DBUG_ENTER(__func__);
+
+	// FIXME: this is very likely to cause a segfault
+	//  since pinba internals shutdown is not implemented well, if at all
+	pinba_MYSQL__instance.reset();
+
 	DBUG_RETURN(0);
 }
 

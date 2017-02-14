@@ -268,30 +268,30 @@ public: // snapshot
 
 public:
 
-	report___by_request_t(pinba_globals_t *globals, report_conf___by_request_t *conf)
+	report___by_request_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 		: globals_(globals)
 		, conf_(conf)
-		, ticks_(conf_->ts_count)
+		, ticks_(conf.ts_count)
 	{
 		// validate config
-		if (conf_->keys.size() > key_t::static_size)
+		if (conf_.keys.size() > key_t::static_size)
 		{
 			throw std::runtime_error(ff::fmt_str(
-				"required keys ({0}) > supported keys ({1})", conf_->keys.size(), key_t::static_size));
+				"required keys ({0}) > supported keys ({1})", conf_.keys.size(), key_t::static_size));
 		}
 
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_REQUEST_DATA,
-			.timeslice_count = conf_->ts_count,
-			.time_window     = conf_->time_window,
-			.n_key_parts     = (uint32_t)conf_->keys.size(),
-			.hv_enabled      = (conf_->hv_bucket_count > 0),
+			.timeslice_count = conf_.ts_count,
+			.time_window     = conf_.time_window,
+			.n_key_parts     = (uint32_t)conf_.keys.size(),
+			.hv_enabled      = (conf_.hv_bucket_count > 0),
 		};
 	}
 
 	virtual str_ref name() const override
 	{
-		return conf_->name;
+		return conf_.name;
 	}
 
 	virtual report_info_t const* info() const override
@@ -326,9 +326,9 @@ public:
 	virtual void add(packet_t *packet) override
 	{
 		// run all filters and check if packet is 'interesting to us'
-		for (size_t i = 0, i_end = conf_->filters.size(); i < i_end; ++i)
+		for (size_t i = 0, i_end = conf_.filters.size(); i < i_end; ++i)
 		{
-			auto const& filter = conf_->filters[i];
+			auto const& filter = conf_.filters[i];
 			if (!filter.func(packet))
 			{
 				ff::fmt(stdout, "packet {0} skipped by filter {1}\n", packet, filter.name);
@@ -339,9 +339,9 @@ public:
 		// construct a key, by runinng all key fetchers
 		key_t k;
 
-		for (size_t i = 0, i_end = conf_->keys.size(); i < i_end; ++i)
+		for (size_t i = 0, i_end = conf_.keys.size(); i < i_end; ++i)
 		{
-			auto const& key_descriptor = conf_->keys[i];
+			auto const& key_descriptor = conf_.keys[i];
 
 			report_conf___by_request_t::key_fetch_result_t const r = key_descriptor.fetcher(packet);
 			if (!r.found)
@@ -359,7 +359,7 @@ public:
 
 		if (info_.hv_enabled)
 		{
-			item.hv_increment(packet, conf_->hv_bucket_count, conf_->hv_bucket_d);
+			item.hv_increment(packet, conf_.hv_bucket_count, conf_.hv_bucket_d);
 		}
 	}
 
@@ -373,7 +373,7 @@ public:
 // private:
 protected:
 	pinba_globals_t             *globals_;
-	report_conf___by_request_t  *conf_;
+	report_conf___by_request_t  conf_;
 
 	report_info_t               info_;
 

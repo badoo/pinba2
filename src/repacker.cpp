@@ -20,6 +20,7 @@ namespace { namespace aux {
 
 		repacker_impl_t(pinba_globals_t *globals, repacker_conf_t *conf)
 			: globals_(globals)
+			, stats_(globals->stats())
 			, conf_(conf)
 		{
 		}
@@ -87,7 +88,7 @@ namespace { namespace aux {
 			{
 				int const wait_for_ms = duration_from_timeval(next_tick_tv - os_unix::clock_monotonic_now()).nsec / d_millisecond.nsec;
 
-				++globals_->repacker.poll_total;
+				++stats_->repacker.poll_total;
 				int r = nn_poll(pfd, pfd_size, wait_for_ms);
 
 				if (r < 0)
@@ -113,11 +114,11 @@ namespace { namespace aux {
 				// to process message ASAP and create batches by size limit (and save on polling / getting current time)
 				while (true)
 				{
-					++globals_->repacker.recv_total;
+					++stats_->repacker.recv_total;
 
 					auto const req = in_sock.recv<raw_request_ptr>(NN_DONTWAIT);
 					if (!req) { // EAGAIN
-						++globals_->repacker.recv_eagain;
+						++stats_->repacker.recv_eagain;
 						break; // next iteration of outer loop
 					}
 
@@ -134,7 +135,7 @@ namespace { namespace aux {
 
 						packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
 
-						++globals_->repacker.packets_processed;
+						++stats_->repacker.packets_processed;
 
 						// append to current batch
 						batch->packets[batch->packet_count] = packet;
@@ -160,6 +161,7 @@ namespace { namespace aux {
 		nmsg_socket_t    out_sock_;
 
 		pinba_globals_t  *globals_;
+		pinba_stats_t    *stats_;
 		repacker_conf_t  *conf_;
 
 		dictionary_t     *dictionary_;

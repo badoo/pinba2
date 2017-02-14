@@ -32,7 +32,7 @@ int main(int argc, char const *argv[])
 		.coordinator_input_buffer = 32,
 	};
 
-	static auto pinba = pinba_init(&options);
+	static auto pinba = pinba_engine_init(&options);
 	pinba->startup();
 
 	auto const threaded_print_report_snapshot = [&](std::string report_name)
@@ -76,7 +76,7 @@ int main(int argc, char const *argv[])
 				report_conf___by_request_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
 			},
 		};
-		pinba->create_report_by_request(&conf);
+		pinba->start_report_with_config(conf);
 
 		threaded_print_report_snapshot(conf.name);
 	}
@@ -96,10 +96,10 @@ int main(int argc, char const *argv[])
 			.keys = {
 				report_conf___by_timer_t::key_descriptor_by_request_field("hostname", &packet_t::host_id),
 				report_conf___by_timer_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
-				report_conf___by_timer_t::key_descriptor_by_timer_tag("tag10", pinba->dictionary()->get_or_add("tag10")),
+				report_conf___by_timer_t::key_descriptor_by_timer_tag("tag10", pinba->globals()->dictionary()->get_or_add("tag10")),
 			},
 		};
-		pinba->create_report_by_timer(&conf);
+		pinba->start_report_with_config(conf);
 
 		threaded_print_report_snapshot(conf.name);
 	}
