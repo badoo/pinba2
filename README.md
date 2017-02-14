@@ -20,3 +20,22 @@ To build, run
         --with-sparsehash=<path>
         --with-meow=<path>
         --with-boost=<path (need headers only)>
+
+# SQL
+Stats report
+
+	mysql> CREATE TABLE `stats` (
+			  `uptime` double NOT NULL,
+			  `udp_recv_total` bigint(20) unsigned NOT NULL,
+			  `udp_recv_nonblocking` bigint(20) unsigned NOT NULL,
+			  `udp_recv_eagain` bigint(20) unsigned NOT NULL,
+			  `udp_packets_received` bigint(20) unsigned NOT NULL
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats'
+
+	mysql> select uptime, udp_recv_total, udp_packets_received, udp_packets_received/uptime as udp_packets_per_sec from stats;
+	+--------------+----------------+----------------------+---------------------+
+	| uptime       | udp_recv_total | udp_packets_received | udp_packets_per_sec |
+	+--------------+----------------+----------------------+---------------------+
+	| 74.323456902 |          96987 |              2000002 |    26909.4318720552 |
+	+--------------+----------------+----------------------+---------------------+
+	1 row in set (0.00 sec)
