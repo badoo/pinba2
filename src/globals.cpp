@@ -25,7 +25,7 @@ namespace { namespace aux {
 		pinba_globals_impl_t(pinba_options_t *options)
 			: options_(options)
 		{
-			ticker_ = meow::make_unique<nmsg_ticker___single_thread_t>();
+			ticker_     = meow::make_unique<nmsg_ticker___single_thread_t>();
 			dictionary_ = meow::make_unique<dictionary_t>();
 
 			stats_.start_tv          = os_unix::clock_monotonic_now();

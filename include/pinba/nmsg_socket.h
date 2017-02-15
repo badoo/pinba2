@@ -178,7 +178,7 @@ public:
 	}
 
 	template<class T>
-	bool recv(T *value, int flags = 0)
+	bool recv(T *value, str_ref sockname = {}, int flags = 0)
 	{
 		int const n = nn_recv(fd_, (void*)value, sizeof(T), flags);
 		if (n < 0) {
@@ -186,14 +186,14 @@ public:
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))
 				return false;
 
-			throw std::runtime_error(ff::fmt_str("nn_recv() failed: {0}:{1}", nn_errno(), nn_strerror(nn_errno())));
+			throw std::runtime_error(ff::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, nn_errno(), nn_strerror(nn_errno())));
 		}
 
 		return true;
 	}
 
 	template<class T>
-	T recv(int flags = 0)
+	T recv(str_ref sockname = {}, int flags = 0)
 	{
 		T value;
 
@@ -205,7 +205,7 @@ public:
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))
 				return value;
 
-			throw std::runtime_error(ff::fmt_str("nn_recv() failed: {0}:{1}", err, nn_strerror(err)));
+			throw std::runtime_error(ff::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, err, nn_strerror(err)));
 		}
 
 		return value;

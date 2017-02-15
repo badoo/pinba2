@@ -219,9 +219,9 @@ AC_ARG_ENABLE(debug,
 )
 
 if test x"$debug" = xyes ; then
-	DEBUG_FLAGS="-DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS -DPINBA_DEBUG"
+	DEBUG_FLAGS="-DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS -DPINBA_DEBUG -DPINBA_ENGINE_DEBUG_ON"
 
-	AC_DEFINE([DEBUG_ON], [1], [debug is on])
+	dnl AC_DEFINE([PINBA_ENGINE_DEBUG_ON], [1], [debug is on])
 
 	if test x"$GCC" = xyes; then
 
@@ -241,10 +241,12 @@ if test x"$debug" = xyes ; then
 	dnl Do not strip symbols from developer object files.
 	INSTALL_STRIP_FLAG=""
 else
-	AC_DEFINE([DEBUG_OFF], [1], [debug is off])
+	dnl AC_DEFINE([PINBA_ENGINE_DEBUG_OFF], [1], [debug is off])
 
-	CXXFLAGS="$CXXFLAGS -O3 -ffast-math -g3 -mtune=native"
-	CFLAGS="$CFLAGS -O3 -ffast-math -g3 -mtune=native"
+	RELEASE_FLAGS="-O3 -ffast-math -g3 -mtune=native -DPINBA_ENGINE_DEBUG_OFF"
+
+	CXXFLAGS="$CXXFLAGS $RELEASE_FLAGS"
+	CFLAGS="$CFLAGS $RELEASE_FLAGS"
 
 	dnl Make sure to strip symbols from non-developer object files.
 	dnl INSTALL_STRIP_FLAG="-s"

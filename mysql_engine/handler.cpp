@@ -1,9 +1,3 @@
-#include <sql/field.h>
-#include <sql/structs.h>
-#include <sql/handler.h>
-#include <my_pthread.h>
-#include <include/mysqld_error.h>
-
 #include <meow/stopwatch.hpp>
 #include <meow/str_ref_algo.hpp>
 #include <meow/convert/number_from_string.hpp>
@@ -13,7 +7,13 @@
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 
-#include "mysql_engine/handler.h"
+#include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
+
+#include <sql/field.h>
+#include <sql/structs.h>
+#include <sql/handler.h>
+#include <my_pthread.h>
+#include <include/mysqld_error.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

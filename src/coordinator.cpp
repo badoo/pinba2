@@ -113,21 +113,21 @@ namespace { namespace aux {
 				report_->ticks_init(os_unix::clock_monotonic_now());
 
 				nmsg_poller_t()
-					.read(*ticker_chan_, [&](nmsg_ticker_chan_t& chan, timeval_t now)
+					.read(*ticker_chan_, [this](nmsg_ticker_chan_t& chan, timeval_t now)
 					{
 						chan.recv();
 						// ff::fmt(stdout, "{0}; {1}; received {2} packets\n", conf_.name, now, packets_received);
 
 						report_->tick_now(os_unix::clock_monotonic_now());
 					})
-					.read_sock(*packets_sock_, [&](timeval_t now)
+					.read_sock(*packets_sock_, [this](timeval_t now)
 					{
 						auto const batch = packets_sock_.recv<packet_batch_ptr>();
 						packets_received += batch->packet_count;
 
 						report_->add_multi(batch->packets, batch->packet_count);
 					})
-					.read_sock(*reqrep_sock_, [&](timeval_t now)
+					.read_sock(*reqrep_sock_, [this](timeval_t now)
 					{
 						auto const req = reqrep_sock_.recv<report_host_req_ptr>();
 						req->func(report_.get());
@@ -220,16 +220,16 @@ namespace { namespace aux {
 
 			auto const tick_chan = globals_->ticker()->subscribe(1000 * d_millisecond, "coordinator_thread");
 
-			uint64_t total_packets = 0;
-			uint64_t n_small_batches = 0;
-			uint64_t small_batch_packets = 0;
+			// uint64_t total_packets = 0;
+			// uint64_t n_small_batches = 0;
+			// uint64_t small_batch_packets = 0;
 
 			nmsg_poller_t()
-				.read(*tick_chan, [&](nmsg_ticker_chan_t& chan, timeval_t now)
+				.read(*tick_chan, [this](nmsg_ticker_chan_t& chan, timeval_t now)
 				{
 					chan.recv(); // MUST do this, or chan will stay readable
 
-					auto const stats = globals_->stats();
+					// auto const stats = globals_->stats();
 
 					// ff::fmt(stdout, "{0}; {1}; processed {2} packets, n_sm_b: {3}, sb_pkt = {4}\n",
 					// 	chan.endpoint(), now, total_packets, n_small_batches, small_batch_packets);
@@ -244,18 +244,18 @@ namespace { namespace aux {
 					// 	chan.endpoint(), now, (uint64_t)repack_stats->poll_total, (uint64_t)repack_stats->recv_total,
 					// 	(uint64_t)repack_stats->recv_eagain, (uint64_t)repack_stats->packets_processed);
 				})
-				.read_sock(*in_sock_, [&](timeval_t now)
+				.read_sock(*in_sock_, [this](timeval_t now)
 				{
 					auto batch = in_sock_.recv<packet_batch_ptr>();
 
-					if (batch->packet_count < 1024)
-					{
-						n_small_batches++;
-						small_batch_packets += batch->packet_count;
-						// ff::fmt(stdout, "{0}; {1}; batch {2} packets\n", "packet_counter", now, batch->packet_count);
-					}
+					// if (batch->packet_count < 1024)
+					// {
+					// 	n_small_batches++;
+					// 	small_batch_packets += batch->packet_count;
+					// 	// ff::fmt(stdout, "{0}; {1}; batch {2} packets\n", "packet_counter", now, batch->packet_count);
+					// }
 
-					total_packets += batch->packet_count;
+					// total_packets += batch->packet_count;
 
 					// FIXME: this is fundamentally broken with PUB/SUB sadly
 					// since we have no idea if the report handler is slow, and in that case messages will be dropped
@@ -272,7 +272,7 @@ namespace { namespace aux {
 						report_sock_.send_ex(batch, 0);
 					}
 				})
-				.read_sock(*control_sock_, [&](timeval_t now)
+				.read_sock(*control_sock_, [this](timeval_t now)
 				{
 					auto const req = this->control_recv();
 

@@ -58,10 +58,8 @@ namespace { namespace aux {
 
 		void worker_thread(uint32_t thread_id, nmsg_socket_t in_sock)
 		{
-			{
-				std::string const thr_name = ff::fmt_str("repacker/{0}", thread_id);
-				pthread_setname_np(pthread_self(), thr_name.c_str());
-			}
+			std::string const thr_name = ff::fmt_str("repacker/{0}", thread_id);
+			pthread_setname_np(pthread_self(), thr_name.c_str());
 
 			auto const create_batch = [&]()
 			{
@@ -116,7 +114,7 @@ namespace { namespace aux {
 				{
 					++stats_->repacker.recv_total;
 
-					auto const req = in_sock.recv<raw_request_ptr>(NN_DONTWAIT);
+					auto const req = in_sock.recv<raw_request_ptr>(thr_name, NN_DONTWAIT);
 					if (!req) { // EAGAIN
 						++stats_->repacker.recv_eagain;
 						break; // next iteration of outer loop

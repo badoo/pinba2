@@ -1,6 +1,17 @@
 #ifndef PINBA__HANDLER_H_
 #define PINBA__HANDLER_H_
 
+#if defined(PINBA_ENGINE_DEBUG_ON) && !defined(DBUG_ON)
+# undef DBUG_OFF
+# define DBUG_ON
+#endif
+
+#if defined(PINBA_ENGINE_DEBUG_OFF) && !defined(DBUG_OFF)
+# define DBUG_OFF
+# undef DBUG_ON
+#endif
+
+
 #include <mysql/plugin.h>
 #include <sql/handler.h>
 

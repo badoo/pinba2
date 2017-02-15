@@ -1,7 +1,7 @@
+#include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
+
 #include <mysql_version.h>
 #include <sql/handler.h>
-
-#include "mysql_engine/handler.h"
 
 #include <meow/logging/log_level.hpp>
 #include <meow/logging/log_prefix.hpp>
@@ -66,7 +66,7 @@ static int pinba_engine_init(void *p)
 		}();
 
 		PM->engine = pinba_engine_init(&options); // construct objects, validate things
-		PM->engine->startup();             // start kicking ass
+		PM->engine->startup();                    // start kicking ass
 
 		return move(PM);
 	}();
