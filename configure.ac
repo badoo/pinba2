@@ -27,11 +27,12 @@ AC_CHECK_FUNCS([strndup sysconf recvmmsg])
 changequote({,})
 CXXFLAGS=`echo "$CXXFLAGS" | sed -e 's/ -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG//g'`
 CFLAGS=`echo "$CFLAGS" | sed -e 's/ -DNDEBUG//g'`
+#CFLAGS="$CFLAGS -DNDEBUG"
+
 changequote([,])
 #CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
 CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN"
 CXXFLAGS="$CXXFLAGS -Wall -Wformat-security -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Werror"
-#CFLAGS="$CFLAGS -DNDEBUG"
 
 AX_CONFIG_NICE([config.nice])
 
@@ -242,8 +243,11 @@ if test x"$debug" = xyes ; then
 else
 	AC_DEFINE([DEBUG_OFF], [1], [debug is off])
 
+	CXXFLAGS="$CXXFLAGS -O3 -ffast-math -g3 -mtune=native"
+	CFLAGS="$CFLAGS -O3 -ffast-math -g3 -mtune=native"
+
 	dnl Make sure to strip symbols from non-developer object files.
-	INSTALL_STRIP_FLAG="-s"
+	dnl INSTALL_STRIP_FLAG="-s"
 fi
 dnl }}}
 

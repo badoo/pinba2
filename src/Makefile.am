@@ -3,9 +3,7 @@ EXTRA_DIST = include/*.h
 
 cflags = \
 	$(CXXFLAGS) \
-	-D_GNU_SOURCE \
-	-O0 -g3 -mtune=native \
-	-fPIC -DPIC \
+	-D_GNU_SOURCE -fPIC -DPIC \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \

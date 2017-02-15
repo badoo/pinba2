@@ -1,7 +1,6 @@
 
 cflags = \
 	$(CXXFLAGS) \
-	-O0 -g3 \
 	-D_GNU_SOURCE -DMYSQL_DYNAMIC_PLUGIN -DMYSQL_SERVER=1 \
 	-fPIC -DPIC \
  	$(MYSQL_INC) \
