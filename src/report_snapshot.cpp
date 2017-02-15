@@ -47,7 +47,7 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 			auto const& data  = row->data;
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
-				data.req_count, data.req_time, data.ru_utime, data.ru_stime,
+				data.req_count, data.time_total, data.ru_utime, data.ru_stime,
 				data.traffic_kb, data.mem_usage);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data

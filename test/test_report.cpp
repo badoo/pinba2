@@ -83,9 +83,10 @@ struct report___by_request__test_t : public report___by_request_t
 				auto const& data = item.data;
 
 				req_count_total += data.req_count;
-				req_time_total  += data.req_time;
+				req_time_total  += data.time_total;
 
-				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4} } [", report_key_to_string(key), data.req_count, data.req_time, data.ru_utime, data.ru_stime);
+				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4} } [",
+					report_key_to_string(key), data.req_count, data.time_total, data.ru_utime, data.ru_stime);
 
 				auto const& hv_map = item.hv.map_cref();
 				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
@@ -721,7 +722,7 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 			auto const& data  = row->data;
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
-				data.req_count, data.req_time, data.ru_utime, data.ru_stime,
+				data.req_count, data.time_total, data.ru_utime, data.ru_stime,
 				data.traffic_kb, data.mem_usage);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data

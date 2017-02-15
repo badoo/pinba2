@@ -116,7 +116,7 @@ namespace { namespace aux {
 					.read(*ticker_chan_, [&](nmsg_ticker_chan_t& chan, timeval_t now)
 					{
 						chan.recv();
-						ff::fmt(stdout, "{0}; {1}; received {2} packets\n", conf_.name, now, packets_received);
+						// ff::fmt(stdout, "{0}; {1}; received {2} packets\n", conf_.name, now, packets_received);
 
 						report_->tick_now(os_unix::clock_monotonic_now());
 					})
@@ -311,7 +311,14 @@ namespace { namespace aux {
 							{
 								auto *r = static_cast<coordinator_request___get_report_snapshot_t*>(req.get());
 
-								report_host_t *host = report_hosts_[r->report_name].get();
+								auto const it = report_hosts_.find(r->report_name);
+								if (it == report_hosts_.end())
+								{
+									this->control_send_generic(COORDINATOR_STATUS__ERROR, ff::fmt_str("unknown report: {0}", r->report_name));
+									return;
+								}
+
+								report_host_t *host = it->second.get();
 
 								report_snapshot_ptr snapshot;
 								host->call_with_report([&](report_t *report)

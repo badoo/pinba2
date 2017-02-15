@@ -80,6 +80,7 @@ pinba_mysql_ctx_t* pinba_MYSQL();
 #define P_CTX_(x) (pinba_MYSQL()->x)
 #define P_E_    (P_CTX_(engine))
 #define P_G_    (P_E_->globals())
+#define P_L_    (P_CTX_(logger).get())
 
 // #define PG_(...) pinba_MYSQL()->##__VA_ARGS__
 
@@ -87,8 +88,6 @@ pinba_mysql_ctx_t* pinba_MYSQL();
 
 class pinba_handler_t : public handler
 {
-	logger_t      *log_;
-
 	THR_LOCK_DATA lock_data;   ///< MySQL lock
 
 	pinba_share_t *share_;     ///< current-table shared info
@@ -100,7 +99,10 @@ class pinba_handler_t : public handler
 	std::unordered_map<std::string, pinba_share_ptr> open_tables_;
 
 public:
-	TABLE* current_table() const;
+	logger_t      *log_;
+
+	pinba_share_t* current_share() const;
+	TABLE*         current_table() const;
 
 public:
 

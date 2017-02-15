@@ -20,7 +20,7 @@
 struct report_row_data___by_request_t
 {
 	uint32_t   req_count;
-	duration_t req_time;
+	duration_t time_total;
 	duration_t ru_utime;
 	duration_t ru_stime;
 	uint64_t   traffic_kb;
@@ -180,7 +180,7 @@ struct report___by_request_t : public report_t
 		void data_increment(packet_t *packet)
 		{
 			data.req_count  += 1;
-			data.req_time   += packet->request_time;
+			data.time_total += packet->request_time;
 			data.ru_utime   += packet->ru_utime;
 			data.ru_stime   += packet->ru_stime;
 			data.traffic_kb += packet->doc_size;
@@ -196,7 +196,7 @@ struct report___by_request_t : public report_t
 		{
 			// data
 			data.req_count  += other.data.req_count;
-			data.req_time   += other.data.req_time;
+			data.time_total += other.data.time_total;
 			data.ru_utime   += other.data.ru_utime;
 			data.ru_stime   += other.data.ru_stime;
 			data.traffic_kb += other.data.traffic_kb;
@@ -250,7 +250,7 @@ public: // snapshot
 				auto      & dst = to[from_pair.first];
 
 				dst.data.req_count  += src.data.req_count;
-				dst.data.req_time   += src.data.req_time;
+				dst.data.time_total += src.data.time_total;
 				dst.data.ru_utime   += src.data.ru_utime;
 				dst.data.ru_stime   += src.data.ru_stime;
 				dst.data.traffic_kb += src.data.traffic_kb;
