@@ -389,7 +389,7 @@ namespace { namespace aux {
 							break;
 
 							default:
-								ff::fmt(stderr, "unknown coordinator_control_request type: {0}\n", req->type);
+								throw std::runtime_error(ff::fmt_str("unknown coordinator_control_request type: {0}", req->type));
 								break;
 						}
 					}
