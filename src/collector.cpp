@@ -214,16 +214,10 @@ namespace { namespace aux {
 			{
 				while (true)
 				{
-					// if we have a batch semi-filled -> be nonblocking to avoid hanging onto it for too long
-					// EAGAIN handling will send the batch and reset the pointer, so we'll be blocking afterwards
-					int recv_flags = (req) ? MSG_DONTWAIT : MSG_WAITFORONE;
-
 					++stats_->udp.recv_total;
+					++stats_->udp.recv_nonblocking;
 
-					if (recv_flags == MSG_DONTWAIT)
-						++stats_->udp.recv_nonblocking;
-
-					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, recv_flags, NULL);
+					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, 0, NULL);
 					if (n > 0)
 					{
 						for (int i = 0; i < n; i++)

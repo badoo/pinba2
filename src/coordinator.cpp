@@ -27,6 +27,7 @@ namespace { namespace aux {
 		std::string thread_name;
 
 		std::string nn_reqrep;          // control messages and stuff
+		std::string nn_shutdown;        // shutdown message
 
 		std::string nn_packets;         // get packet_batch_ptr from this endpoint as fast as possible (SUB, pair to coodinator PUB)
 		size_t      nn_packets_buffer;  // NN_RCVBUF on nn_packets
@@ -38,6 +39,7 @@ namespace { namespace aux {
 	{
 		virtual ~report_host_t() {}
 		virtual void startup(report_ptr) = 0;
+		virtual void shutdown() = 0;
 		virtual void call_with_report(report_host_call_func_t const&) = 0;
 	};
 	typedef std::unique_ptr<report_host_t> report_host_ptr;
@@ -63,8 +65,11 @@ namespace { namespace aux {
 		pinba_globals_t        *globals_;
 		report_host_conf_t     conf_;
 
+		std::thread            t_;
+
 		nmsg_socket_t          packets_sock_;
 		nmsg_socket_t          reqrep_sock_;
+		nmsg_socket_t          shutdown_sock_;
 		nmsg_ticker_chan_ptr   ticker_chan_;
 
 		report_ptr             report_;
@@ -86,6 +91,10 @@ namespace { namespace aux {
 			reqrep_sock_
 				.open(AF_SP, NN_REP)
 				.bind(conf_.nn_reqrep);
+
+			shutdown_sock_
+				.open(AF_SP, NN_REP)
+				.bind(conf_.nn_shutdown);
 		}
 
 	public:
@@ -112,13 +121,12 @@ namespace { namespace aux {
 
 				report_->ticks_init(os_unix::clock_monotonic_now());
 
-				nmsg_poller_t()
+				nmsg_poller_t poller;
+				poller
 					.read(*ticker_chan_, [this](nmsg_ticker_chan_t& chan, timeval_t now)
 					{
 						chan.recv();
-						// ff::fmt(stdout, "{0}; {1}; received {2} packets\n", conf_.name, now, packets_received);
-
-						report_->tick_now(os_unix::clock_monotonic_now());
+						report_->tick_now(now);
 					})
 					.read_sock(*packets_sock_, [this](timeval_t now)
 					{
@@ -133,9 +141,22 @@ namespace { namespace aux {
 						req->func(report_.get());
 						reqrep_sock_.send(meow::make_intrusive<report_host_result_t>());
 					})
+					.read_sock(*shutdown_sock_, [this, &poller](timeval_t)
+					{
+						shutdown_sock_.recv<int>();
+						poller.set_shutdown_flag(); // exit loop() after this iteration
+						shutdown_sock_.send(1);
+					})
 					.loop();
+
+				// unsub from ticker, this is not strictly required, but nice
+				//
+				// this IS cross-thread access for ticker_chan_ without synchronisation
+				// but it's fine in this case for both globals_->ticker() and ticker_chan_
+				globals_->ticker()->unsubscribe(ticker_chan_);
 			});
-			t.detach();
+
+			t_ = move(t);
 		}
 
 		virtual void call_with_report(std::function<void(report_t*)> const& func) override
@@ -145,6 +166,17 @@ namespace { namespace aux {
 
 			sock.send_message(meow::make_intrusive<report_host_req_t>(func));
 			sock.recv<report_host_result_ptr>();
+		}
+
+		virtual void shutdown() override
+		{
+			nmsg_socket_t sock;
+			sock.open(AF_SP, NN_REQ).connect(conf_.nn_shutdown);
+
+			sock.send(1);
+			sock.recv<int>();
+
+			t_.join();
 		}
 	};
 
@@ -259,7 +291,7 @@ namespace { namespace aux {
 
 					// FIXME: this is fundamentally broken with PUB/SUB sadly
 					// since we have no idea if the report handler is slow, and in that case messages will be dropped
-					// and ref counts will not be decremented and memory will leak and we won't have any stats about that too
+					// and ref counts will not be decremented and memory will leak and we won't have any stats about that either
 					// (we also have no need for the pub/sub routing part at the moment and probably won't need it ever)
 					// so should probably reimplement this with just a loop sending things to all reports
 					// (might also try avoid blocking with threads/polls, but this might get too complicated)
@@ -287,13 +319,15 @@ namespace { namespace aux {
 								auto *r = static_cast<coordinator_request___add_report_t*>(req.get());
 
 								auto const report_name = r->report->name().str();
-								auto const thr_name = ff::fmt_str("rh/{0}", report_hosts_.size()/*thread_id*/);
-								auto const rh_name = ff::fmt_str("rh/{0}/{1}", report_hosts_.size()/*thread_id*/, report_name);
+								auto const thread_id   = report_hosts_.size();
+								auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);
+								auto const rh_name     = ff::fmt_str("rh/{0}/{1}", thread_id, report_name);
 
 								report_host_conf_t const rh_conf = {
 									.name              = rh_name,
 									.thread_name       = thr_name,
 									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
+									.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
 									.nn_packets        = conf_->nn_report_output,
 									.nn_packets_buffer = conf_->nn_report_output_buffer,
 								};
@@ -302,6 +336,27 @@ namespace { namespace aux {
 								rh->startup(move(r->report));
 
 								report_hosts_.emplace(report_name, move(rh));
+
+								this->control_send_generic(COORDINATOR_STATUS__OK);
+							}
+							break;
+
+							case COORDINATOR_REQ__DELETE_REPORT:
+							{
+								auto *r = static_cast<coordinator_request___delete_report_t*>(req.get());
+
+								auto const it = report_hosts_.find(r->report_name);
+								if (it == report_hosts_.end())
+								{
+									this->control_send_generic(COORDINATOR_STATUS__ERROR, ff::fmt_str("unknown report: {0}", r->report_name));
+									return;
+								}
+
+								report_host_t *host = it->second.get();
+								host->shutdown(); // waits for host to completely shut itself down
+
+								auto const n_erased = report_hosts_.erase(r->report_name);
+								assert(n_erased == 1);
 
 								this->control_send_generic(COORDINATOR_STATUS__OK);
 							}

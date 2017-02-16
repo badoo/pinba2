@@ -103,6 +103,7 @@ struct pinba_engine_t : private boost::noncopyable
 	virtual pinba_options_t const* options() const = 0;
 
 	virtual pinba_error_t add_report(report_ptr) = 0;
+	virtual pinba_error_t delete_report(str_ref name) = 0;
 	// virtual maybe_t<report_ptr> create_report(report_conf___by_request_t*) = 0;
 	// virtual maybe_t<report_ptr> create_report(report_conf___by_timer_t*) = 0;
 

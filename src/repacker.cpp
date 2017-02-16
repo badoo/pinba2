@@ -86,6 +86,20 @@ namespace { namespace aux {
 			{
 				int const wait_for_ms = duration_from_timeval(next_tick_tv - os_unix::clock_monotonic_now()).nsec / d_millisecond.nsec;
 
+				// FIXME: rewrite this with system poll() to save some locking and allocations in nn_poll()
+				//        maybe extend nmsg_poller to allow for dynamic poll timeout and timeout handling
+				//
+				// something like (or, maybe - do not try to extend loop() machinery, but implement with hand-made loop over once())
+				//
+				// .get_next_timeout([this](timeval_t now)
+				// {
+				// 	return (next_tick - now).nsec / msec_in_sec;
+				// })
+				// .on_timeout([this](timeval_t now)
+				// {
+				// 	send_next_batch(batch);
+				// })
+
 				++stats_->repacker.poll_total;
 				int r = nn_poll(pfd, pfd_size, wait_for_ms);
 

@@ -61,7 +61,14 @@ private:
 	typedef std::unique_ptr<poll_wrapper_t> chan_wrapper_ptr;
 	std::vector<chan_wrapper_ptr> channels_;
 
+	bool shutting_down;
+
 public:
+
+	nmsg_poller_t()
+		: shutting_down(false)
+	{
+	}
 
 	template<class T, class Function>
 	nmsg_poller_t& read(nmsg_channel_t<T>& chan, Function const& func)
@@ -87,8 +94,15 @@ public:
 		return *this;
 	}
 
+	void set_shutdown_flag()
+	{
+		shutting_down = true;
+	}
+
 	int once(duration_t timeout)
 	{
+		// TODO: rewrite this with plain poll() to save some allocations and locking
+
 		size_t const pfd_size = channels_.size();
 		struct nn_pollfd pfd[pfd_size];
 
@@ -130,6 +144,13 @@ public:
 
 		while (true)
 		{
+			// do not start next iteration if shutting down
+			// no idea how this flag can be set from outside the callback really
+			// but have it here for completeness
+			// (might be useful later from cross-thread shutdowns? - scary!)
+			if (shutting_down)
+				return -2;
+
 			int const r = this->poll_and_callback(pfd, pfd_size, wait_for_ms);
 			if (r < 0)
 				return r;
@@ -162,6 +183,9 @@ private:
 				continue;
 
 			channels_[i]->callback(now);
+
+			if (shutting_down) // this flag is set from inside the callback often
+				return -2;
 		}
 
 		return 0;
@@ -189,6 +213,9 @@ private:
 				continue;
 
 			channels_[i]->callback(now);
+
+			if (shutting_down) // this flag is set from inside the callback often
+				return -2;
 		}
 
 		return 0;

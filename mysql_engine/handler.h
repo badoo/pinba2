@@ -82,6 +82,7 @@ struct pinba_mysql_ctx_t
 	std::unique_ptr<logger_t>  logger;
 
 	std::unordered_map<std::string, pinba_share_ptr> open_shares;
+	// std::unordered_map<std::string>
 };
 
 // a global singleton for this plugin
@@ -106,8 +107,6 @@ class pinba_handler_t : public handler
 	void           free_share(pinba_share_t*);
 
 	pinba_table_ptr pinba_table_; // currently open pinba table wrapper
-
-	std::unordered_map<std::string, pinba_share_ptr> open_tables_;
 
 public:
 	logger_t      *log_;

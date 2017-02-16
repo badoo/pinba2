@@ -697,10 +697,8 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 
 		std::unique_lock<std::mutex> lk_(P_CTX_(lock));
 
-		share->table_conf = new pinba_table_conf_t(table_conf); // FIXME
+		share->table_conf = new pinba_table_conf_t(table_conf); // FIXME: raw alloc
 		share->report_active = false;
-
-		pinba_table_ = pinba_table_create(share, table_conf);
 	}
 	catch (std::exception const& e)
 	{
@@ -1023,8 +1021,18 @@ int pinba_handler_t::rename_table(const char *from, const char *to)
 	DBUG_RETURN(0);
 }
 
-int pinba_handler_t::delete_table(const char *table)
+int pinba_handler_t::delete_table(const char *table_name)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
+
+	// FIXME: will give an error when trying to delete virtual report (like 'stats')
+	auto const err = P_E_->delete_report(table_name);
+	if (err)
+	{
+		LOG_ERROR(log_, "{0}; report: {1}, error: {2}", __func__, table_name, err.what());
+		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
+	}
+
+	LOG_DEBUG(log_, "{0}; dropped report {1}", __func__, table_name);
 	DBUG_RETURN(0);
 }

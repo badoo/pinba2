@@ -143,6 +143,22 @@ namespace { namespace aux {
 			return std::move(r->err);
 		}
 
+		virtual pinba_error_t delete_report(str_ref name) override
+		{
+			auto req = meow::make_intrusive<coordinator_request___delete_report_t>();
+			req->report_name = name.str();
+
+			auto const result = coordinator_->request(req);
+
+			assert(COORDINATOR_RES__GENERIC == result->type);
+			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+
+			if (COORDINATOR_STATUS__OK == r->status)
+				return {};
+
+			return std::move(r->err);
+		}
+
 		virtual pinba_error_t start_report_with_config(report_conf___by_request_t const& conf) override
 		{
 			return this->add_report(meow::make_unique<report___by_request_t>(this->globals(), conf));

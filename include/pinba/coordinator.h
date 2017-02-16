@@ -13,8 +13,13 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // requests
 
-#define COORDINATOR_REQ__ADD_REPORT          0
-#define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 1
+struct coordinator_t;
+
+
+// #define COORDINATOR_REQ__CALL                0
+#define COORDINATOR_REQ__ADD_REPORT          1
+#define COORDINATOR_REQ__DELETE_REPORT       2
+#define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 3
 
 struct coordinator_request_t : public nmsg_message_t
 {
@@ -32,10 +37,23 @@ struct coordinator_request__with_id_t : public coordinator_request_t
 };
 
 // real requests
+
+// struct coordinator_request___add_report_t
+// 	: public coordinator_request__with_id_t<COORDINATOR_REQ__CALL>
+// {
+// 	std::function<void(coordinator_t*)> func;
+// };
+
 struct coordinator_request___add_report_t
 	: public coordinator_request__with_id_t<COORDINATOR_REQ__ADD_REPORT>
 {
 	report_ptr report; // created somewhere else, carries information about itself
+};
+
+struct coordinator_request___delete_report_t
+	: public coordinator_request__with_id_t<COORDINATOR_REQ__DELETE_REPORT>
+{
+	std::string report_name;
 };
 
 struct coordinator_request___get_report_snapshot_t

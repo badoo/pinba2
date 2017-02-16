@@ -25,7 +25,7 @@ struct nmsg_ticker_t : private boost::noncopyable
 	virtual channel_ptr subscribe(duration_t period, str_ref name = {}) = 0;
 	virtual channel_ptr once_after(duration_t after, str_ref name = {}) = 0;
 	virtual channel_ptr once_at(timeval_t at, channel_ptr chan) = 0;
-	// virtual void unsubscribe(int) = 0;
+	virtual void unsubscribe(channel_ptr) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,6 +102,11 @@ struct nmsg_ticker___thread_per_timer_t : public nmsg_ticker_t
 	{
 		throw std::runtime_error("nmsg_ticker___thread_per_timer_t::once_at not implemented!");
 	}
+
+	virtual void unsubscribe(channel_ptr) override
+	{
+		throw std::runtime_error("nmsg_ticker___thread_per_timer_t::unsubscribe not implemented!");
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +119,7 @@ struct nmsg_ticker___single_thread_t : public nmsg_ticker_t
 		timeval_t    next_tick;
 		duration_t   period;
 		bool         once;
+		bool         unsub;
 	};
 
 private:
@@ -205,7 +211,21 @@ public:
 					continue;
 				// ff::fmt(stdout, "got new sub request: {0}, {1}\n", sub.chan->endpoint(), sub.period);
 
-				subs_.insert({sub.next_tick, sub});
+				if (!sub.unsub)
+				{
+					subs_.insert({sub.next_tick, sub});
+				}
+				else
+				{
+					for (auto it = subs_.begin(), it_end = subs_.end(); it != it_end; ++it)
+					{
+						if (it->second.chan == sub.chan)
+						{
+							subs_.erase(it);
+							break;
+						}
+					}
+				}
 			}
 		});
 		t.detach();
@@ -221,9 +241,10 @@ public:
 			.next_tick = os_unix::clock_monotonic_now() + period,
 			.period = period,
 			.once = false,
+			.unsub = false,
 		};
 
-		this->do_subscribe(sub);
+		this->do_send_message_to_thread(sub);
 
 		return chan;
 	}
@@ -237,9 +258,10 @@ public:
 			.next_tick = os_unix::clock_monotonic_now() + after,
 			.period = {},
 			.once = true,
+			.unsub = false,
 		};
 
-		this->do_subscribe(sub);
+		this->do_send_message_to_thread(sub);
 
 		return chan;
 	}
@@ -251,11 +273,25 @@ public:
 			.next_tick = at,
 			.period = {},
 			.once = true,
+			.unsub = false,
 		};
 
-		this->do_subscribe(sub);
+		this->do_send_message_to_thread(sub);
 
 		return chan;
+	}
+
+	virtual void unsubscribe(channel_ptr chan) override
+	{
+		subscription_t sub = {
+			.chan = chan,
+			.next_tick = {},
+			.period = {},
+			.once = false,
+			.unsub = true,
+		};
+
+		this->do_send_message_to_thread(sub);
 	}
 
 private:
@@ -271,7 +307,7 @@ private:
 		return nmsg_channel_create<timeval_t>(chan_name);
 	}
 
-	void do_subscribe(subscription_t& sub)
+	void do_send_message_to_thread(subscription_t& sub)
 	{
 		// need to add_ref, since we're copying object bytes through nanomsg
 		// and not copying it in C++ sense (i.e. ref count will not be incremented automatically)
