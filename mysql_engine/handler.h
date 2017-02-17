@@ -19,7 +19,6 @@
 #include <memory>
 #include <thread>
 #include <mutex>
-#include <atomic>
 #include <unordered_map>
 
 #include <meow/logging/logger.hpp>
@@ -32,38 +31,79 @@
 using logger_t              = meow::logging::logger_t;
 using pinba_report_ptr      = report_ptr;
 
-struct pinba_table_conf_t;
 struct pinba_handler_t;
 
-// FIXME: this could be managed through intrusive_ptr
-// (and get_share/free_share should be moved to pinba_mysql_ctx_t then)
-struct pinba_share_t
-{
-	std::atomic<uint32_t>  ref_count;
-	THR_LOCK               lock;
-
-	std::string            table_name;
-	pinba_table_conf_t     *table_conf;
-
-	pinba_report_ptr       report;        // stored here after creation, before activation
-	bool                   report_active;
-
-	pinba_share_t(std::string const& table_name);
-	~pinba_share_t();
-};
-typedef std::unique_ptr<pinba_share_t> pinba_share_ptr;
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 // this object represents a table open in each thread (i.e. this object doesn't need locking)
 // references a share (and corresponding report)
 // is basically an abstraction over table data, enabling iteration and stuff
 // useful because each select has it's own copy of table data that is iterated separately
 // also hides all table data details from pinba_handler_t
-struct pinba_table_t : private boost::noncopyable
-{
-	virtual ~pinba_table_t() {}
+struct pinba_view_t;
+using  pinba_view_ptr = std::unique_ptr<pinba_view_t>;
 
-	// virtual str_ref        name() const = 0;
-	// virtual pinba_share_t* share() const = 0;
+struct pinba_view_kind
+{
+	enum type : uint32_t
+	{
+		stats                  = 0,
+		active_reports         = 1,
+		report_by_request_data = 2,
+		report_by_timer_data   = 3,
+	};
+#if 0
+	inline static bool const is_virtual(type t) const
+	{
+		switch (t)
+		{
+			case pinba_view_kind::stats:
+			case pinba_view_kind::active_reports:
+				return true;
+			case pinba_view_kind::report_by_request_data:
+			case pinba_view_kind::report_by_timer_data:
+				return false;
+
+			default:
+				assert(!"must not be reached");
+				return true;
+		}
+	}
+#endif
+};
+typedef pinba_view_kind::type pinba_view_kind_t;
+#if 0
+struct pinba_view_conf_t
+{
+	std::string                 orig_comment;
+
+	pinba_view_kind_t           kind;
+	duration_t                  time_window;
+	uint32_t                    tick_count;
+
+	std::vector<str_ref>        keys;
+
+	struct filter_spec_t
+	{
+		str_ref key;
+		str_ref value;
+	};
+	std::vector<filter_spec_t>  key_filters;
+
+	uint32_t                    hv_bucket_count;
+	duration_t                  hv_bucket_d;
+	std::vector<uint32_t>       percentiles;
+
+	duration_t                  min_time;    // 0 if unset
+	duration_t                  max_time;    // 0 if unset
+};
+#endif
+struct pinba_view_conf_t;
+using pinba_view_conf_ptr = std::unique_ptr<pinba_view_conf_t>; // incomplete type here, code using will see the complete type
+
+struct pinba_view_t : private boost::noncopyable
+{
+	virtual ~pinba_view_t() {}
 
 	virtual int  rnd_init(pinba_handler_t*, bool scan) = 0;
 	virtual int  rnd_end(pinba_handler_t*) = 0;
@@ -73,26 +113,52 @@ struct pinba_table_t : private boost::noncopyable
 	virtual int  info(pinba_handler_t*, uint) const = 0;
 	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const = 0;
 };
-typedef std::unique_ptr<pinba_table_t> pinba_table_ptr;
 
-struct pinba_mysql_ctx_t
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// shared table descriptor structure
+// these **ARE NOT** deleted on handler::close(),
+// since we need to retain information on what reports are active inside pinba engine
+// regardless of what tables are open in mysql
+// these ARE deleted on 'drop table' (aka handler::delete_table())
+// and corresponding report is dropped from pinba engine as well
+struct pinba_share_t : private boost::noncopyable
+{
+	uint32_t               ref_count;            // how many times we've been open-ed inside mysql
+	THR_LOCK               lock;                 // mysql thread table lock (no idea, mon)
+
+	std::string            mysql_name;           // mysql table name (can be changed)
+	pinba_view_conf_ptr    view_conf;            // config parsed from mysql table comment
+
+	pinba_report_ptr       report;               // stored here after creation, before activation
+	std::string            report_name;          // pinba engine report name (immune to mysql table renames)
+	bool                   report_active;        // has the report (above) been activated with pinba engine?
+	bool                   report_needs_engine;  // if this report exists in pinba engine
+
+	pinba_share_t(std::string const& table_name);
+	~pinba_share_t();
+};
+typedef std::unique_ptr<pinba_share_t> pinba_share_ptr;
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct pinba_mysql_ctx_t : private boost::noncopyable
 {
 	std::mutex                 lock;
 	pinba_engine_ptr           engine;
 	std::unique_ptr<logger_t>  logger;
 
 	std::unordered_map<std::string, pinba_share_ptr> open_shares;
-	// std::unordered_map<std::string>
 };
 
 // a global singleton for this plugin
 // instantiated and managed in plugin.cpp
 pinba_mysql_ctx_t* pinba_MYSQL();
 
-#define P_CTX_(x) (pinba_MYSQL()->x)
-#define P_E_    (P_CTX_(engine))
+#define P_CTX_  pinba_MYSQL()
+#define P_E_    (P_CTX_->engine)
 #define P_G_    (P_E_->globals())
-#define P_L_    (P_CTX_(logger).get())
+#define P_L_    (P_CTX_->logger.get())
 
 // #define PG_(...) pinba_MYSQL()->##__VA_ARGS__
 
@@ -106,7 +172,7 @@ class pinba_handler_t : public handler
 	pinba_share_t *get_share(char const *name, TABLE*);
 	void           free_share(pinba_share_t*);
 
-	pinba_table_ptr pinba_table_; // currently open pinba table wrapper
+	pinba_view_ptr pinba_view_; // currently open pinba table wrapper
 
 public:
 	logger_t      *log_;

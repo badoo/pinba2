@@ -19,7 +19,9 @@
 
 pinba_share_t::pinba_share_t(std::string const& table_name)
 	: ref_count(0)
-	, table_name(table_name)
+	, mysql_name(table_name)
+	, report_active(false)
+	, report_needs_engine(false)
 {
 	thr_lock_init(&this->lock);
 }
@@ -32,27 +34,14 @@ pinba_share_t::~pinba_share_t()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct pinba_table_kind
+struct pinba_view_conf_t
 {
-	enum type : uint32_t
-	{
-		stats                  = 0,
-		active_reports         = 1,
-		report_by_request_data = 2,
-		report_by_timer_data   = 3,
-	};
-};
-typedef pinba_table_kind::type pinba_table_kind_t;
-
-struct pinba_table_conf_t
-{
-	pinba_table_kind_t         kind;
-
+	pinba_view_kind_t kind;
 	report_conf___by_request_t by_request_conf;
 	report_conf___by_timer_t   by_timer_conf;
 };
 
-static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref conf_string)
+static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
 {
 	// table comment describes the report we're going to create
 	// comment structure is as follows (this should look like EBNF, but i cba being strict about this):
@@ -84,8 +73,8 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 	//  key_spec = <key_name>[,<key_name>[...]]
 	//
 
-	logger_t *log_ = P_CTX_(logger).get();
-	pinba_table_conf_t result = {};
+	logger_t *log_ = P_L_;
+	auto result = meow::make_unique<pinba_view_conf_t>();
 
 	auto const parts = meow::split_ex(conf_string, "/");
 
@@ -101,14 +90,14 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 
 	if (report_type == "stats")
 	{
-		result.kind = pinba_table_kind::stats;
-		return result;
+		result->kind = pinba_view_kind::stats;
+		return move(result);
 	}
 
 	if (report_type == "active")
 	{
-		result.kind = pinba_table_kind::active_reports;
-		return result;
+		result->kind = pinba_view_kind::active_reports;
+		return move(result);
 	}
 
 	if (report_type == "request")
@@ -121,9 +110,9 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 		auto const histogram_spec   = parts[4];
 		auto const filters_spec     = parts[5];
 
-		result.kind = pinba_table_kind::report_by_request_data;
+		result->kind = pinba_view_kind::report_by_request_data;
 
-		auto *conf = &result.by_request_conf;
+		auto *conf = &result->by_request_conf;
 		conf->name = table_name.str();
 
 		// aggregation window
@@ -191,7 +180,7 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 
 		// TODO: percentiles + filters
 
-		return result;
+		return move(result);
 	} // request options parsing
 
 	if (report_type == "timer")
@@ -204,9 +193,9 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 		auto const histogram_spec   = parts[4];
 		auto const filters_spec     = parts[5];
 
-		result.kind = pinba_table_kind::report_by_timer_data;
+		result->kind = pinba_view_kind::report_by_timer_data;
 
-		auto *conf = &result.by_timer_conf;
+		auto *conf = &result->by_timer_conf;
 		conf->name = table_name.str();
 
 		// aggregation window
@@ -280,20 +269,13 @@ static pinba_table_conf_t do_pinba_parse_table_conf(str_ref table_name, str_ref 
 
 		// TODO: percentiles + filters
 
-		return result;
+		return move(result);
 	} // timer options parsing
 
 	throw std::runtime_error(ff::fmt_str("{0}; unknown v2/<table_type> {1}", __func__, report_type));
 };
 
-static pinba_table_conf_t pinba_parse_table_conf(str_ref table_name, str_ref conf_string)
-{
-	auto const result = do_pinba_parse_table_conf(table_name, conf_string);
-	LOG_DEBUG(P_L_, "{0}; result: {{ kind: {1} }", __func__, result.kind);
-	return result;
-}
-
-struct pinba_table___base_t : public pinba_table_t
+struct pinba_view___base_t : public pinba_view_t
 {
 	virtual int  rnd_init(pinba_handler_t*, bool scan) override
 	{
@@ -331,7 +313,7 @@ struct pinba_table___base_t : public pinba_table_t
 	}
 };
 
-struct pinba_table___stats_t : public pinba_table___base_t
+struct pinba_view___stats_t : public pinba_view___base_t
 {
 	bool output_done;
 
@@ -401,11 +383,11 @@ struct pinba_table___stats_t : public pinba_table___base_t
 };
 
 
-struct pinba_table___active_reports_t : public pinba_table___base_t
+struct pinba_view___active_reports_t : public pinba_view___base_t
 {
 };
 
-struct pinba_table___report_snapshot_t : public pinba_table___base_t
+struct pinba_view___report_snapshot_t : public pinba_view___base_t
 {
 	report_snapshot_ptr            snapshot_;
 	report_snapshot_t::position_t  pos_;
@@ -414,11 +396,11 @@ struct pinba_table___report_snapshot_t : public pinba_table___base_t
 	{
 		auto share = handler->current_share();
 
-		LOG_DEBUG(P_L_, "{0}; getting snapshot for {1}", __func__, share->table_name);
+		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share->mysql_name, share->report_name);
 
 		try
 		{
-			snapshot_ = P_E_->get_report_snapshot(share->table_name);
+			snapshot_ = P_E_->get_report_snapshot(share->report_name);
 		}
 		catch (std::exception const& e)
 		{
@@ -431,7 +413,7 @@ struct pinba_table___report_snapshot_t : public pinba_table___base_t
 			meow::stopwatch_t sw;
 			snapshot_->prepare();
 
-			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds", __func__, share->table_name, sw.stamp());
+			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds", __func__, share->mysql_name, sw.stamp());
 		}
 
 		pos_ = snapshot_->pos_first();
@@ -593,22 +575,72 @@ struct pinba_table___report_snapshot_t : public pinba_table___base_t
 };
 
 
-pinba_table_ptr pinba_table_create(pinba_share_t *share, pinba_table_conf_t const& conf)
+pinba_view_conf_ptr pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
+{
+	auto result = do_pinba_parse_view_conf(table_name, conf_string);
+	LOG_DEBUG(P_L_, "{0}; result: {{ kind: {1} }", __func__, result->kind);
+	return move(result);
+}
+
+
+pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
 {
 	switch (conf.kind)
 	{
-	case pinba_table_kind::stats:
-		return meow::make_unique<pinba_table___stats_t>();
-	case pinba_table_kind::active_reports:
-		return meow::make_unique<pinba_table___active_reports_t>();
-	case pinba_table_kind::report_by_request_data:
-		return meow::make_unique<pinba_table___report_snapshot_t>();
-	case pinba_table_kind::report_by_timer_data:
-		return meow::make_unique<pinba_table___report_snapshot_t>();
+		case pinba_view_kind::stats:
+			return meow::make_unique<pinba_view___stats_t>();
+		case pinba_view_kind::active_reports:
+			return meow::make_unique<pinba_view___active_reports_t>();
+		case pinba_view_kind::report_by_request_data:
+			return meow::make_unique<pinba_view___report_snapshot_t>();
+		case pinba_view_kind::report_by_timer_data:
+			return meow::make_unique<pinba_view___report_snapshot_t>();
 
-	default:
-		assert(!"must not be reached");
-		return {};
+		default:
+			assert(!"must not be reached");
+			return {};
+	}
+}
+
+pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
+{
+	switch (conf.kind)
+	{
+		case pinba_view_kind::stats:
+			return {};
+		case pinba_view_kind::active_reports:
+			return {};
+		case pinba_view_kind::report_by_request_data:
+			return meow::make_unique<report___by_request_t>(P_G_, conf.by_request_conf);
+		case pinba_view_kind::report_by_timer_data:
+			return meow::make_unique<report___by_timer_t>(P_G_, conf.by_timer_conf);
+
+		default:
+			assert(!"must not be reached");
+			return {};
+	}
+}
+
+void share_init_with_view_comment_locked(pinba_share_t *share, str_ref table_comment)
+{
+	assert(!share->view_conf);
+	assert(!share->report);
+	assert(!share->report_active);
+
+	share->view_conf   = pinba_parse_view_conf(share->mysql_name, table_comment); // throws
+	share->report      = pinba_report_create(*share->view_conf);
+
+	if (share->report)
+	{
+		share->report_name         = share->mysql_name;
+		share->report_active       = false;
+		share->report_needs_engine = true;
+	}
+	else
+	{
+		// log display purposes only
+		share->report_name = ff::fmt_str("<virtual table: {0}>", share->view_conf->kind);
+		share->report_needs_engine = false;
 	}
 }
 
@@ -617,7 +649,7 @@ pinba_table_ptr pinba_table_create(pinba_share_t *share, pinba_table_conf_t cons
 pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
 	, share_(nullptr)
-	, log_(P_CTX_(logger).get())
+	, log_(P_L_)
 {
 }
 
@@ -629,9 +661,9 @@ pinba_share_t* pinba_handler_t::get_share(char const *table_name, TABLE *table)
 {
 	LOG_DEBUG(log_, "{0}; table_name: {1}, table: {2}", __func__, table_name, table);
 
-	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
-	auto& open_shares = P_CTX_(open_shares);
+	auto& open_shares = P_CTX_->open_shares;
 
 	auto const it = open_shares.find(table_name);
 	if (it != open_shares.end())
@@ -640,12 +672,9 @@ pinba_share_t* pinba_handler_t::get_share(char const *table_name, TABLE *table)
 	// share not found, create new one
 
 	auto share = meow::make_unique<pinba_share_t>(table_name);
-	auto *share_p = share.get(); // save raw pointer for return
+	auto *share_p = share.get(); // save raw pointer, since we're going to move into hashtable
 
-	share->table_conf = nullptr;
-	share->report_active = false;
-
-	open_shares.emplace(table_name, move(share));
+	open_shares.emplace(share_p->mysql_name, move(share));
 
 	++share_p->ref_count;
 	return share_p;
@@ -653,19 +682,14 @@ pinba_share_t* pinba_handler_t::get_share(char const *table_name, TABLE *table)
 
 void pinba_handler_t::free_share(pinba_share_t *share)
 {
-	LOG_DEBUG(log_, "{0}; share: {1}, share->table_name: {2}", __func__, share, (share) ? share->table_name : "");
+	LOG_DEBUG(log_, "{0}; share: {1}, table: {2}/{3}", __func__, share, share->mysql_name, share->report_name);
 
-	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
-	auto& open_shares = P_CTX_(open_shares);
+	--share->ref_count;
 
-	if (--share->ref_count == 0)
-	{
-		delete share->table_conf; // FIXME
-
-		size_t const n_erased = open_shares.erase(share->table_name); // share pointer is invalid from now on
-		assert(n_erased == 1);
-	}
+	// NOT removing share here, since it represents all tables known to us
+	// no other place to get that (pinba engine has reports only)
 }
 
 TABLE* pinba_handler_t::current_table() const
@@ -675,7 +699,7 @@ TABLE* pinba_handler_t::current_table() const
 
 pinba_share_t* pinba_handler_t::current_share() const
 {
-	return share_;
+	return this->share_;
 }
 
 int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_INFO *create_info)
@@ -687,18 +711,12 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 		if (!table_arg->s)
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
-		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
-		auto const table_conf = pinba_parse_table_conf(table_name, comment); // throws
-
-		// since we're in create mode, not going to start report just yet
-		// but will just save it, and start when first ::open() comes in (or maybe even select aka. rnd_init()?)
-		// not checking uniqueness here, since mysql does it for us
 		auto share = this->get_share(table_name, table_arg);
 
-		std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
-		share->table_conf = new pinba_table_conf_t(table_conf); // FIXME: raw alloc
-		share->report_active = false;
+		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
+		share_init_with_view_comment_locked(share, comment);
 	}
 	catch (std::exception const& e)
 	{
@@ -706,7 +724,6 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
 	}
 
-	// DBUG_RETURN(HA_ERR_UNSUPPORTED); // FIXME: change this to 0 when all code is implemented
 	DBUG_RETURN(0);
 }
 
@@ -735,40 +752,23 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 	//    but pinba engine is not aware of that report yet
 
 	this->share_ = this->get_share(table_name, table);
-	LOG_DEBUG(log_, "{0}; got share: {1}", __func__, share_);
 
 	// lock to use share, too coarse, but whatever
-	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
 	try
 	{
-		// config NOT parsed yet (i.e. existing table after having been closed)
-		if (!share_->table_conf)
+		// config NOT parsed yet (i.e. existing table after restart)
+		if (!share_->view_conf)
 		{
 			if (!current_table()->s)
 				throw std::runtime_error("pinba table must have a comment, please see docs");
 
 			str_ref const comment = { current_table()->s->comment.str, size_t(current_table()->s->comment.length) };
-			auto const table_conf = pinba_parse_table_conf(table_name, comment); // throws
-
-			share_->table_conf = new pinba_table_conf_t(table_conf); // FIXME
+			share_init_with_view_comment_locked(share_, comment);
 		}
 
-		// got config, but report has not been activated yet (i.e. right after create table)
-		// going to construct relevant report here, but still not going to activate (rnd_init() shall do that)
-		if (!share_->report_active)
-		{
-			if (share_->table_conf->kind == pinba_table_kind::report_by_request_data)
-			{
-				share_->report = meow::make_unique<report___by_request_t>(P_G_, share_->table_conf->by_request_conf);
-			}
-			else if (share_->table_conf->kind == pinba_table_kind::report_by_timer_data)
-			{
-				share_->report = meow::make_unique<report___by_timer_t>(P_G_, share_->table_conf->by_timer_conf);
-			}
-		}
-
-		pinba_table_ = pinba_table_create(share_, *share_->table_conf);
+		pinba_view_ = pinba_view_create(*share_->view_conf);
 	}
 	catch (std::exception const& e)
 	{
@@ -776,7 +776,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 		// and we do parse comments on create()
 		// might happen when pinba versions are upgraded or something, i guess?
 
-		LOG_ERROR(log_, "{0}; report {1}, error: {2}", __func__, table_name, e.what());
+		LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
 
 		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
 		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
@@ -806,7 +806,7 @@ int pinba_handler_t::close(void)
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
 	free_share(share_);
-	pinba_table_.reset();
+	pinba_view_.reset();
 
 	DBUG_RETURN(0);
 }
@@ -828,13 +828,15 @@ int pinba_handler_t::rnd_init(bool scan)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	std::unique_lock<std::mutex> lk_(P_CTX_(lock));
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
 	try
 	{
 		// report not active - might need to activate
-		if (!share_->report_active && share_->report)
+		if (share_->report_needs_engine && !share_->report_active)
 		{
+			assert(share_->report);
+
 			pinba_error_t err = P_E_->add_report(move(share_->report));
 			if (err)
 				throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));
@@ -844,13 +846,13 @@ int pinba_handler_t::rnd_init(bool scan)
 	}
 	catch (std::exception const& e)
 	{
-		LOG_ERROR(log_, "{0}; report {1}, error: {2}", __func__, share_->table_name, e.what());
+		LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
 
 		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
 
-	int const r = pinba_table_->rnd_init(this, scan);
+	int const r = pinba_view_->rnd_init(this, scan);
 
 	DBUG_RETURN(r);
 }
@@ -859,7 +861,7 @@ int pinba_handler_t::rnd_end()
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	int const r = pinba_table_->rnd_end(this);
+	int const r = pinba_view_->rnd_end(this);
 
 	DBUG_RETURN(r);
 }
@@ -883,7 +885,7 @@ int pinba_handler_t::rnd_next(uchar *buf)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	int const r = pinba_table_->rnd_next(this, buf);
+	int const r = pinba_view_->rnd_next(this, buf);
 
 	DBUG_RETURN(r);
 }
@@ -905,7 +907,7 @@ int pinba_handler_t::rnd_pos(uchar *buf, uchar *pos)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	int const r = pinba_table_->rnd_pos(this, buf, pos);
+	int const r = pinba_view_->rnd_pos(this, buf, pos);
 
 	DBUG_RETURN(r);
 }
@@ -935,7 +937,7 @@ void pinba_handler_t::position(const uchar *record)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	pinba_table_->position(this, record);
+	pinba_view_->position(this, record);
 
 	DBUG_VOID_RETURN;
 }
@@ -982,7 +984,7 @@ int pinba_handler_t::info(uint flag)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	int const r = pinba_table_->info(this, flag);
+	int const r = pinba_view_->info(this, flag);
 
 	DBUG_RETURN(r);
 }
@@ -997,7 +999,7 @@ int pinba_handler_t::extra(enum ha_extra_function operation)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	int const r = pinba_table_->extra(this, operation);
+	int const r = pinba_view_->extra(this, operation);
 
 	DBUG_RETURN(r);
 }
@@ -1018,6 +1020,30 @@ THR_LOCK_DATA **pinba_handler_t::store_lock(THD *thd, THR_LOCK_DATA **to, enum t
 int pinba_handler_t::rename_table(const char *from, const char *to)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
+
+	std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+	auto& open_shares = P_CTX_->open_shares;
+
+	auto it = open_shares.find(from);
+	if (it == open_shares.end())
+	{
+		// no idea why this might happen, just try and be nice
+		LOG_ERROR(log_, "{0}; can't find table to rename from: '{1}' (weird mysql shenanigans?)", __func__, from);
+		DBUG_RETURN(0);
+	}
+
+	auto share = move(it->second);
+	auto *share_p = share.get();
+
+	open_shares.erase(it);
+
+	share->mysql_name = to;
+	open_shares.emplace(share_p->mysql_name, move(share));
+
+	LOG_DEBUG(log_, "{0}; renamed mysql table '{1}' -> '{2}', internal report_name: '{3}'",
+		__func__, from, to, share_p->report_name);
+
 	DBUG_RETURN(0);
 }
 
@@ -1025,14 +1051,34 @@ int pinba_handler_t::delete_table(const char *table_name)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	// FIXME: will give an error when trying to delete virtual report (like 'stats')
-	auto const err = P_E_->delete_report(table_name);
+	std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+	auto& open_shares = P_CTX_->open_shares;
+
+	auto const it = open_shares.find(table_name);
+	if (it == open_shares.end())
+	{
+		// no idea why this might happen, just try and be nice
+		LOG_ERROR(log_, "{0}; can't find table to delete: '{1}' (weird mysql shenanigans?)", __func__, table_name);
+		DBUG_RETURN(0);
+	}
+
+	auto share = move(it->second);
+	open_shares.erase(it);
+
+	if (!share->report_needs_engine) // just a virtual table, we're done here
+		DBUG_RETURN(0);
+
+	auto const err = P_E_->delete_report(share->report_name);
 	if (err)
 	{
-		LOG_ERROR(log_, "{0}; report: {1}, error: {2}", __func__, table_name, err.what());
+		LOG_ERROR(log_, "{0}; table: '{1}', report: '{2}'; error: {3}",
+			__func__, share->mysql_name, share->report_name, err.what());
+
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
 
-	LOG_DEBUG(log_, "{0}; dropped report {1}", __func__, table_name);
+	LOG_DEBUG(log_, "{0}; dropped table '{1}', report '{2}'", __func__, share->mysql_name, share->report_name);
+
 	DBUG_RETURN(0);
 }

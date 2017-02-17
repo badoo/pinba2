@@ -68,6 +68,7 @@ Request data report (report by script name only here)
 	10 rows in set (0.01 sec)
 
 Timer data report (grouped by hostname,scriptname,servername and value timer tag "tag10")
+
 	mysql> CREATE TABLE `report_host_script_server_tag10` (
 			  `host` varchar(64) NOT NULL,
 			  `script` varchar(64) NOT NULL,
