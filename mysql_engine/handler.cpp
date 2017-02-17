@@ -18,8 +18,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 pinba_share_t::pinba_share_t(std::string const& table_name)
-	: ref_count(0)
-	, mysql_name(table_name)
+	: mysql_name(table_name)
 	, report_active(false)
 	, report_needs_engine(false)
 {
@@ -31,6 +30,25 @@ pinba_share_t::~pinba_share_t()
 	thr_lock_delete(&this->lock);
 }
 
+pinba_share_ptr pinba_share_get_or_create(char const *table_name)
+{
+	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
+
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
+	auto& open_shares = P_CTX_->open_shares;
+
+	auto const it = open_shares.find(table_name);
+	if (it != open_shares.end())
+		return it->second;
+
+	// share not found, create new one
+
+	auto share = meow::make_intrusive<pinba_share_t>(table_name);
+	open_shares.emplace(share->mysql_name, share);
+
+	return share;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -385,6 +403,90 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 struct pinba_view___active_reports_t : public pinba_view___base_t
 {
+	pinba_open_shares_t           shares_;
+	pinba_open_shares_t::iterator pos_;
+
+	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
+	{
+		// TODO:
+		// mysql code comments say that this fuction might get called twice in a row
+		// i have no idea why or when
+		// so just hack around the fact for now
+		if (!shares_.empty())
+			return 0;
+
+		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+		// take hashtable copy (but individual shares can still change! and need locking)
+		shares_ = P_CTX_->open_shares;
+		pos_    = shares_.begin();
+
+		return 0;
+	}
+
+	virtual int rnd_end(pinba_handler_t*) override
+	{
+		shares_.clear();
+		return 0;
+	}
+
+	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
+	{
+		if (pos_ == shares_.end())
+			return HA_ERR_END_OF_FILE;
+
+		auto const *share = pos_->second.get();
+		auto const *table = handler->current_table();
+
+		// remember to lock, might be too coarse, but whatever
+		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+		for (Field **field = table->field; *field; field++)
+		{
+			unsigned const field_index = (*field)->field_index;
+
+			if (!bitmap_is_set(table->read_set, field_index))
+				continue;
+
+			// mark field as writeable to avoid assert() in ::store() calls
+			// got no idea how to do this properly anyway
+			bitmap_set_bit(table->write_set, field_index);
+
+			switch (field_index)
+			{
+				case 0:
+					(*field)->set_notnull();
+					(*field)->store(share->mysql_name.c_str(), share->mysql_name.length(), &my_charset_bin);
+				break;
+
+				case 1:
+					(*field)->set_notnull();
+					(*field)->store(share->report_name.c_str(), share->report_name.length(), &my_charset_bin);
+				break;
+
+				case 2:
+					(*field)->set_notnull();
+					(*field)->store(share->view_conf->kind);
+				break;
+
+				case 3:
+					(*field)->set_notnull();
+					(*field)->store(share->report_needs_engine);
+				break;
+
+				case 4:
+					(*field)->set_notnull();
+					(*field)->store(share->report_active);
+				break;
+
+				// TODO, packet rate, stats, etc.
+			}
+		} // field for
+
+		pos_ = std::next(pos_);
+
+		return 0;
+	}
 };
 
 struct pinba_view___report_snapshot_t : public pinba_view___base_t
@@ -621,7 +723,7 @@ pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 	}
 }
 
-void share_init_with_view_comment_locked(pinba_share_t *share, str_ref table_comment)
+void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref table_comment)
 {
 	assert(!share->view_conf);
 	assert(!share->report);
@@ -657,47 +759,12 @@ pinba_handler_t::~pinba_handler_t()
 {
 }
 
-pinba_share_t* pinba_handler_t::get_share(char const *table_name, TABLE *table)
-{
-	LOG_DEBUG(log_, "{0}; table_name: {1}, table: {2}", __func__, table_name, table);
-
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-	auto& open_shares = P_CTX_->open_shares;
-
-	auto const it = open_shares.find(table_name);
-	if (it != open_shares.end())
-		return it->second.get();
-
-	// share not found, create new one
-
-	auto share = meow::make_unique<pinba_share_t>(table_name);
-	auto *share_p = share.get(); // save raw pointer, since we're going to move into hashtable
-
-	open_shares.emplace(share_p->mysql_name, move(share));
-
-	++share_p->ref_count;
-	return share_p;
-}
-
-void pinba_handler_t::free_share(pinba_share_t *share)
-{
-	LOG_DEBUG(log_, "{0}; share: {1}, table: {2}/{3}", __func__, share, share->mysql_name, share->report_name);
-
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-	--share->ref_count;
-
-	// NOT removing share here, since it represents all tables known to us
-	// no other place to get that (pinba engine has reports only)
-}
-
 TABLE* pinba_handler_t::current_table() const
 {
 	return this->table;
 }
 
-pinba_share_t* pinba_handler_t::current_share() const
+pinba_share_ptr pinba_handler_t::current_share() const
 {
 	return this->share_;
 }
@@ -711,7 +778,7 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 		if (!table_arg->s)
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
-		auto share = this->get_share(table_name, table_arg);
+		auto share = pinba_share_get_or_create(table_name);
 
 		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
@@ -751,7 +818,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 	//  - table just created and not yet active, i.e. got parsed config and created report
 	//    but pinba engine is not aware of that report yet
 
-	this->share_ = this->get_share(table_name, table);
+	this->share_ = pinba_share_get_or_create(table_name);
 
 	// lock to use share, too coarse, but whatever
 	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
@@ -805,7 +872,7 @@ int pinba_handler_t::close(void)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	free_share(share_);
+	share_.reset();
 	pinba_view_.reset();
 
 	DBUG_RETURN(0);
@@ -828,29 +895,31 @@ int pinba_handler_t::rnd_init(bool scan)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-	try
 	{
-		// report not active - might need to activate
-		if (share_->report_needs_engine && !share_->report_active)
+		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
+		try
 		{
-			assert(share_->report);
+			// report not active - might need to activate
+			if (share_->report_needs_engine && !share_->report_active)
+			{
+				assert(share_->report);
 
-			pinba_error_t err = P_E_->add_report(move(share_->report));
-			if (err)
-				throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));
+				pinba_error_t err = P_E_->add_report(move(share_->report));
+				if (err)
+					throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));
 
-			share_->report_active = true;
+				share_->report_active = true;
+			}
 		}
-	}
-	catch (std::exception const& e)
-	{
-		LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
+		catch (std::exception const& e)
+		{
+			LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
 
-		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
-		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
-	}
+			my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
+			DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
+		}
+	} // P_CTX_->lock released here
 
 	int const r = pinba_view_->rnd_init(this, scan);
 
@@ -1033,16 +1102,14 @@ int pinba_handler_t::rename_table(const char *from, const char *to)
 		DBUG_RETURN(0);
 	}
 
-	auto share = move(it->second);
-	auto *share_p = share.get();
-
+	auto share = it->second;
 	open_shares.erase(it);
 
 	share->mysql_name = to;
-	open_shares.emplace(share_p->mysql_name, move(share));
+	open_shares.emplace(share->mysql_name, share);
 
 	LOG_DEBUG(log_, "{0}; renamed mysql table '{1}' -> '{2}', internal report_name: '{3}'",
-		__func__, from, to, share_p->report_name);
+		__func__, from, to, share->report_name);
 
 	DBUG_RETURN(0);
 }
@@ -1063,7 +1130,7 @@ int pinba_handler_t::delete_table(const char *table_name)
 		DBUG_RETURN(0);
 	}
 
-	auto share = move(it->second);
+	auto share = it->second;
 	open_shares.erase(it);
 
 	if (!share->report_needs_engine) // just a virtual table, we're done here

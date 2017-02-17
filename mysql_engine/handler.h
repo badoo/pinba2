@@ -21,6 +21,7 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/logging/logger.hpp>
 #include <meow/logging/log_write.hpp>
 
@@ -52,24 +53,6 @@ struct pinba_view_kind
 		report_by_request_data = 2,
 		report_by_timer_data   = 3,
 	};
-#if 0
-	inline static bool const is_virtual(type t) const
-	{
-		switch (t)
-		{
-			case pinba_view_kind::stats:
-			case pinba_view_kind::active_reports:
-				return true;
-			case pinba_view_kind::report_by_request_data:
-			case pinba_view_kind::report_by_timer_data:
-				return false;
-
-			default:
-				assert(!"must not be reached");
-				return true;
-		}
-	}
-#endif
 };
 typedef pinba_view_kind::type pinba_view_kind_t;
 #if 0
@@ -122,9 +105,10 @@ struct pinba_view_t : private boost::noncopyable
 // regardless of what tables are open in mysql
 // these ARE deleted on 'drop table' (aka handler::delete_table())
 // and corresponding report is dropped from pinba engine as well
-struct pinba_share_t : private boost::noncopyable
+struct pinba_share_t
+	: private boost::noncopyable
+	, boost::intrusive_ref_counter<pinba_share_t>
 {
-	uint32_t               ref_count;            // how many times we've been open-ed inside mysql
 	THR_LOCK               lock;                 // mysql thread table lock (no idea, mon)
 
 	std::string            mysql_name;           // mysql table name (can be changed)
@@ -138,9 +122,11 @@ struct pinba_share_t : private boost::noncopyable
 	pinba_share_t(std::string const& table_name);
 	~pinba_share_t();
 };
-typedef std::unique_ptr<pinba_share_t> pinba_share_ptr;
+typedef boost::intrusive_ptr<pinba_share_t> pinba_share_ptr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+
+using pinba_open_shares_t = std::unordered_map<std::string, pinba_share_ptr>;
 
 struct pinba_mysql_ctx_t : private boost::noncopyable
 {
@@ -148,7 +134,7 @@ struct pinba_mysql_ctx_t : private boost::noncopyable
 	pinba_engine_ptr           engine;
 	std::unique_ptr<logger_t>  logger;
 
-	std::unordered_map<std::string, pinba_share_ptr> open_shares;
+	pinba_open_shares_t        open_shares;
 };
 
 // a global singleton for this plugin
@@ -168,17 +154,14 @@ class pinba_handler_t : public handler
 {
 	THR_LOCK_DATA lock_data;   ///< MySQL lock
 
-	pinba_share_t *share_;     ///< current-table shared info
-	pinba_share_t *get_share(char const *name, TABLE*);
-	void           free_share(pinba_share_t*);
-
+	pinba_share_ptr share_;     ///< current-table shared info
 	pinba_view_ptr pinba_view_; // currently open pinba table wrapper
 
 public:
 	logger_t      *log_;
 
-	pinba_share_t* current_share() const;
-	TABLE*         current_table() const;
+	pinba_share_ptr current_share() const;
+	TABLE*          current_table() const;
 
 public:
 
