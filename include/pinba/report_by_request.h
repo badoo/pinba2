@@ -286,6 +286,8 @@ public:
 			.time_window     = conf_.time_window,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
+			.hv_bucket_count = conf_.hv_bucket_count,
+			.hv_bucket_d     = conf_.hv_bucket_d,
 		};
 	}
 

@@ -2,6 +2,7 @@
 #define PINBA__HISTOGRAM_H_
 
 #include <cstdint>
+#include <cmath>   // ceil
 #include <utility> // c++11 swap
 
 #include <boost/noncopyable.hpp>
@@ -46,18 +47,21 @@ struct histogram_t
 private:
 	map_t     map_;
 	uint32_t  items_total_;
+	uint32_t  inf_value_;
 
 public:
 
 	histogram_t()
 		: map_()
 		, items_total_(0)
+		, inf_value_(0)
 	{
 	}
 
 	histogram_t(histogram_t const& other)
 		: map_(other.map_)
 		, items_total_(other.items_total_)
+		, inf_value_(other.inf_value_)
 	{
 	}
 
@@ -70,6 +74,7 @@ public:
 	{
 		map_.swap(other.map_);
 		std::swap(items_total_, other.items_total_);
+		std::swap(inf_value_, other.inf_value_);
 	}
 
 	map_t const& map_cref() const
@@ -82,23 +87,112 @@ public:
 		return items_total_;
 	}
 
+	uint32_t bucket_value(uint32_t id) const
+	{
+		auto const it = map_.find(id);
+		return (it == map_.end())
+				? 0
+				: it->second;
+	}
+
+	uint32_t inf_value() const
+	{
+		return inf_value_;
+	}
+
 	void merge_other(histogram_t const& other)
 	{
 		for (auto const& pair : other.map_)
 			map_[pair.first] += pair.second;
+
+		items_total_ += other.items_total_;
+		inf_value_ += other.inf_value_;
 	}
 
 	void increment(histogram_conf_t const& conf, duration_t d, uint32_t increment_by = 1)
 	{
-		uint32_t const id = d.nsec / conf.bucket_d.nsec;
-		uint32_t const bucket_id = (id < conf.bucket_count)
-									? id + 1 // known tick bucket
-									: 0;     // infinity
+		uint32_t const bucket_id = d.nsec / conf.bucket_d.nsec;
 
-		map_[bucket_id] += increment_by;
+		if (bucket_id < conf.bucket_count)
+			map_[bucket_id] += increment_by;
+		else
+			inf_value_ += increment_by;
+
 		items_total_ += increment_by;
 	}
 };
+
+inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& conf, double percentile)
+{
+	if (percentile == 0.) // 0'th percentile is always 0
+		return {0};
+
+	uint32_t const required_sum = [&]()
+	{
+		uint32_t const res = std::ceil(hv.items_total() * percentile / 100.0);
+
+		return (res > hv.items_total())
+				? hv.items_total()
+				: res;
+	}();
+
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total(), required_sum);
+
+	// fastpath - are we going to hit infinity bucket?
+	if (required_sum > (hv.items_total() - hv.inf_value()))
+	{
+		// ff::fmt(stdout, "[{0}] inf fastpath, need {1}, got histogram for {2} values\n",
+		// 	bucket_id, required_sum, (hv.items_total() - hv.inf_value()));
+		return conf.bucket_d * conf.bucket_count;
+	}
+
+
+	auto const& map = hv.map_cref();
+	auto const map_end = map.end();
+
+	uint32_t current_sum = 0;
+	uint32_t bucket_id   = 0;
+
+	for (; current_sum < required_sum; bucket_id++)
+	{
+		// infinity checked before the loop
+		assert(bucket_id < conf.bucket_count);
+
+		auto const it = map.find(bucket_id);
+		if (it == map_end)
+		{
+			// ff::fmt(stdout, "[{0}] empty; current_sum = {1}\n", bucket_id, current_sum);
+			continue;
+		}
+
+		uint32_t const next_has_values = it->second;
+		uint32_t const need_values     = required_sum - current_sum;
+
+		if (next_has_values < need_values) // take bucket and move on
+		{
+			current_sum += next_has_values;
+			// ff::fmt(stdout, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			continue;
+		}
+
+		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
+		{
+			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			return conf.bucket_d * (bucket_id + 1);
+		}
+
+		// incomplete bucket, interpolate, assuming flat time distribution within bucket
+		{
+			duration_t const d = conf.bucket_d * need_values / next_has_values;
+
+			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
+			return conf.bucket_d * bucket_id + d;
+		}
+	}
+
+	assert(!"must not be reached");
+	// return conf.bucket_d * conf.bucket_count;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

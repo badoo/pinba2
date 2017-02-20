@@ -57,6 +57,8 @@ struct pinba_view_conf_t
 	pinba_view_kind_t kind;
 	report_conf___by_request_t by_request_conf;
 	report_conf___by_timer_t   by_timer_conf;
+
+	std::vector<double>        percentiles;
 };
 
 static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
@@ -93,6 +95,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 
 	logger_t *log_ = P_L_;
 	auto result = meow::make_unique<pinba_view_conf_t>();
+	// memset(result.get(), 0, sizeof(*result)); // FIXME: uh-oh
 
 	auto const parts = meow::split_ex(conf_string, "/");
 
@@ -178,7 +181,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 
 					if (key_s[0] == '+') // request_tag
 					{
-						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size() - 1);
+						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size());
 						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
 
 						return report_conf___by_request_t::key_descriptor_by_request_tag(tag_name, tag_id);
@@ -195,6 +198,70 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 			if (conf->keys.size() == 0)
 				throw std::runtime_error("key_spec must be non-empty");
 		}
+
+		// percentiles
+		[&]()
+		{
+			if (histogram_spec == "no_percentiles")
+				return;
+
+			auto const pct_v = meow::split_ex(histogram_spec, ",");
+
+			for (auto const& pct_s : pct_v)
+			{
+				if (meow::prefix_compare(pct_s, "hv=")) // 3 chars
+				{
+					auto const hv_range_s = meow::sub_str_ref(pct_s, 3, pct_s.size());
+					auto const hv_values_v = meow::split_ex(hv_range_s, ":");
+
+					if (hv_values_v.size() != 3)
+						break; // break the loop, will immediately stumble on error
+
+					LOG_DEBUG(P_L_, "hv_values_v = {{ {0}, {1}, {2} }", hv_values_v[0], hv_values_v[1], hv_values_v[2]);
+
+					// hv=<hv_lower_time_ms>:<hv_upper_time_ms>:<hv_bucket_count>
+					uint32_t hv_lower_ms;
+					if (!meow::number_from_string(&hv_lower_ms, hv_values_v[0]))
+						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_lower_ms from '{0}'", pct_s));
+
+					uint32_t hv_upper_ms;
+					if (!meow::number_from_string(&hv_upper_ms, hv_values_v[1]))
+						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_upper_ms from '{0}'", pct_s));
+
+					uint32_t hv_bucket_count;
+					if (!meow::number_from_string(&hv_bucket_count, hv_values_v[2]))
+						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_bucket_count from '{0}'", pct_s));
+
+					if (hv_upper_ms <= hv_lower_ms)
+						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_upper_ms must be >= hv_lower_ms, in '{0}'", pct_s));
+
+					if (hv_bucket_count == 0)
+						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_bucket_count must be >= 0, in '{0}'", pct_s));
+
+					conf->hv_bucket_count = hv_bucket_count;
+					conf->hv_bucket_d     = (hv_upper_ms - hv_lower_ms) * d_millisecond / hv_bucket_count;
+				}
+				else if (meow::prefix_compare(pct_s, "p"))
+				{
+					auto const percentile_s = meow::sub_str_ref(pct_s, 1, pct_s.size());
+
+					uint32_t pv;
+					if (!meow::number_from_string(&pv, percentile_s))
+						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse integer from '{0}'", pct_s));
+
+					result->percentiles.push_back(pv);
+
+					LOG_DEBUG(P_L_, "percentile added: {0}, total: {1}", pv, result->percentiles.size());
+				}
+				else
+				{
+					throw std::runtime_error(ff::fmt_str("histogram_spec: unknown part '{0}'", pct_s));
+				}
+			}
+
+			if (!conf->hv_bucket_count || !conf->hv_bucket_d.nsec)
+				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
+		}();
 
 		// TODO: percentiles + filters
 
@@ -261,7 +328,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 
 					if (key_s[0] == '+') // request_tag
 					{
-						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size() - 1);
+						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size());
 						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
 
 						return report_conf___by_timer_t::key_descriptor_by_request_tag(tag_name, tag_id);
@@ -531,6 +598,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
+		auto share  = handler->current_share();
 		auto *table = handler->current_table();
 
 		assert(snapshot_);
@@ -610,8 +678,9 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 						break;
 					}
 
-					findex -= n_data_fields;
+					continue;
 				}
+				findex -= n_data_fields;
 			}
 			else if (REPORT_KIND__BY_TIMER_DATA == rinfo->kind)
 			{
@@ -651,8 +720,9 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 						break;
 					}
 
-					findex -= n_data_fields;
+					continue;
 				}
+				findex -= n_data_fields;
 			}
 			else
 			{
@@ -661,11 +731,21 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			}
 
 			// TODO:
-			unsigned const n_percentile_fields = 0;
+			auto const& pct = share->view_conf->percentiles;
+			unsigned const n_percentile_fields = pct.size();
 			if (findex < n_percentile_fields)
 			{
-				findex -= n_percentile_fields;
+				auto const *hv = snapshot_->get_histogram(pos_);
+				assert(hv != NULL);
+
+				auto const pct_d = get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+
+				(*field)->set_notnull();
+				(*field)->store(duration_seconds_as_double(pct_d));
+
+				continue;
 			}
+			findex -= n_percentile_fields;
 
 		} // loop over all fields
 
@@ -1134,6 +1214,9 @@ int pinba_handler_t::delete_table(const char *table_name)
 	open_shares.erase(it);
 
 	if (!share->report_needs_engine) // just a virtual table, we're done here
+		DBUG_RETURN(0);
+
+	if (!share->report_active) // not activated yet, so no report to drop
 		DBUG_RETURN(0);
 
 	auto const err = P_E_->delete_report(share->report_name);

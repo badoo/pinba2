@@ -33,6 +33,7 @@ noinst_PROGRAMS = \
 	test_nanomsg_broadcast \
 	test_nanomsg_ticker \
 	test_variant \
+	test_percentiles \
 	#
 
 test_collector_SOURCES = \
@@ -57,4 +58,8 @@ test_nanomsg_ticker_SOURCES = \
 
 test_variant_SOURCES = \
 	test_variant.cpp \
+	#
+
+test_percentiles_SOURCES = \
+	test_percentiles.cpp \
 	#
