@@ -160,6 +160,7 @@ struct report___by_timer_t : public report_t
 		item_t()
 			: data()
 			, hv()
+			, last_unique(0)
 		{
 		}
 
@@ -391,7 +392,7 @@ public:
 		: globals_(globals)
 		, conf_(conf)
 		, ticks_(conf.ts_count)
-		, packet_unqiue_{0}
+		, packet_unqiue_{1} // init this to 1, so it's different from 0 in default constructed data_t
 	{
 		// validate config
 		if (conf_.keys.size() > key_t::static_size)

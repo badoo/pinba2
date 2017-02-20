@@ -1213,19 +1213,17 @@ int pinba_handler_t::delete_table(const char *table_name)
 	auto share = it->second;
 	open_shares.erase(it);
 
-	if (!share->report_needs_engine) // just a virtual table, we're done here
-		DBUG_RETURN(0);
-
-	if (!share->report_active) // not activated yet, so no report to drop
-		DBUG_RETURN(0);
-
-	auto const err = P_E_->delete_report(share->report_name);
-	if (err)
+	// skip if it's just a virtual table or report that hasn't been activated yet
+	if (share->report_needs_engine && share->report_active)
 	{
-		LOG_ERROR(log_, "{0}; table: '{1}', report: '{2}'; error: {3}",
-			__func__, share->mysql_name, share->report_name, err.what());
+		auto const err = P_E_->delete_report(share->report_name);
+		if (err)
+		{
+			LOG_ERROR(log_, "{0}; table: '{1}', report: '{2}'; error: {3}",
+				__func__, share->mysql_name, share->report_name, err.what());
 
-		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
+			DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
+		}
 	}
 
 	LOG_DEBUG(log_, "{0}; dropped table '{1}', report '{2}'", __func__, share->mysql_name, share->report_name);
