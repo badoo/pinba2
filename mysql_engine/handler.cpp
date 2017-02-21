@@ -457,6 +457,16 @@ struct pinba_view___stats_t : public pinba_view___base_t
 					(*field)->store(stats->udp.packets_received);
 				break;
 
+				case 5:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.batch_send_total);
+				break;
+
+				case 6:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.batch_send_ok);
+				break;
+
 			default:
 				break;
 			}

@@ -38,11 +38,11 @@ static int pinba_engine_init(void *p)
 		.udp_batch_timeout        = 10 * d_millisecond,
 
 		.repacker_threads         = 4,
-		.repacker_input_buffer    = 16 * 1024,
+		.repacker_input_buffer    = 8 * 1024,
 		.repacker_batch_messages  = 1024,
 		.repacker_batch_timeout   = 100 * d_millisecond,
 
-		.coordinator_input_buffer = 32,
+		.coordinator_input_buffer = 1 * 1024,
 	};
 
 	pinba_MYSQL__instance = [&]()

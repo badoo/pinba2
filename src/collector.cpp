@@ -89,11 +89,16 @@ namespace { namespace aux {
 
 		void send_current_batch(uint32_t thread_id, raw_request_ptr& req)
 		{
+			++stats_->udp.batch_send_total;
 			bool const success = out_sock_.send_message(req, NN_DONTWAIT);
 			if (!success)
 			{
 				int const err = EAGAIN;
 				ff::fmt(stderr, "nn_send(eat_udp:{0}) failed: {1}: {2}\n", thread_id, err, nn_strerror(err));
+			}
+			else
+			{
+				++stats_->udp.batch_send_ok;
 			}
 
 			req.reset(); // signal the need to reinit
