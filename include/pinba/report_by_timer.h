@@ -158,9 +158,9 @@ struct report___by_timer_t : public report_t
 		histogram_t hv;
 
 		item_t()
-			: data()
+			: last_unique(0)
+			, data()
 			, hv()
-			, last_unique(0)
 		{
 		}
 

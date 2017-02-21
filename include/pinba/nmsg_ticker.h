@@ -8,8 +8,13 @@
 
 #include <boost/noncopyable.hpp>
 
+#include <nanomsg/nn.h>
+#include <nanomsg/reqrep.h>
+#include <nanomsg/pipeline.h>
+
 #include "pinba/globals.h"
 #include "pinba/nmsg_channel.h"
+#include "pinba/nmsg_socket.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -113,7 +118,7 @@ struct nmsg_ticker___thread_per_timer_t : public nmsg_ticker_t
 
 struct nmsg_ticker___single_thread_t : public nmsg_ticker_t
 {
-	struct subscription_t
+	struct subscription_t : public nmsg_message_t
 	{
 		channel_ptr  chan;
 		timeval_t    next_tick;
@@ -121,25 +126,32 @@ struct nmsg_ticker___single_thread_t : public nmsg_ticker_t
 		bool         once;
 		bool         unsub;
 	};
+	typedef boost::intrusive_ptr<subscription_t> subscription_ptr;
 
 private:
-	typedef std::multimap<timeval_t, subscription_t> subs_t;
+	typedef std::multimap<timeval_t, subscription_ptr> subs_t;
 	subs_t subs_;
 
-	nmsg_channel_t<subscription_t> in_chan_;
+	std::string    in_endpoint_;
+	nmsg_socket_t  in_sock_;
 
 	std::thread t_;
 
 public:
 
 	nmsg_ticker___single_thread_t()
-		: in_chan_{1, ff::fmt_str("nn_ticker/incoming/{0}", os_unix::clock_monotonic_now())}
+		: in_endpoint_(ff::fmt_str("inproc://nn_ticker/incoming/{0}", os_unix::clock_monotonic_now()))
 	{
-		std::thread t([&]()
+		in_sock_
+			.open(AF_SP, NN_REP)
+			.set_option(NN_SOL_SOCKET, NN_RCVBUF, 16 * sizeof(subscription_ptr), in_endpoint_)
+			.bind(in_endpoint_);
+
+		std::thread t([this]()
 		{
 			struct nn_pollfd pfd[] = {
 				{
-					.fd      = in_chan_.read_sock(),
+					.fd      = *in_sock_,
 					.events  = NN_POLLIN,
 					.revents = 0,
 				},
@@ -179,49 +191,53 @@ public:
 
 					while (!subs_.empty())
 					{
-						subscription_t sub = subs_.begin()->second;
-						if (now < sub.next_tick)
+						auto sub = subs_.begin()->second;
+						if (now < sub->next_tick)
 							break;
 
 						subs_.erase(subs_.begin());
 
 						// ff::fmt(stdout, "{0}; tick, sending {1}\n", sub.chan->endpoint(), now);
-						sub.chan->send_dontwait({now});
+						sub->chan->send_dontwait({now});
 
-						if (sub.once)
+						if (sub->once)
 							continue;
 
 						// find next tick, maybe skipping some if it took too long for us to process everything
 						// have to account for it, even if unlikely
 						// <= here is essential to avoid infinite loop when (sub.next_tick_tv == now)
-						while (sub.next_tick <= now)
+						while (sub->next_tick <= now)
 						{
 							// ff::fmt(stdout, "{0}; incrementing {1} < {2}\n", sub.chan->endpoint(), sub.next_tick, now);
-							sub.next_tick += sub.period;
+							sub->next_tick += sub->period;
 						}
 
-						subs_.insert({sub.next_tick, sub});
+						subs_.insert({sub->next_tick, sub});
 					}
 
 					continue;
 				}
 
-				subscription_t const sub = in_chan_.recv_dontwait(); // use dontwait to defend from spurious wakeups
-				if (!sub.chan) // empty sub = nothing has been received
+				auto const sub = in_sock_.recv<subscription_ptr>(in_endpoint_, NN_DONTWAIT);
+				if (!sub) // empty sub = nothing has been received
 					continue;
-				// ff::fmt(stdout, "got new sub request: {0}, {1}\n", sub.chan->endpoint(), sub.period);
 
-				if (!sub.unsub)
+				// ff::fmt(stdout, "got new sub request: {0}, {1}, {2}\n", sub->chan->endpoint(), sub->period, sub->unsub);
+
+				if (!sub->unsub)
 				{
-					subs_.insert({sub.next_tick, sub});
+					subs_.insert({sub->next_tick, sub});
+					in_sock_.send(1);
 				}
 				else
 				{
 					for (auto it = subs_.begin(), it_end = subs_.end(); it != it_end; ++it)
 					{
-						if (it->second.chan == sub.chan)
+						if (it->second->chan == sub->chan)
 						{
+							// ff::fmt(stdout, "erasing sub: {{ {0} }\n", sub->chan->endpoint());
 							subs_.erase(it);
+							in_sock_.send(1);
 							break;
 						}
 					}
@@ -236,13 +252,12 @@ public:
 	{
 		auto chan = this->make_channel(name, period);
 
-		subscription_t sub = {
-			.chan = chan,
-			.next_tick = os_unix::clock_monotonic_now() + period,
-			.period = period,
-			.once = false,
-			.unsub = false,
-		};
+		auto sub = meow::make_intrusive<subscription_t>();
+		sub->chan = chan;
+		sub->next_tick = os_unix::clock_monotonic_now() + period;
+		sub->period = period;
+		sub->once = false;
+		sub->unsub = false;
 
 		this->do_send_message_to_thread(sub);
 
@@ -253,13 +268,12 @@ public:
 	{
 		auto chan = this->make_channel(name, after);
 
-		subscription_t sub = {
-			.chan = chan,
-			.next_tick = os_unix::clock_monotonic_now() + after,
-			.period = {},
-			.once = true,
-			.unsub = false,
-		};
+		auto sub = meow::make_intrusive<subscription_t>();
+		sub->chan = chan;
+		sub->next_tick = os_unix::clock_monotonic_now() + after;
+		sub->period = {};
+		sub->once = true;
+		sub->unsub = false;
 
 		this->do_send_message_to_thread(sub);
 
@@ -268,13 +282,12 @@ public:
 
 	virtual channel_ptr once_at(timeval_t at, channel_ptr chan) override
 	{
-		subscription_t sub = {
-			.chan = chan,
-			.next_tick = at,
-			.period = {},
-			.once = true,
-			.unsub = false,
-		};
+		auto sub = meow::make_intrusive<subscription_t>();
+		sub->chan = chan;
+		sub->next_tick = at;
+		sub->period = {};
+		sub->once = true;
+		sub->unsub = false;
 
 		this->do_send_message_to_thread(sub);
 
@@ -283,13 +296,12 @@ public:
 
 	virtual void unsubscribe(channel_ptr chan) override
 	{
-		subscription_t sub = {
-			.chan = chan,
-			.next_tick = {},
-			.period = {},
-			.once = false,
-			.unsub = true,
-		};
+		auto sub = meow::make_intrusive<subscription_t>();
+		sub->chan = chan;
+		sub->next_tick = {};
+		sub->period = {};
+		sub->once = false;
+		sub->unsub = true;
 
 		this->do_send_message_to_thread(sub);
 	}
@@ -307,13 +319,13 @@ private:
 		return nmsg_channel_create<timeval_t>(chan_name);
 	}
 
-	void do_send_message_to_thread(subscription_t& sub)
+	void do_send_message_to_thread(subscription_ptr& sub)
 	{
-		// need to add_ref, since we're copying object bytes through nanomsg
-		// and not copying it in C++ sense (i.e. ref count will not be incremented automatically)
-		intrusive_ptr_add_ref(sub.chan.get());
+		nmsg_socket_t sock;
+		sock.open(AF_SP, NN_REQ).connect(in_endpoint_);
 
-		in_chan_.send(sub);
+		sock.send_message(sub);
+		sock.recv<int>();
 	}
 };
 

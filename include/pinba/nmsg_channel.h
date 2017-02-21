@@ -35,7 +35,7 @@ public:
 
 	~nmsg_channel_t()
 	{
-		ff::fmt(stdout, "~nmsg_channel_t {0}, {1}\n", this, endpoint_);
+		// ff::fmt(stdout, "~nmsg_channel_t {0}, {1}\n", this, endpoint_);
 		nn_close(read_sock_);
 		nn_close(write_sock_);
 	}

@@ -20,7 +20,18 @@ int main(int argc, char const *argv[])
 	// auto ticker = meow::make_unique<nmsg_ticker___thread_per_timer_t>();
 	auto ticker = meow::make_unique<nmsg_ticker___single_thread_t>();
 	auto const chan_1 = ticker->subscribe(1000 * d_millisecond, "1");
-	auto const chan_2 = ticker->subscribe(250 * d_millisecond, "2");
+	auto chan_2 = ticker->subscribe(250 * d_millisecond, "2");
+
+	{
+		// auto chan = ticker->subscribe(250 * d_millisecond, "3");
+		// sleep(1);
+		ticker->unsubscribe(chan_2);
+		chan_2.reset(); // reset to allow socket re-bind
+		chan_2 = ticker->subscribe(250 * d_millisecond, "2");
+	}
+	{
+		auto const str_chan = nmsg_channel_create<str_ref>("test_string");
+	}
 
 	auto const str_chan = nmsg_channel_create<str_ref>("test_string");
 

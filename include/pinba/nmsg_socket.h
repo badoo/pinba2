@@ -7,9 +7,8 @@
 #include <type_traits>
 
 #include <boost/noncopyable.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <boost/smart_ptr/intrusive_ref_counter.hpp>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/format/format_to_string.hpp>
 
 #include <nanomsg/nn.h>
@@ -70,7 +69,7 @@ public:
 
 	int operator*() const
 	{
-		assert(fd_ > 0);
+		assert(fd_ >= 0);
 		return fd_;
 	}
 
@@ -112,7 +111,7 @@ public:
 	{
 		int const r = nn_connect(fd_, endpoint);
 		if (r < 0)
-			throw std::runtime_error(ff::fmt_str("nn_connect({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(errno)));
+			throw std::runtime_error(ff::fmt_str("nn_connect({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
 
 		return *this;
 	}
@@ -126,7 +125,7 @@ public:
 	{
 		int const r = nn_bind(fd_, endpoint);
 		if (r < 0)
-			throw std::runtime_error(ff::fmt_str("nn_bind({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(errno)));
+			throw std::runtime_error(ff::fmt_str("nn_bind({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
 
 		return *this;
 	}
