@@ -149,10 +149,9 @@ namespace { namespace aux {
 					})
 					.loop();
 
-				// unsub from ticker, this is not strictly required, but nice
-				//
-				// this IS cross-thread access for ticker_chan_ without synchronisation
-				// but it's fine in this case for both globals_->ticker() and ticker_chan_
+				// unsub from ticker
+				// this is required to allow re-creation of report host with same name later
+				// (due to ticker channels having names that must be unique within nanomsg)
 				globals_->ticker()->unsubscribe(ticker_chan_);
 			});
 

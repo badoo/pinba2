@@ -219,16 +219,22 @@ namespace { namespace aux {
 			{
 				while (true)
 				{
-					++stats_->udp.recv_total;
-					++stats_->udp.recv_nonblocking;
+					// if we have a batch semi-filled -> be nonblocking to avoid hanging onto it for too long
+					// EAGAIN handling will send the batch and reset the pointer, so we'll be blocking afterwards
+					int const recv_flags = (req) ? MSG_DONTWAIT : MSG_WAITFORONE;
 
-					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, 0, NULL);
+					++stats_->udp.recv_total;
+
+					if (recv_flags & MSG_DONTWAIT)
+						++stats_->udp.recv_nonblocking;
+
+					int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, recv_flags, NULL);
 					if (n > 0)
 					{
+						stats_->udp.packets_received += uint64_t(n);
+
 						for (int i = 0; i < n; i++)
 						{
-							++stats_->udp.packets_received;
-
 							if (!req)
 							{
 								req.reset(new raw_request_t(conf_->batch_size, 16 * 1024));
@@ -239,7 +245,7 @@ namespace { namespace aux {
 
 							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
 							if (request == NULL) {
-								ff::fmt(stderr, "packet decode failed\n");
+								++stats_->udp.packet_decode_err;
 								return true;
 							}
 

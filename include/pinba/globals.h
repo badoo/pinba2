@@ -63,12 +63,13 @@ struct pinba_stats_t
 	timeval_t start_realtime_tv   = {0,0};  // can show to user, etc.
 
 	struct {
-		std::atomic<uint64_t> recv_total       = {0};      // total recv* calls
-		std::atomic<uint64_t> recv_nonblocking = {0};      // total recv* calls with MSG_DONTWAIT
-		std::atomic<uint64_t> recv_eagain      = {0};      // EAGAIN errors from recv* calls
-		std::atomic<uint64_t> packets_received = {0};      // total udp packets received
-		std::atomic<uint64_t> batch_send_total = {0};      // batch send attempts (to repacker)
-		std::atomic<uint64_t> batch_send_ok    = {0};      // successful batch sends
+		std::atomic<uint64_t> recv_total        = {0};      // total recv* calls
+		std::atomic<uint64_t> recv_nonblocking  = {0};      // total recv* calls with MSG_DONTWAIT
+		std::atomic<uint64_t> recv_eagain       = {0};      // EAGAIN errors from recv* calls
+		std::atomic<uint64_t> packets_received  = {0};      // total udp packets received
+		std::atomic<uint64_t> packet_decode_err = {0};      // number of times we've failed to decode incoming message
+		std::atomic<uint64_t> batch_send_total  = {0};      // batch send attempts (to repacker)
+		std::atomic<uint64_t> batch_send_ok     = {0};      // successful batch sends
 	} udp;
 
 	struct {
