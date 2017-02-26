@@ -6,7 +6,7 @@ requires
 - gcc 4.9.4+ (but will increase this requirement to something like gcc6+ soon)
 - boost: http://boost.org/
 - meow: https://github.com/anton-povarov/meow
-- nanomsg: http://nanomsg.org/
+- nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases)
 - google sparsehash: https://github.com/sparsehash/sparsehash
 
 To build, run

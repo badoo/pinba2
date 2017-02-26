@@ -1,7 +1,12 @@
 #include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
 
-#include <mysql_version.h>
-#include <sql/handler.h>
+#ifdef PINBA_USE_MYSQL_SOURCE
+#include <mysql_version.h> // <mysql/mysql_version.h>
+#include <sql/handler.h>   // <mysql/private/handler.h>
+#else
+#include <mysql/mysql_version.h>
+#include <mysql/private/handler.h>
+#endif // PINBA_USE_MYSQL_SOURCE
 
 #include <meow/logging/log_level.hpp>
 #include <meow/logging/log_prefix.hpp>
@@ -45,31 +50,40 @@ static int pinba_engine_init(void *p)
 		.coordinator_input_buffer = 1 * 1024,
 	};
 
-	pinba_MYSQL__instance = [&]()
+	try
 	{
-		auto PM = meow::make_unique<pinba_mysql_ctx_t>();
-		PM->logger = [&]()
+		pinba_MYSQL__instance = [&]()
 		{
-			// TODO: this will suffice for now, but improve logger to look like mysql native thing
-			auto logger = meow::make_unique<meow::logging::logger_impl_t<meow::logging::default_prefix_t>>();
-
-			logger->set_level(meow::logging::log_level::debug);
-			logger->prefix().set_fields(meow::logging::prefix_field::_all);
-			logger->prefix().set_log_name("pinba");
-
-			logger->set_writer([](size_t total_len, str_ref const *slices, size_t n_slices)
+			auto PM = meow::make_unique<pinba_mysql_ctx_t>();
+			PM->logger = [&]()
 			{
-				for (size_t i = 0; i < n_slices; ++i)
-					ff::write(stderr, slices[i]);
-			});
-			return move(logger);
+				// TODO: this will suffice for now, but improve logger to look like mysql native thing
+				auto logger = meow::make_unique<meow::logging::logger_impl_t<meow::logging::default_prefix_t>>();
+
+				logger->set_level(meow::logging::log_level::debug);
+				logger->prefix().set_fields(meow::logging::prefix_field::_all);
+				logger->prefix().set_log_name("pinba");
+
+				logger->set_writer([](size_t total_len, str_ref const *slices, size_t n_slices)
+				{
+					for (size_t i = 0; i < n_slices; ++i)
+						ff::write(stderr, slices[i]);
+				});
+				return move(logger);
+			}();
+
+			PM->engine = pinba_engine_init(&options); // construct objects, validate things
+			PM->engine->startup();                    // start kicking ass
+
+			return move(PM);
 		}();
-
-		PM->engine = pinba_engine_init(&options); // construct objects, validate things
-		PM->engine->startup();                    // start kicking ass
-
-		return move(PM);
-	}();
+	}
+	catch (std::exception const& e)
+	{
+		// no logger here, so just dump stuff to stderr directly
+		ff::fmt(stderr, "[pinba] init failed: {0}\n", e.what());
+		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
+	}
 
 	DBUG_RETURN(0);
 }

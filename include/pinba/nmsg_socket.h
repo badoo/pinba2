@@ -238,7 +238,7 @@ public:
 	}
 
 	template<class T>
-	bool send_intrusive_ptr(boost::intrusive_ptr<T> const& value, int flags = 0)
+	bool send(boost::intrusive_ptr<T> const& value, int flags = 0)
 	{
 		intrusive_ptr_add_ref(value.get());
 		return this->send_ex(value, flags);

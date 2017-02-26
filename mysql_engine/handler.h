@@ -11,9 +11,13 @@
 # undef DBUG_ON
 #endif
 
-
+#ifdef PINBA_USE_MYSQL_SOURCE
 #include <mysql/plugin.h>
-#include <sql/handler.h>
+#include <sql/handler.h> // <mysql/private/handler.h>
+#else
+#include <mysql/plugin.h>
+#include <mysql/private/handler.h>
+#endif // PINBA_USE_MYSQL_SOURCE
 
 #include <string>
 #include <memory>

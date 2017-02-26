@@ -144,13 +144,13 @@ else
 
 	with_mysql=`dir_resolve "$with_mysql"`
 
-	HEADERS="include/my_dir.h include/mysql/plugin.h include/mysql.h include/mysql_version.h"
-	for file in $HEADERS; do
-		if ! test -r "$with_mysql/$file"; then
-			AC_MSG_ERROR([Failed to find required header file $file in $with_mysql, check the path and make sure you've run \
-				'./configure ..<options>.. && cd include && make' in MySQL sources dir])
-		fi
-	done
+dnl	HEADERS="include/my_dir.h include/mysql/plugin.h include/mysql.h include/mysql_version.h"
+dnl	for file in $HEADERS; do
+dnl		if ! test -r "$with_mysql/$file"; then
+dnl			AC_MSG_ERROR([Failed to find required header file $file in $with_mysql, check the path and make sure you've run \
+dnl				'./configure ..<options>.. && cd include && make' in MySQL sources dir])
+dnl		fi
+dnl	done
 
 	AC_MSG_RESULT([$with_mysql])
 
@@ -160,7 +160,7 @@ else
 	AC_MSG_CHECKING([for MySQL version >= 5.1])
 	AC_TRY_RUN([
 #include <stdlib.h>
-#include <mysql_version.h>
+#include <mysql/mysql_version.h>
 main() {
 #if MYSQL_VERSION_ID >= 50100
 	exit(0);
@@ -183,7 +183,7 @@ main() {
 	CFLAGS="$CFLAGS_old"
 
 	AC_DEFINE([MYSQL_SRC], [1], [Source directory for MySQL])
-	MYSQL_INC="-I$with_mysql/sql -I$with_mysql/include -I$with_mysql/regex -I$with_mysql"
+	MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql/sql -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private -I$with_mysql/include -I$with_mysql/regex -I$with_mysql"
 fi
 
 

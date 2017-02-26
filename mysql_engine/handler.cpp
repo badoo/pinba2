@@ -9,11 +9,15 @@
 
 #include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
 
-#include <sql/field.h>
-#include <sql/structs.h>
-#include <sql/handler.h>
-#include <my_pthread.h>
-#include <include/mysqld_error.h>
+#ifdef PINBA_USE_MYSQL_SOURCE
+#include <sql/field.h> // <mysql/private/field.h>
+#include <sql/handler.h> // <mysql/private/handler.h>
+#include <include/mysqld_error.h> // <mysql/mysqld_error.h>
+#else
+#include <mysql/private/field.h>
+#include <mysql/private/handler.h>
+#include <mysql/mysqld_error.h>
+#endif // PINBA_USE_MYSQL_SOURCE
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -459,12 +463,17 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 				case 5:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.batch_send_total);
+					(*field)->store(stats->udp.packet_decode_err);
 				break;
 
 				case 6:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.batch_send_ok);
+					(*field)->store(stats->udp.batch_send_total);
+				break;
+
+				case 7:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.batch_send_err);
 				break;
 
 			default:

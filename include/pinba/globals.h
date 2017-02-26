@@ -69,7 +69,7 @@ struct pinba_stats_t
 		std::atomic<uint64_t> packets_received  = {0};      // total udp packets received
 		std::atomic<uint64_t> packet_decode_err = {0};      // number of times we've failed to decode incoming message
 		std::atomic<uint64_t> batch_send_total  = {0};      // batch send attempts (to repacker)
-		std::atomic<uint64_t> batch_send_ok     = {0};      // successful batch sends
+		std::atomic<uint64_t> batch_send_err    = {0};      // batch sends that failed
 	} udp;
 
 	struct {
