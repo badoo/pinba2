@@ -125,11 +125,7 @@ dnl }}}
 
 dnl {{{ --with-mysql
 AC_MSG_CHECKING(for MySQL source code)
-AC_ARG_WITH(mysql,
-[AS_HELP_STRING([--with-mysql],[specify MySQL sources directory])
-],
-[
-],
+AC_ARG_WITH(mysql, [AS_HELP_STRING([--with-mysql], [specify MySQL sources directory])], [],
 [
 	AC_MSG_ERROR([Please provide path to the MySQL sources directory])
 ])
@@ -144,46 +140,99 @@ else
 
 	with_mysql=`dir_resolve "$with_mysql"`
 
-dnl	HEADERS="include/my_dir.h include/mysql/plugin.h include/mysql.h include/mysql_version.h"
-dnl	for file in $HEADERS; do
-dnl		if ! test -r "$with_mysql/$file"; then
-dnl			AC_MSG_ERROR([Failed to find required header file $file in $with_mysql, check the path and make sure you've run \
-dnl				'./configure ..<options>.. && cd include && make' in MySQL sources dir])
-dnl		fi
-dnl	done
+	mysql_headers_found=0 # have we found usable headers?
+	mysql_headers_type="" # which type are those? "source" = configured mysql source, "installed" = from package
 
-	AC_MSG_RESULT([$with_mysql])
+	# check if we're building with mysql sources or installed headers
+	AC_MSG_CHECKING([mysql configured sources in $with_mysql])
+	HEADERS="sql/handler.h sql/plugin.h"
+	for file in $HEADERS; do
+		if test -r "$with_mysql/$file"; then
+			mysql_headers_found=1
+			mysql_headers_type="source"
+		fi
+	done
+
+	if test "$mysql_headers_found" = "1"; then
+		AC_MSG_RESULT([found])
+	else
+		AC_MSG_RESULT([not found])
+	fi
+
+	# now check installed headers
+	if test "$mysql_headers_found" != "1"; then
+		AC_MSG_CHECKING([mysql installed headers in $with_mysql/include/mysql])
+		mysql_headers_found=0
+		HEADERS="private/handler.h plugin.h"
+
+		for file in $HEADERS; do
+			if test -r "$with_mysql//include/mysql/$file"; then
+				mysql_headers_found=1
+				mysql_headers_type="installed"
+			fi
+		done
+
+		if test "$mysql_headers_found" = "1"; then
+			AC_MSG_RESULT([found])
+		else
+			AC_MSG_RESULT([not found])
+		fi
+	fi
+
+	if test "$mysql_headers_found" != "1"; then
+		AC_MSG_ERROR([couldn't find either configured sources or installed headers])
+	else
+		AC_MSG_NOTICE([using $with_mysql ($mysql_headers_type)])
+	fi
+
+	# now check for version
+	case $mysql_headers_type in
+		"source")
+			MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql -I$with_mysql/sql -I$with_mysql/regex -I$with_mysql/include"
+			;;
+		"installed")
+			MYSQL_INC="-I$with_mysql/include -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private"
+			;;
+		*)
+			;;
+	esac
 
 	CFLAGS_old="$CFLAGS"
-	CFLAGS="-I$with_mysql/include $CFLAGS"
+	CXXFLAGS_old="$CXXFLAGS"
+
+	CFLAGS="$MYSQL_INC"
+	CXXFLAGS="$MYSQL_INC"
 
 	AC_MSG_CHECKING([for MySQL version >= 5.1])
 	AC_TRY_RUN([
-#include <stdlib.h>
-#include <mysql/mysql_version.h>
-main() {
-#if MYSQL_VERSION_ID >= 50100
-	exit(0);
-#else
-	exit(1);
-#endif
-}
-	], [
-		AC_MSG_RESULT([ok])
-	], [
-		AC_MSG_ERROR([MySQL 5.1+ is required])
-	])
-
-	dnl check for 5.5 version with missing files and broken method signatures
-	MISSING_HEADER="sql/mysql_priv.h"
-	if ! test -r "$with_mysql/$MISSING_HEADER"; then
-		AC_DEFINE([MYSQL_VERSION_5_5], [1], [Whether we have MySQL 5.5])
-	fi
+		#include <stdlib.h>
+		#include <stdio.h>
+		#include <mysql_version.h>
+		int main() {
+			printf("(MYSQL_VERSION_ID = %d, required >= 50100)... ", MYSQL_VERSION_ID);
+		#if MYSQL_VERSION_ID >= 50100
+			exit(0);
+		#else
+			exit(1);
+		#endif
+		}
+	],
+	[ AC_MSG_RESULT([ok]) ],
+	[ AC_MSG_ERROR([MySQL 5.1+ is required])])
 
 	CFLAGS="$CFLAGS_old"
+	CXXFLAGS="$CXXFLAGS_old"
 
-	AC_DEFINE([MYSQL_SRC], [1], [Source directory for MySQL])
-	MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql/sql -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private -I$with_mysql/include -I$with_mysql/regex -I$with_mysql"
+	dnl check for 5.5 version with missing files and broken method signatures
+dnl	MISSING_HEADER="sql/mysql_priv.h"
+dnl	if ! test -r "$with_mysql/$MISSING_HEADER"; then
+dnl		AC_DEFINE([MYSQL_VERSION_5_5], [1], [Whether we have MySQL 5.5])
+dnl	fi
+
+dnl	CFLAGS="$CFLAGS_old"
+dnl
+dnl	AC_DEFINE([MYSQL_SRC], [1], [Source directory for MySQL])
+dnl	MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql/sql -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private -I$with_mysql/include -I$with_mysql/regex -I$with_mysql"
 fi
 
 
@@ -191,7 +240,7 @@ dnl }}}
 
 dnl {{{ --enable-static-build
 AC_ARG_ENABLE(static-build,
-	[AS_HELP_STRING([--enable-static-build],[link against non-system libs statically])
+	[AS_HELP_STRING([--enable-static-build], [link against non-system libs statically])
 	],
 	[
 		AC_MSG_CHECKING([if static linking is forced])
@@ -207,7 +256,7 @@ dnl }}}
 
 dnl {{{ --enable-debug
 AC_ARG_ENABLE(debug,
-	[AS_HELP_STRING([--enable-debug],[enable debugging symbols and compile flags])
+	[AS_HELP_STRING([--enable-debug], [enable debugging symbols and compile flags])
 	],
 	[
 		if test x"$enableval" = xyes ; then
