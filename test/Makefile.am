@@ -2,7 +2,6 @@
 cflags = \
 	$(CXXFLAGS) \
  	-O0 -g3 -mtune=native \
- 	$(MYSQL_INC) \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
