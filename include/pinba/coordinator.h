@@ -17,9 +17,10 @@ struct coordinator_t;
 
 
 #define COORDINATOR_REQ__CALL                0
-#define COORDINATOR_REQ__ADD_REPORT          1
-#define COORDINATOR_REQ__DELETE_REPORT       2
-#define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 3
+#define COORDINATOR_REQ__SHUTDOWN            1
+#define COORDINATOR_REQ__ADD_REPORT          2
+#define COORDINATOR_REQ__DELETE_REPORT       3
+#define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 4
 
 struct coordinator_request_t : public nmsg_message_t
 {
@@ -42,6 +43,11 @@ struct coordinator_request___call_t
 	: public coordinator_request__with_id_t<COORDINATOR_REQ__CALL>
 {
 	std::function<void(coordinator_t*)> func;
+};
+
+struct coordinator_request___shutdown_t
+	: public coordinator_request__with_id_t<COORDINATOR_REQ__SHUTDOWN>
+{
 };
 
 struct coordinator_request___add_report_t

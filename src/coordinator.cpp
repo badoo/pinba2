@@ -206,26 +206,13 @@ namespace { namespace aux {
 			{
 				this->worker_thread();
 			});
-			t.detach();
+			t_ = move(t);
 		}
 
 		virtual void shutdown() override
 		{
-			auto req = meow::make_intrusive<coordinator_request___call_t>();
-			req->func = [this](coordinator_t*)
-			{
-				// shutdown all reports
-				for (auto& report_host : report_hosts_)
-					report_host.second->shutdown();
-			};
-
-			auto const result = this->request(req);
-
-			assert(result->type == COORDINATOR_RES__GENERIC);
-			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-
-			if (COORDINATOR_STATUS__OK != r->status)
-				throw std::runtime_error(r->err.what());
+			this->request(meow::make_intrusive<coordinator_request___shutdown_t>());
+			t_.join();
 		}
 
 		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
@@ -274,7 +261,8 @@ namespace { namespace aux {
 			// uint64_t n_small_batches = 0;
 			// uint64_t small_batch_packets = 0;
 
-			nmsg_poller_t()
+			nmsg_poller_t poller;
+			poller
 				.read(*tick_chan, [this](nmsg_ticker_chan_t& chan, timeval_t now)
 				{
 					chan.recv(); // MUST do this, or chan will stay readable
@@ -322,7 +310,7 @@ namespace { namespace aux {
 						report_sock_.send_ex(batch, 0);
 					}
 				})
-				.read_sock(*control_sock_, [this](timeval_t now)
+				.read_sock(*control_sock_, [this, &poller](timeval_t now)
 				{
 					auto const req = this->control_recv();
 
@@ -336,6 +324,20 @@ namespace { namespace aux {
 							{
 								auto *r = static_cast<coordinator_request___call_t*>(req.get());
 								r->func(this);
+								this->control_send_generic(COORDINATOR_STATUS__OK);
+							}
+							break;
+
+							case COORDINATOR_REQ__SHUTDOWN:
+							{
+								auto *r = static_cast<coordinator_request___shutdown_t*>(req.get());
+
+								// shutdown all reports
+								for (auto& report_host : report_hosts_)
+									report_host.second->shutdown();
+
+								// stop poll loop and reply
+								poller.set_shutdown_flag();
 								this->control_send_generic(COORDINATOR_STATUS__OK);
 							}
 							break;
@@ -425,6 +427,8 @@ namespace { namespace aux {
 					}
 				})
 				.loop();
+
+			globals_->ticker()->unsubscribe(tick_chan);
 		}
 
 	private:
@@ -438,6 +442,8 @@ namespace { namespace aux {
 		nmsg_socket_t    in_sock_;
 		nmsg_socket_t    control_sock_;
 		nmsg_socket_t    report_sock_;
+
+		std::thread      t_;
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
