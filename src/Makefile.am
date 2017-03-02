@@ -19,8 +19,8 @@ AM_CPPFLAGS = \
 	#
 
 # the base library
-lib_LTLIBRARIES = libpinba2.la
-libpinba2_la_SOURCES = \
+lib_LIBRARIES = libpinba2.a
+libpinba2_a_SOURCES = \
 	globals.cpp \
 	collector.cpp \
 	repacker.cpp \
@@ -30,12 +30,12 @@ libpinba2_la_SOURCES = \
 	../proto/pinba.pb-c.c \
 	#
 
-libpinba2_la_CXXFLAGS = \
+libpinba2_a_CXXFLAGS = \
 	$(AM_CXXFLAGS) \
 	-fPIC -DPIC \
 	#
 
-libpinba2_la_LIBADD = \
+libpinba2_a_LIBADD = \
 	$(DEPS_LIBS) \
 	#
 
@@ -49,6 +49,6 @@ pinba2_SOURCES = \
 	#
 
 pinba2_LDADD = \
-	libpinba2.la \
+	libpinba2.a \
 	$(DEPS_LIBS) \
 	#

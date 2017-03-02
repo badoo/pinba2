@@ -21,7 +21,7 @@ AM_LDFLAGS = \
 	#
 
 LIBS = \
-	../src/libpinba2.la \
+	../src/libpinba2.a \
 	$(DEPS_LIBS) \
 	#
 
@@ -31,7 +31,6 @@ noinst_PROGRAMS = \
 	test_report \
 	test_nanomsg_broadcast \
 	test_nanomsg_ticker \
-	test_variant \
 	test_percentiles \
 	#
 
@@ -53,10 +52,6 @@ test_nanomsg_broadcast_SOURCES = \
 
 test_nanomsg_ticker_SOURCES = \
 	test_nanomsg_ticker.cpp \
-	#
-
-test_variant_SOURCES = \
-	test_variant.cpp \
 	#
 
 test_percentiles_SOURCES = \

@@ -18,9 +18,14 @@ AC_SUBST(MYSQL_INC)
 
 AC_C_CONST
 AC_TYPE_SIZE_T
+AC_HEADER_STDC
+AC_CHECK_FUNCS(memcpy memmove)
+AC_CHECK_TYPES([uint16_t])     # defined in C99 systems
+AC_CHECK_TYPES([u_int16_t])    # defined in BSD-derived systems, and gnu
+AC_CHECK_TYPES([long long])    # probably defined everywhere, but...
 AC_CHECK_HEADERS(limits.h syslimits.h string.h strings.h unistd.h stdint.h)
 AC_PROG_SED
-AC_PROG_AWK
+dnl AC_PROG_AWK
 
 AC_CHECK_FUNCS([strndup sysconf recvmmsg])
 
@@ -31,7 +36,7 @@ CFLAGS=`echo "$CFLAGS" | sed -e 's/ -DNDEBUG//g'`
 
 changequote([,])
 #CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
-CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN"
+CXXFLAGS="$CXXFLAGS -pthread -DMYSQL_DYNAMIC_PLUGIN"
 CXXFLAGS="$CXXFLAGS -Wall -Wformat-security -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Werror"
 
 AX_CONFIG_NICE([config.nice])
@@ -224,17 +229,6 @@ else
 
 	CFLAGS="$CFLAGS_old"
 	CXXFLAGS="$CXXFLAGS_old"
-
-	dnl check for 5.5 version with missing files and broken method signatures
-dnl	MISSING_HEADER="sql/mysql_priv.h"
-dnl	if ! test -r "$with_mysql/$MISSING_HEADER"; then
-dnl		AC_DEFINE([MYSQL_VERSION_5_5], [1], [Whether we have MySQL 5.5])
-dnl	fi
-
-dnl	CFLAGS="$CFLAGS_old"
-dnl
-dnl	AC_DEFINE([MYSQL_SRC], [1], [Source directory for MySQL])
-dnl	MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql/sql -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private -I$with_mysql/include -I$with_mysql/regex -I$with_mysql"
 fi
 
 

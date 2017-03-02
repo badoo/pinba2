@@ -30,6 +30,6 @@ libpinba_engine2_la_LDFLAGS = \
 	-module
 
 libpinba_engine2_la_LIBADD = \
-	../src/libpinba2.la \
+	../src/libpinba2.a \
 	$(DEPS_LIBS) \
 	#
