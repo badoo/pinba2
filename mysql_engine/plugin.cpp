@@ -1,16 +1,30 @@
-#include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
+#include "mysql_engine/pinba_mysql.h" // should be first mysql-related include
+#include "mysql_engine/handler.h"
 
 #ifdef PINBA_USE_MYSQL_SOURCE
-#include <mysql_version.h> // <mysql/mysql_version.h>
-#include <sql/handler.h>   // <mysql/private/handler.h>
+#include <mysql_version.h>
+#include <mysql/plugin.h>
 #else
 #include <mysql/mysql_version.h>
-#include <mysql/private/handler.h>
+#include <mysql/plugin.h>
 #endif // PINBA_USE_MYSQL_SOURCE
 
+#include <meow/format/format.hpp>
+#include <meow/format/format_to_string.hpp>
 #include <meow/logging/log_level.hpp>
 #include <meow/logging/log_prefix.hpp>
 #include <meow/logging/logger_impl.hpp>
+
+namespace ff = meow::format;
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+static pinba_variables_t pinba_variables_;
+
+pinba_variables_t* pinba_variables()
+{
+	return &pinba_variables_;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,10 +47,10 @@ static int pinba_engine_init(void *p)
 		return new (mem_root) pinba_handler_t(hton, table);
 	};
 
-	// FIXME: take values from global mysql config
+	// TODO: take more values from global mysql config (aka pinba_variables)
 	static pinba_options_t options = {
-		.net_address              = "0.0.0.0",
-		.net_port                 = "3002",
+		.net_address              = pinba_variables()->address,
+		.net_port                 = ff::write_str(pinba_variables()->port),
 
 		.udp_threads              = 4,
 		.udp_batch_messages       = 256,
@@ -72,6 +86,11 @@ static int pinba_engine_init(void *p)
 				return move(logger);
 			}();
 
+			// process defaults
+			PM->settings.time_window = pinba_variables()->default_history_time * d_second;
+			PM->settings.tick_count  = pinba_variables()->default_history_time; // 1 second wide ticks
+
+			// startup
 			PM->engine = pinba_engine_init(&options); // construct objects, validate things
 			PM->engine->startup();                    // start kicking ass
 
@@ -103,13 +122,8 @@ static int pinba_engine_shutdown(void *p)
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // mysql plugin definitions
 
-static int port_var = 0;
-static char *address_var = NULL;
-static unsigned int stats_gathering_period_var = 0;
-// static unsigned int log_level_var = P_ERROR | P_WARNING | P_NOTICE;
-
 static MYSQL_SYSVAR_INT(port,
-	port_var,
+	pinba_variables()->port,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
 	"UDP port to listen at",
 	NULL,
@@ -120,20 +134,20 @@ static MYSQL_SYSVAR_INT(port,
 	0);
 
 static MYSQL_SYSVAR_STR(address,
-	address_var,
+	pinba_variables()->address,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-	"IP address to listen at (leave it empty if you want to listen on all IPs)",
+	"IP address to listen at (use 0.0.0.0 here if you want to listen on all IPs)",
 	NULL,
 	NULL,
-	NULL);
+	"0.0.0.0");
 
-static MYSQL_SYSVAR_UINT(stats_gathering_period,
-	stats_gathering_period_var,
+static MYSQL_SYSVAR_UINT(default_history_time,
+	pinba_variables()->default_history_time,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-	"Request stats gathering period (microseconds)",
+	"Default history time for reports (seconds)",
 	NULL,
 	NULL,
-	10000,
+	60,
 	10,
 	INT_MAX,
 	0);
@@ -152,8 +166,7 @@ static MYSQL_SYSVAR_UINT(stats_gathering_period,
 static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(port),
 	MYSQL_SYSVAR(address),
-	// MYSQL_SYSVAR(log_level),
-	MYSQL_SYSVAR(stats_gathering_period),
+	MYSQL_SYSVAR(default_history_time),
 	NULL
 };
 

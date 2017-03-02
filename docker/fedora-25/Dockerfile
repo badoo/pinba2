@@ -7,7 +7,7 @@ RUN         dnf install -y file hostname mariadb-server
 RUN         mkdir -p /_src && cd /_src && \
 			git clone https://github.com/anton-povarov/pinba2 && \
 			git clone https://github.com/anton-povarov/meow && \
-			git clone https://github.com/nanomsg/nanomsg && echo false
+			git clone https://github.com/nanomsg/nanomsg ;
 
 RUN         /_src/pinba2/docker/build-from-source.sh
 

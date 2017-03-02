@@ -1,19 +1,11 @@
 #ifndef PINBA__HANDLER_H_
 #define PINBA__HANDLER_H_
 
-#if defined(PINBA_ENGINE_DEBUG_ON) && !defined(DBUG_ON)
-# undef DBUG_OFF
-# define DBUG_ON
-#endif
-
-#if defined(PINBA_ENGINE_DEBUG_OFF) && !defined(DBUG_OFF)
-# define DBUG_OFF
-# undef DBUG_ON
-#endif
+#include "pinba_mysql.h" // should be first mysql-related include
 
 #ifdef PINBA_USE_MYSQL_SOURCE
 #include <mysql/plugin.h>
-#include <sql/handler.h> // <mysql/private/handler.h>
+#include <sql/handler.h>
 #else
 #include <mysql/plugin.h>
 #include <mysql/private/handler.h>
@@ -139,6 +131,11 @@ struct pinba_mysql_ctx_t : private boost::noncopyable
 	std::unique_ptr<logger_t>  logger;
 
 	pinba_open_shares_t        open_shares;
+
+	struct {
+		duration_t  time_window;
+		uint32_t    tick_count;
+	} settings;
 };
 
 // a global singleton for this plugin

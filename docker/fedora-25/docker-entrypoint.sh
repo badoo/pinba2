@@ -34,10 +34,24 @@ if [ $1 = "mysqld" ]; then
 	fi
 
 	# ..dary
-	# install plugin and create default db + tables
-	echo "INSTALL PLUGIN pinba SONAME 'libpinba_engine2.so';" | TERM=dumb mysql --protocol=socket -uroot
-	echo "CREATE DATABASE pinba;" | TERM=dumb mysql --protocol=socket -uroot
 
+	# create root user with no password
+	mysql --protocol=socket -uroot <<-EOSQL
+			SET @@SESSION.SQL_LOG_BIN=0;
+			DELETE from mysql.user;
+			CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
+			GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;
+			FLUSH PRIVILEGES ;
+	EOSQL
+
+	# install plugin and create default db
+	mysql --protocol=socket -uroot <<-EOSQL
+		INSTALL PLUGIN pinba SONAME 'libpinba_engine2.so';
+		CREATE DATABASE pinba;
+	EOSQL
+
+	# TODO: create default tables from scripts/default_tables.sql
+	#       need to fix install process for that
 
 	# terminate mysql server to start it in foreground
 	if ! kill -s TERM "$pid" || ! wait "$pid"; then

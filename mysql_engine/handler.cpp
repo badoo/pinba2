@@ -147,6 +147,13 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				throw std::runtime_error("aggregation_spec/time_window must be set");
 
 			auto const time_window_s = time_window_v[0];
+
+			if (time_window_s == "default_history_time")
+			{
+				conf->time_window = P_CTX_->settings.time_window;
+				conf->ts_count    = P_CTX_->settings.tick_count;
+			}
+			else
 			{
 				uint32_t time_window;
 				if (!meow::number_from_string(&time_window, time_window_s))

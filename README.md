@@ -51,14 +51,16 @@ Active reports (unfinished)
 			  `is_active` tinyint(1) NOT NULL
 			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active'
 
-	mysql> > select * from active_reports;
-	+------------------------+--------------------+------+--------------+-----------+
-	| table_name             | internal_name      | kind | needs_engine | is_active |
-	+------------------------+--------------------+------+--------------+-----------+
-	| ./pinba/active_reports | <virtual table: 1> |    1 |            0 |         0 |
-	| ./pinba/stats          | <virtual table: 0> |    0 |            0 |         0 |
-	+------------------------+--------------------+------+--------------+-----------+
-	2 rows in set (0.00 sec)
+	mysql> select * from active_reports;
+	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
+	| table_name                              | report_name                             | kind | needs_engine | is_active |
+	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
+	| ./pinba/stats                           | <virtual table: 0>                      |    0 |            0 |         0 |
+	| ./pinba/report_host_script_server_tag10 | ./pinba/report_host_script_server_tag10 |    3 |            1 |         0 |
+	| ./pinba/report_by_script_name           | ./pinba/report_by_script_name           |    2 |            1 |         1 |
+	| ./pinba/active_reports                  | <virtual table: 1>                      |    1 |            0 |         0 |
+	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
+	4 rows in set (0.00 sec)
 
 
 Request data report (report by script name only here)
@@ -69,7 +71,7 @@ Request data report (report by script name only here)
 			  `time_total` double NOT NULL,
 			  `ru_utime_total` double NOT NULL,
 			  `ru_stime_total` double NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters'
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
 
 	mysql> select * from report_by_script_name;
 	+----------------+-----------+------------+----------------+----------------+
@@ -100,7 +102,7 @@ Timer data report (grouped by hostname,scriptname,servername and value timer tag
 			  `time_total` double NOT NULL,
 			  `ru_utime_total` double NOT NULL,
 			  `ru_stime_total` double NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,tag10/no_percentiles/no_filters'
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,tag10/no_percentiles/no_filters';
 
 	mysql> select * from report_host_script_server_tag10;
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
@@ -128,22 +130,3 @@ Timer data report (grouped by hostname,scriptname,servername and value timer tag
 	| localhost | script-7.phtml | antoxa-test | something |       801 |       801 |     12.015 |              0 |              0 |
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
 
-Active reports information (still incomplete, need more info and 'kind' column values as strings, etc.)
-
-	mysql> CREATE TABLE `active_reports` (
-			  `table_name` varchar(64) DEFAULT NULL,
-			  `report_name` varchar(64) DEFAULT NULL,
-			  `kind` int(10) unsigned DEFAULT NULL,
-			  `needs_engine` tinyint(1) DEFAULT NULL,
-			  `is_active` tinyint(1) DEFAULT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
-
-	mysql> mysql> select * from active_reports;
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	| table_name                              | report_name                             | kind | needs_engine | is_active |
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	| ./pinba/stats                           | <virtual table: 0>                      |    0 |            0 |         0 |
-	| ./pinba/report_host_script_server_tag10 | ./pinba/report_host_script_server_tag10 |    3 |            1 |         0 |
-	| ./pinba/report_by_script_name           | ./pinba/report_by_script_name           |    2 |            1 |         1 |
-	| ./pinba/active_reports                  | <virtual table: 1>                      |    1 |            0 |         0 |
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
