@@ -3,12 +3,11 @@ FROM        fedora:25
 MAINTAINER  anton.povarov@gmail.com
 
 RUN         dnf install -y git-core gcc gcc-c++ boost-devel cmake autoconf automake libtool mariadb-devel
-RUN         dnf install -y mariadb-server
+RUN         dnf install -y file hostname mariadb-server
 
 RUN         mkdir -p /_src && cd /_src && \
 			git clone https://github.com/anton-povarov/pinba2 && \
 			git clone https://github.com/anton-povarov/meow && \
-			git clone https://github.com/sparsehash/sparsehash && \
 			git clone https://github.com/nanomsg/nanomsg
 
 

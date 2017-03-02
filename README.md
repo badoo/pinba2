@@ -7,7 +7,6 @@ requires
 - boost: http://boost.org/
 - meow: https://github.com/anton-povarov/meow
 - nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases)
-- google sparsehash: https://github.com/sparsehash/sparsehash
 
 To build, run
 
@@ -17,7 +16,6 @@ To build, run
         --prefix=<path>
         --with-mysql=<path to mysql source code (you *MUST* have run configure in there first)>
         --with-nanomsg=<nanomsg install dir>
-        --with-sparsehash=<path>
         --with-meow=<path>
         --with-boost=<path (need headers only)>
 
