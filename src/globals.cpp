@@ -117,6 +117,11 @@ namespace { namespace aux {
 			collector_->startup();
 		}
 
+		virtual void shutdown() override
+		{
+			coordinator_->shutdown();
+		}
+
 		virtual pinba_globals_t* globals() const override
 		{
 			return globals_.get();

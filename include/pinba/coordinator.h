@@ -16,7 +16,7 @@
 struct coordinator_t;
 
 
-// #define COORDINATOR_REQ__CALL                0
+#define COORDINATOR_REQ__CALL                0
 #define COORDINATOR_REQ__ADD_REPORT          1
 #define COORDINATOR_REQ__DELETE_REPORT       2
 #define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 3
@@ -38,11 +38,11 @@ struct coordinator_request__with_id_t : public coordinator_request_t
 
 // real requests
 
-// struct coordinator_request___add_report_t
-// 	: public coordinator_request__with_id_t<COORDINATOR_REQ__CALL>
-// {
-// 	std::function<void(coordinator_t*)> func;
-// };
+struct coordinator_request___call_t
+	: public coordinator_request__with_id_t<COORDINATOR_REQ__CALL>
+{
+	std::function<void(coordinator_t*)> func;
+};
 
 struct coordinator_request___add_report_t
 	: public coordinator_request__with_id_t<COORDINATOR_REQ__ADD_REPORT>
@@ -127,7 +127,9 @@ struct coordinator_conf_t
 struct coordinator_t : private boost::noncopyable
 {
 	virtual ~coordinator_t() {}
+
 	virtual void startup() = 0;
+	virtual void shutdown() = 0;
 
 	virtual coordinator_response_ptr request(coordinator_request_ptr) = 0;
 };

@@ -7,10 +7,8 @@ RUN         dnf install -y file hostname mariadb-server
 RUN         mkdir -p /_src && cd /_src && \
 			git clone https://github.com/anton-povarov/pinba2 && \
 			git clone https://github.com/anton-povarov/meow && \
-			git clone https://github.com/nanomsg/nanomsg
+			git clone https://github.com/nanomsg/nanomsg && echo true
 
-
-# COPY        build-from-source.sh /opt
 RUN         /_src/pinba2/docker/build-from-source.sh
 
 RUN         dnf remove -y git-core gcc gcc-c++ boost-devel cmake autoconf automake libtool mariadb-devel && \

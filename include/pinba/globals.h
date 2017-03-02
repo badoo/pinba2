@@ -101,6 +101,7 @@ struct pinba_engine_t : private boost::noncopyable
 	virtual ~pinba_engine_t() {}
 
 	virtual void startup() = 0;
+	virtual void shutdown() = 0;
 
 	virtual pinba_globals_t*       globals() const = 0;
 	virtual pinba_options_t const* options() const = 0;

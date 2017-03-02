@@ -209,6 +209,25 @@ namespace { namespace aux {
 			t.detach();
 		}
 
+		virtual void shutdown() override
+		{
+			auto req = meow::make_intrusive<coordinator_request___call_t>();
+			req->func = [this](coordinator_t*)
+			{
+				// shutdown all reports
+				for (auto& report_host : report_hosts_)
+					report_host.second->shutdown();
+			};
+
+			auto const result = this->request(req);
+
+			assert(result->type == COORDINATOR_RES__GENERIC);
+			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+
+			if (COORDINATOR_STATUS__OK != r->status)
+				throw std::runtime_error(r->err.what());
+		}
+
 		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
 		{
 			nmsg_socket_t sock;
@@ -313,6 +332,14 @@ namespace { namespace aux {
 					{
 						switch (req->type)
 						{
+							case COORDINATOR_REQ__CALL:
+							{
+								auto *r = static_cast<coordinator_request___call_t*>(req.get());
+								r->func(this);
+								this->control_send_generic(COORDINATOR_STATUS__OK);
+							}
+							break;
+
 							case COORDINATOR_REQ__ADD_REPORT:
 							{
 								auto *r = static_cast<coordinator_request___add_report_t*>(req.get());

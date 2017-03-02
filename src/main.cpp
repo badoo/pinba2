@@ -106,6 +106,9 @@ int main(int argc, char const *argv[])
 
 	getchar();
 
+	pinba->shutdown();
+	pinba.reset();
+
 	return 0;
 }
 
