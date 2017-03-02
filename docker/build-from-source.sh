@@ -41,6 +41,3 @@ cp /_src/pinba2/mysql_engine/.libs/libpinba_engine2.so `mysql_config --plugindir
 # clean everything
 rm -rf /_src
 rm -rf /_install
-dnf remove -y $DEV_PACKAGES
-dnf autoremove -y
-dnf clean all
