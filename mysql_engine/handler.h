@@ -48,6 +48,7 @@ struct pinba_view_kind
 		active_reports         = 1,
 		report_by_request_data = 2,
 		report_by_timer_data   = 3,
+		report_by_packet_data  = 4,
 	};
 };
 typedef pinba_view_kind::type pinba_view_kind_t;

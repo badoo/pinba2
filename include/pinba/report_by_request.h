@@ -238,6 +238,21 @@ public: // snapshot
 			hashtable_t() { this->set_empty_key(key_t{}); }
 		};
 
+		static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		{
+			return it->first;
+		}
+
+		static void* value_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		{
+			return (void*)&it->second;
+		}
+
+		static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		{
+			return &it->second.hv;
+		}
+
 		// merge full tick from src ringbuffer to current hashtable_t state
 		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
 		{

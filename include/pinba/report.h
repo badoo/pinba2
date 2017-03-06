@@ -7,8 +7,9 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define REPORT_KIND__BY_REQUEST_DATA 0
-#define REPORT_KIND__BY_TIMER_DATA   1
+#define REPORT_KIND__BY_REQUEST_DATA  0
+#define REPORT_KIND__BY_TIMER_DATA    1
+#define REPORT_KIND__BY_PACKET_DATA   2
 
 struct report_info_t
 {

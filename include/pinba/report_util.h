@@ -78,6 +78,11 @@ struct report_snapshot_traits___example
 	// merge full tick from src ringbuffer to current hashtable_t state
 	// from can be NULL (when there is no timeslice for this interval)
 	static void merge_from_to(report_info_t& rinfo, typename src_ticks_t::value_t const *from, hashtable_t& to);
+
+	// get iterator keys/values/histograms at iterator
+	static report_key_t key_at_position(hashtable_t const&, iterator_t const&);
+	static void*        value_at_position(hashtable_t const&, iterator_t const&);
+	static histogram_t* hv_at_position(hashtable_t const&, iterator_t const&);
 };
 */
 
@@ -188,7 +193,8 @@ private:
 	virtual report_key_t get_key(position_t const& pos) const override
 	{
 		auto const& it = reinterpret_cast<iterator_t const&>(pos);
-		return it->first;
+		// return it->first;
+		return Traits::key_at_position(data_, it);
 	}
 
 	virtual report_key_str_t get_key_str(position_t const& pos) const override
@@ -211,7 +217,7 @@ private:
 	virtual void* get_data(position_t const& pos) override
 	{
 		auto const& it = reinterpret_cast<iterator_t const&>(pos);
-		return (void*)&it->second; // FIXME: const
+		return Traits::value_at_position(data_, it);
 	}
 
 	virtual histogram_t const* get_histogram(position_t const& pos) override
@@ -220,7 +226,7 @@ private:
 			return NULL;
 
 		auto const& it = reinterpret_cast<iterator_t const&>(pos);
-		return &it->second.hv;
+		return Traits::hv_at_position(data_, it);
 	}
 
 private:
