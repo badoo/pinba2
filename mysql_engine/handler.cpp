@@ -139,7 +139,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 		auto const histogram_spec   = parts[4];
 		auto const filters_spec     = parts[5];
 
-		result->kind = pinba_view_kind::report_by_request_data;
+		result->kind = pinba_view_kind::report_by_packet_data;
 
 		auto *conf = &result->by_packet_conf;
 		conf->name = table_name.str();

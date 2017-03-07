@@ -83,7 +83,7 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 	VALIDATE_FLOAT_V(r->ru_utime, ru_utime);
 	VALIDATE_FLOAT_V(r->ru_stime, ru_stime);
 
-	VALIDATE_FLOAT_NONZERO_ARRAY(timer_value);
+	VALIDATE_FLOAT_ARRAY(timer_value);
 	VALIDATE_FLOAT_ARRAY(timer_ru_utime);
 	VALIDATE_FLOAT_ARRAY(timer_ru_stime);
 
