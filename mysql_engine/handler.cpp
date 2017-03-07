@@ -658,20 +658,25 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 				case 4:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.packets_received);
+					(*field)->store(stats->udp.recv_bytes);
 				break;
 
 				case 5:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.packet_decode_err);
+					(*field)->store(stats->udp.packets_received);
 				break;
 
 				case 6:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.batch_send_total);
+					(*field)->store(stats->udp.packet_decode_err);
 				break;
 
 				case 7:
+					(*field)->set_notnull();
+					(*field)->store(stats->udp.batch_send_total);
+				break;
+
+				case 8:
 					(*field)->set_notnull();
 					(*field)->store(stats->udp.batch_send_err);
 				break;

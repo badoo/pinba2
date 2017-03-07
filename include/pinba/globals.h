@@ -66,6 +66,7 @@ struct pinba_stats_t
 		std::atomic<uint64_t> recv_total        = {0};      // total recv* calls
 		std::atomic<uint64_t> recv_nonblocking  = {0};      // total recv* calls with MSG_DONTWAIT
 		std::atomic<uint64_t> recv_eagain       = {0};      // EAGAIN errors from recv* calls
+		std::atomic<uint64_t> recv_bytes        = {0};      // bytes received
 		std::atomic<uint64_t> packets_received  = {0};      // total udp packets received
 		std::atomic<uint64_t> packet_decode_err = {0};      // number of times we've failed to decode incoming message
 		std::atomic<uint64_t> batch_send_total  = {0};      // batch send attempts (to repacker)

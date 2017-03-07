@@ -138,6 +138,7 @@ namespace { namespace aux {
 						request_unpack_pba.allocator_data = &req->nmpa;
 					}
 
+					stats_->udp.recv_bytes += uint64_t(n);
 
 					Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
 					if (request == NULL) {
@@ -235,6 +236,8 @@ namespace { namespace aux {
 							}
 
 							str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
+
+							stats_->udp.recv_bytes += dgram.size();
 
 							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
 							if (request == NULL) {
