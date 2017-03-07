@@ -16,9 +16,15 @@
 
 struct pinba_variables_t
 {
-	char      *address             = nullptr;
-	int       port                 = 0;
-	unsigned  default_history_time = 0;
+	char      *address                  = nullptr;
+	int       port                      = 0;
+	unsigned  default_history_time_sec  = 0;
+	unsigned  udp_reader_threads        = 0;
+	unsigned  repacker_threads          = 0;
+	unsigned  repacker_input_buffer     = 0;
+	unsigned  repacker_batch_messages   = 0;
+	unsigned  repacker_batch_timeout_ms = 0;
+	unsigned  report_input_buffer       = 0;
 };
 
 pinba_variables_t* pinba_variables();

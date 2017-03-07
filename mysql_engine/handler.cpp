@@ -170,6 +170,8 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				conf->time_window = time_window * d_second;
 				conf->ts_count    = time_window; // i.e. ticks are always 1 second wide
 			}
+
+			LOG_DEBUG(P_L_, "tw: {0}, count: {1}", conf->time_window, conf->ts_count);
 		}
 
 		// keys

@@ -297,8 +297,8 @@ public:
 
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_REQUEST_DATA,
-			.timeslice_count = conf_.ts_count,
 			.time_window     = conf_.time_window,
+			.timeslice_count = conf_.ts_count,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
 			.hv_bucket_count = conf_.hv_bucket_count,

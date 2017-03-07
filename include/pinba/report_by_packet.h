@@ -176,8 +176,8 @@ public:
 	{
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_PACKET_DATA,
-			.timeslice_count = conf_.ts_count,
 			.time_window     = conf_.time_window,
+			.timeslice_count = conf_.ts_count,
 			.n_key_parts     = 0,
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
 			.hv_bucket_count = conf_.hv_bucket_count,
@@ -239,7 +239,7 @@ public:
 // private:
 protected:
 	pinba_globals_t             *globals_;
-	report_conf___by_packet_t  conf_;
+	report_conf___by_packet_t   conf_;
 
 	report_info_t               info_;
 

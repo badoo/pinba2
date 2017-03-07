@@ -52,16 +52,16 @@ static int pinba_engine_init(void *p)
 		.net_address              = pinba_variables()->address,
 		.net_port                 = ff::write_str(pinba_variables()->port),
 
-		.udp_threads              = 4,
+		.udp_threads              = pinba_variables()->udp_reader_threads,
 		.udp_batch_messages       = 256,
 		.udp_batch_timeout        = 10 * d_millisecond,
 
-		.repacker_threads         = 4,
-		.repacker_input_buffer    = 8 * 1024,
-		.repacker_batch_messages  = 1024,
-		.repacker_batch_timeout   = 100 * d_millisecond,
+		.repacker_threads         = pinba_variables()->repacker_threads,
+		.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
+		.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
+		.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
 
-		.coordinator_input_buffer = 1 * 1024,
+		.coordinator_input_buffer = pinba_variables()->report_input_buffer,
 	};
 
 	try
@@ -87,8 +87,8 @@ static int pinba_engine_init(void *p)
 			}();
 
 			// process defaults
-			PM->settings.time_window = pinba_variables()->default_history_time * d_second;
-			PM->settings.tick_count  = pinba_variables()->default_history_time; // 1 second wide ticks
+			PM->settings.time_window = pinba_variables()->default_history_time_sec * d_second;
+			PM->settings.tick_count  = pinba_variables()->default_history_time_sec; // 1 second wide ticks
 
 			// startup
 			PM->engine = pinba_engine_init(&options); // construct objects, validate things
@@ -128,21 +128,30 @@ static MYSQL_SYSVAR_INT(port,
 	"UDP port to listen at",
 	NULL,
 	NULL,
-	3002,
-	0,
-	65536,
+	3002,  // def
+	0,     // min
+	65536, // max
 	0);
 
 static MYSQL_SYSVAR_STR(address,
 	pinba_variables()->address,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-	"IP address to listen at (use 0.0.0.0 here if you want to listen on all IPs)",
-	NULL,
+	"IP address to listen at (use 0.0.0.0 here if you want to listen on all IPs), must not be empty",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *tmp, struct st_mysql_value *value)
+	{
+		// disallow empty address
+		char address_tmp[128];
+		int address_sz = sizeof(address_tmp);
+		char const *str = value->val_str(value, address_tmp, &address_sz);
+		if (!str || *str == '\0' || address_sz == 0)
+			return 1;
+		return 0;
+	},
 	NULL,
 	"0.0.0.0");
 
-static MYSQL_SYSVAR_UINT(default_history_time,
-	pinba_variables()->default_history_time,
+static MYSQL_SYSVAR_UINT(default_history_time_sec,
+	pinba_variables()->default_history_time_sec,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
 	"Default history time for reports (seconds)",
 	NULL,
@@ -152,21 +161,82 @@ static MYSQL_SYSVAR_UINT(default_history_time,
 	INT_MAX,
 	0);
 
-// static MYSQL_SYSVAR_UINT(log_level,
-//   log_level_var,
-//   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-//   "Set log level",
-//   NULL,
-//   NULL,
-//   P_ERROR | P_WARNING | P_NOTICE,
-//   0,
-//   INT_MAX,
-//   0);
+static MYSQL_SYSVAR_UINT(udp_reader_threads,
+	pinba_variables()->udp_reader_threads,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Number of UDP reader threads, default (4) is usually enough here, max 16",
+	NULL,
+	NULL,
+	4,
+	1,
+	16,
+	0);
+
+static MYSQL_SYSVAR_UINT(repacker_threads,
+	pinba_variables()->repacker_threads,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Number of internal packet-repack threads, try tunning higher if stats udp_batches_lost is > 0, max: 16",
+	NULL,
+	NULL,
+	4,
+	1,
+	16,
+	0);
+
+static MYSQL_SYSVAR_UINT(repacker_input_buffer,
+	pinba_variables()->repacker_input_buffer,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Buffer for X message for udp-reader -> packet-repack threads",
+	NULL,
+	NULL,
+	8 * 1024,
+	128,
+	128 * 1024,
+	0);
+
+static MYSQL_SYSVAR_UINT(repacker_batch_messages,
+	pinba_variables()->repacker_batch_messages,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Batch size for packet-repack -> reports communication",
+	NULL,
+	NULL,
+	1024,
+	128,
+	16 * 1024,
+	0);
+
+static MYSQL_SYSVAR_UINT(repacker_batch_timeout_ms,
+	pinba_variables()->repacker_batch_timeout_ms,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Max delay between packet-repack thread batches generation (in milliseconds!)",
+	NULL,
+	NULL,
+	100,
+	1,
+	1000,
+	0);
+
+static MYSQL_SYSVAR_UINT(report_input_buffer,
+	pinba_variables()->report_input_buffer,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"Buffer for X batches (each has max repacker_batch_messages packets) for each activated report",
+	NULL,
+	NULL,
+	1024,
+	16,
+	8 * 1024,
+	0);
 
 static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(port),
 	MYSQL_SYSVAR(address),
-	MYSQL_SYSVAR(default_history_time),
+	MYSQL_SYSVAR(default_history_time_sec),
+	MYSQL_SYSVAR(udp_reader_threads),
+	MYSQL_SYSVAR(repacker_threads),
+	MYSQL_SYSVAR(repacker_input_buffer),
+	MYSQL_SYSVAR(repacker_batch_messages),
+	MYSQL_SYSVAR(repacker_batch_timeout_ms),
+	MYSQL_SYSVAR(report_input_buffer),
 	NULL
 };
 

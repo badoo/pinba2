@@ -15,8 +15,8 @@ struct report_info_t
 {
 	int         kind; // see defines above
 
-	uint32_t    timeslice_count;
 	duration_t  time_window;
+	uint32_t    timeslice_count;
 
 	uint32_t    n_key_parts;
 	bool        hv_enabled;
