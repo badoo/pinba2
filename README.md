@@ -30,6 +30,8 @@ Unfinished, use containers or
 - create database pinba
 - create default tables + reports
 
+Something like this
+
 	$ rsync -av mysql_engine/.libs/libpinba_engine2.so `mysql_config --plugindir`
 	$ echo "install plugin pinba soname 'libpinba_engine2.so';" | mysql
 	$ (maybe change my.cnf here, restart server if you have made changes)
