@@ -1,12 +1,16 @@
 # Pinba2
 An attempt to rethink internal implementation and some features of excellent https://github.com/tony2001/pinba_engine by @tony2001.
 
+# Docker
+- [Fedora 25](docker/fedora-25/) (kinda works)
+- [Mariadb/debian](docker/debian-mariadb/) (unfinished)
+
 # Building
 requires
 - gcc 4.9.4+ (but will increase this requirement to something like gcc6+ soon)
-- boost: http://boost.org/
 - meow: https://github.com/anton-povarov/meow
-- nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases)
+- boost: http://boost.org/ (or just install from packages for your distro)
+- nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases, or just pull master)
 
 To build, run
 
@@ -18,6 +22,20 @@ To build, run
         --with-nanomsg=<nanomsg install dir>
         --with-meow=<path>
         --with-boost=<path (need headers only)>
+
+# Installation
+Unfinished, use containers or
+- copy mysql_engine/.libs/libpinba_engine2.so to mysql plugin directory
+- install plugin
+- create database pinba
+- create default tables + reports
+
+	$ rsync -av mysql_engine/.libs/libpinba_engine2.so `mysql_config --plugindir`
+	$ echo "install plugin pinba soname 'libpinba_engine2.so';" | mysql
+	$ (maybe change my.cnf here, restart server if you have made changes)
+	$ echo "create database pinba;" | mysql
+	$ cat scripts/default_tables.sql | mysql
+	$ cat scripts/default_reports.sql | mysql
 
 # SQL
 All pinba tables are created with sql comment to tell the engine about table purpose and structure,
