@@ -25,6 +25,34 @@ general syntax for comment is as follows (not all reports use all the fields).
 
 	> COMMENT='v2/<report_type>/<aggregation_window>/<keys>/<histogram+percentiles>/<filters>';
 
+- &lt;aggregation_window&gt;: time window we aggregate data in. values are
+	- 'default_history_time' to use global setting (= 60 seconds)
+	- (number of seconds) - whatever you want >0
+- &lt;keys&gt;: keys we aggregate incoming data on
+	- 'no_keys': key based aggregation not needed / not supported (packet report only)
+	- &lt;key_spec&gt;[,&lt;key_spec&gt;[,...]]
+		- ~field_name: any of 'host', 'script', 'server', 'schema'
+		- +request_tag_name: use this request tag's value as key
+		- timer_tag_name: use this timer tag's value as key (timer reports only)
+	- example: '~host,~script,~server,group,server'
+		- will aggregate on 5 keys
+		- 'hostname', 'scriptname', 'servername' global fields, plus 'group' and 'server' timer tag values
+- &lt;histogram+percentiles&gt;: histogram time and percentiles definition
+	- 'no_percentiles': disable
+	- syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
+		- &lt;percentiles&gt;=p&lt;number&gt;[,p&lt;number&gt;[...]]
+	- example: 'hv=0:2000:20000,p99,p100'
+		- this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
+		- also adds 2 percentiles to report 99th and 100th, percentile calculation precision is 0.1ms given above
+		- report uses 'request_time' from incoming packets for percentiles calculation
+- &lt;filters&gt;: accept only packets maching these filters into this report
+	- to disable: put 'no_filters' here, report will accept all packets
+	- any of (separate with commas):
+		- 'min_time=&lt;milliseconds&gt;'
+		- 'max_time=&lt;milliseconds&gt;'
+		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has tags with given values and accept only those
+
+
 **Stats report (unfinished, might replace with status variables)**
 
 This table contains internal stats, useful for monitoring/debugging/performance tuning.
@@ -102,25 +130,6 @@ General information about incoming packets
 Table comment syntax
 
 	> 'v2/packet/<aggregation_window>/no_keys/<histogram+percentiles>/<filters>';
-
-- &lt;aggregation_window&gt;: time window we aggregate data in. values are
-	- 'default_history_time' to use global setting (= 60 seconds)
-	- (number of seconds) - whatever you want >0
-- no_keys: this report does not support key based aggregation (the intent is to give a global overview)
-- &lt;histogram+percentiles&gt;: histogram time and percentiles definition
-	- 'no_percentiles' - disable
-	- syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
-		- &lt;percentiles&gt;=p&lt;number&gt;[,p&lt;number&gt;[...]]
-	- example: 'hv=0:2000:20000,p99,p100'
-		- this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
-		- also adds 2 percentiles to report 99th and 100th, percentile calculation precision is 0.1ms given above
-		- report uses 'request_time' from incoming packets for percentiles calculation
-- &lt;filters&gt;: accept only packets maching these filters into this report
-	- to disable: put 'no_filters' here, report will accept all packets
-	- any of (separate with commas):
-		- 'min_time=&lt;milliseconds&gt;'
-		- 'max_time=&lt;milliseconds&gt;'
-		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has tags with given values and accept only those
 
 example
 
