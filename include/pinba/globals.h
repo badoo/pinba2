@@ -51,6 +51,12 @@ struct dictionary_t;
 struct report_conf___by_request_t;
 struct report_conf___by_timer_t;
 
+struct repacker_stats_t
+{
+	timeval_t ru_utime = {0,0};
+	timeval_t ru_stime = {0,0};
+};
+
 // this one is updated from multiple threads
 // use atomic primitives to set/fetch values
 // if using atomic is impossible - use pinba_stats_wrap_t below and lock
@@ -79,6 +85,8 @@ struct pinba_stats_t
 		std::atomic<uint64_t> recv_eagain       = {0};
 		std::atomic<uint64_t> packets_processed = {0};
 	} repacker;
+
+	std::vector<repacker_stats_t> repacker_threads;
 };
 
 struct pinba_globals_t : private boost::noncopyable

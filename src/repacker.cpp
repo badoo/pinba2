@@ -1,6 +1,8 @@
 #include <thread>
 #include <vector>
 
+#include <meow/unix/resource.hpp> // getrusage_ex
+
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
 #include "pinba/collector.h"
@@ -30,6 +32,8 @@ namespace { namespace aux {
 			out_sock_
 				.open(AF_SP, NN_PUSH)
 				.bind(conf_->nn_output.c_str());
+
+			stats_->repacker_threads.resize(conf_->n_threads);
 
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
@@ -74,12 +78,23 @@ namespace { namespace aux {
 
 			packet_batch_ptr batch = create_batch();
 			timeval_t next_tick_tv = os_unix::clock_monotonic_now() + conf_->batch_timeout;
+			timeval_t next_gerusage_tv = os_unix::clock_monotonic_now() + d_second;
 
-			// dictionary_t thread_local_dict;
-			dictionary_t *dictionary = globals_->dictionary(); // &thread_local_dict;
+			dictionary_t *dictionary = globals_->dictionary();
 
-			struct nn_pollfd pfd[] = {
-				{ .fd = *in_sock, .events = NN_POLLIN, .revents = 0, },
+			int const in_sock_fd = [](nmsg_socket_t& sock)
+			{
+				int sys_fd = -1;
+				size_t sz = sizeof(sys_fd);
+				int const r = nn_getsockopt(*sock, NN_SOL_SOCKET, NN_RCVFD, &sys_fd, &sz);
+				if (r < 0)
+					throw std::runtime_error(ff::fmt_str("nn_getsockopt(RCVFD) failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno())));
+
+				return sys_fd;
+			}(in_sock);
+
+			struct pollfd pfd[] = {
+				{ .fd = in_sock_fd, .events = NN_POLLIN, .revents = 0, },
 			};
 			size_t const pfd_size = sizeof(pfd) / sizeof(pfd[0]);
 
@@ -87,8 +102,7 @@ namespace { namespace aux {
 			{
 				int const wait_for_ms = duration_from_timeval(next_tick_tv - os_unix::clock_monotonic_now()).nsec / d_millisecond.nsec;
 
-				// FIXME: rewrite this with system poll() to save some locking and allocations in nn_poll()
-				//        maybe extend nmsg_poller to allow for dynamic poll timeout and timeout handling
+				// FIXME: maybe extend nmsg_poller to allow for dynamic poll timeout and timeout handling
 				//
 				// something like (or, maybe - do not try to extend loop() machinery, but implement with hand-made loop over once())
 				//
@@ -102,11 +116,22 @@ namespace { namespace aux {
 				// })
 
 				++stats_->repacker.poll_total;
-				int r = nn_poll(pfd, pfd_size, wait_for_ms);
+				int r = poll(pfd, pfd_size, wait_for_ms);
+
+				// after waiting - check for rusage update
+				if (next_gerusage_tv < os_unix::clock_monotonic_now())
+				{
+					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+					next_gerusage_tv += d_second;
+
+					std::lock_guard<std::mutex> lk_(stats_->mtx);
+					stats_->repacker_threads[thread_id].ru_utime = { .tv_sec = ru.ru_utime.tv_sec, .tv_nsec = ru.ru_utime.tv_usec * 1000 };
+					stats_->repacker_threads[thread_id].ru_stime = { .tv_sec = ru.ru_stime.tv_sec, .tv_nsec = ru.ru_stime.tv_usec * 1000 };
+				}
 
 				if (r < 0)
 				{
-					ff::fmt(stderr, "nn_poll() failed: {0}:{1}\n", nn_errno(), nn_strerror(nn_errno()));
+					ff::fmt(stderr, "poll() failed: {0}:{1}\n", errno, strerror(errno));
 					break;
 				}
 

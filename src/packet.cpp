@@ -95,7 +95,7 @@ packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmp
 {
 	auto p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
-	uint32_t td[r->n_dictionary] = {0};
+	uint32_t td[r->n_dictionary];
 
 	for (unsigned i = 0; i < r->n_dictionary; i++)
 	{

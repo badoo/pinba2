@@ -620,6 +620,23 @@ struct pinba_view___stats_t : public pinba_view___base_t
 		auto const *stats = P_G_->stats();
 		auto *table = handler->current_table();
 
+		auto const repacker_threads_tmp = [&]()
+		{
+			std::lock_guard<std::mutex> lk_(stats->mtx);
+			return stats->repacker_threads;
+		}();
+
+		repacker_stats_t repacker_stats = [&]()
+		{
+			repacker_stats_t result = {};
+			for (auto const& rst : repacker_threads_tmp)
+			{
+				result.ru_utime += rst.ru_utime;
+				result.ru_stime += rst.ru_stime;
+			}
+			return result;
+		}();
+
 		for (Field **field = table->field; *field; field++)
 		{
 			auto const field_index = (*field)->field_index;
@@ -679,6 +696,16 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				case 8:
 					(*field)->set_notnull();
 					(*field)->store(stats->udp.batch_send_err);
+				break;
+
+				case 9:
+					(*field)->set_notnull();
+					(*field)->store(timeval_to_double(repacker_stats.ru_utime));
+				break;
+
+				case 10:
+					(*field)->set_notnull();
+					(*field)->store(timeval_to_double(repacker_stats.ru_stime));
 				break;
 
 			default:
@@ -801,6 +828,9 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			my_printf_error(ER_INTERNAL_ERROR, "[pinba] %s", MYF(0), e.what());
 			return HA_ERR_INTERNAL_ERROR;
 		}
+
+		// TODO: check if percentile fields are being requested
+		//       and do not merge histograms if not
 
 		{
 			meow::stopwatch_t sw;

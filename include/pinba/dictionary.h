@@ -13,6 +13,7 @@
 #include <meow/hash/hash_impl.hpp>
 
 #include "pinba/globals.h"
+#include "t1ha/t1ha.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -78,10 +79,19 @@ struct dictionary_get_result_t
 };
 static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t), "no padding expected");
 
+struct dictionary_word_hasher_t
+{
+	inline uint64_t operator()(str_ref const& key) const
+	{
+		return t1ha0(key.data(), key.size(), (uint64_t)this /*seed*/);
+	}
+};
+
 struct dictionary_t
 {
 	using words_t = std::deque<std::string>; // deque to save a lil on push_back reallocs
-	using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
+	// using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
+	using hash_t  = google::dense_hash_map<str_ref, uint32_t, dictionary_word_hasher_t>;
 
 	mutable rw_mutex_t mtx_;
 

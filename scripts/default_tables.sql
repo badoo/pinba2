@@ -11,7 +11,9 @@ CREATE TABLE if not exists `stats` (
   `udp_packets_received` bigint(20) unsigned NOT NULL,
   `udp_packets_decode_err` bigint(20) unsigned NOT NULL,
   `udp_batches` bigint(20) unsigned NOT NULL,
-  `udp_batches_lost` bigint(20) unsigned NOT NULL
+  `udp_batches_lost` bigint(20) unsigned NOT NULL,
+  `repacker_ru_utime` double NOT NULL,
+  `repacker_ru_stime` double NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
 CREATE TABLE if not exists `active_reports` (
