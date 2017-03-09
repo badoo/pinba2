@@ -109,7 +109,7 @@ namespace { namespace aux {
 			//
 
 			auto const *rinfo        = report_->info();
-			auto const tick_interval = rinfo->time_window / rinfo->timeslice_count;
+			auto const tick_interval = rinfo->time_window / rinfo->tick_count;
 
 			ticker_chan_ = globals_->ticker()->subscribe(tick_interval, conf_.name);
 

@@ -173,13 +173,13 @@ example
 	1 row in set (0.00 sec)
 
 
-**Request data report (report by script name only here)**
+**Request data report**
 
 Table comment syntax
 
 	> 'v2/packet/<aggregation_window>/<key_spec>/<histogram+percentiles>/<filters>';
 
-example
+example (report by script name only here)
 
 	mysql> CREATE TABLE `report_by_script_name` (
 			  `script` varchar(64) NOT NULL,
@@ -206,13 +206,13 @@ example
 	+----------------+-----------+------------+----------------+----------------+
 	10 rows in set (0.01 sec)
 
-Timer data report (grouped by hostname,scriptname,servername and value timer tag "tag10")
+**Timer data report**
 
 Table comment syntax
 
 	> 'v2/packet/<aggregation_window>/<key_spec>/<histogram+percentiles>/<filters>';
 
-example
+example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 
 	mysql> CREATE TABLE `report_host_script_server_tag10` (
 			  `host` varchar(64) NOT NULL,

@@ -177,7 +177,7 @@ public:
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_PACKET_DATA,
 			.time_window     = conf_.time_window,
-			.timeslice_count = conf_.ts_count,
+			.tick_count      = conf_.ts_count,
 			.n_key_parts     = 0,
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
 			.hv_bucket_count = conf_.hv_bucket_count,
