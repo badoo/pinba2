@@ -20,28 +20,61 @@ To build, run
         --with-boost=<path (need headers only)>
 
 # SQL
-Stats report (unfinished, might replace with status variables)
+All pinba tables are created with sql comment to tell the engine about table purpose and structure,
+general syntax for comment is as follows (not all reports use all the fields).
 
-	mysql> CREATE TABLE `stats` (
+	> COMMENT='v2/<report_type>/<aggregation_window>/<keys>/<histogram+percentiles>/<filters>';
+
+**Stats report (unfinished, might replace with status variables)**
+
+This table contains internal stats, useful for monitoring/debugging/performance tuning.
+
+Table comment syntax
+
+	> 'v2/stats'
+
+example
+
+	mysql> CREATE TABLE if not exists `stats` (
 			  `uptime` double NOT NULL,
 			  `udp_recv_total` bigint(20) unsigned NOT NULL,
 			  `udp_recv_nonblocking` bigint(20) unsigned NOT NULL,
 			  `udp_recv_eagain` bigint(20) unsigned NOT NULL,
+			  `udp_recv_bytes` bigint(20) unsigned NOT NULL,
 			  `udp_packets_received` bigint(20) unsigned NOT NULL,
 			  `udp_packets_decode_err` bigint(20) unsigned NOT NULL,
 			  `udp_batches` bigint(20) unsigned NOT NULL,
 			  `udp_batches_lost` bigint(20) unsigned NOT NULL
 			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
-	mysql> select uptime, udp_recv_total, udp_packets_received, udp_packets_received/uptime as udp_packets_per_sec, udp_batches/uptime batches_per_sec from stats;
-	+----------------+----------------+----------------------+---------------------+-------------------+
-	| uptime         | udp_recv_total | udp_packets_received | udp_packets_per_sec | batches_per_sec   |
-	+----------------+----------------+----------------------+---------------------+-------------------+
-	| 8977.666442504 |         168851 |              2000002 |  222.77526268197715 | 6.950915407656303 |
-	+----------------+----------------+----------------------+---------------------+-------------------+
+	mysql> select uptime, udp_recv_total, udp_recv_bytes, udp_packets_received, udp_packets_decode_err, udp_recv_bytes/uptime as bytes_per_sec, udp_packets_received/uptime as packets_per_sec, udp_recv_bytes/udp_packets_received as bytes_per_packet from stats;
+	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
+	| uptime         | udp_recv_total | udp_recv_bytes | udp_packets_received | udp_packets_decode_err | bytes_per_sec     | packets_per_sec   | bytes_per_packet |
+	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
+	| 2920.189254705 |        2982158 |    21280114623 |             23070611 |                      0 | 7287238.177701511 | 7900.382128599611 |         922.3906 |
+	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
 	1 row in set (0.00 sec)
 
-Active reports (unfinished)
+**Active reports (unfinished)**
+
+This table lists all reports/tables known to the engine with additional information about them.
+
+| Field  | Description |
+|:------ |:----------- |
+| table_name | mysql fully qualified table name (including database) |
+| internal_name | the name known to the engine (it never changes with table renames, but you shouldn't really care about that). |
+| kind | internal report type (this will become a string at some point :) ) |
+| needs_engine | if 0 - this table is just known to mysql, and has no underlying report inside pinba engine |
+| is_active | has this report been activated (i.e. are we gathering/aggregating data) |
+| time_window | (not implemented yet) time window this reports aggregates data for (that you specify when creating a table) |
+| tick_count | (not implemented yet) number of ticks, time_window is split into |
+| row_count | (not implemented yet) approximate row count (counting this requires is roughly equivalent to select count(*) from 'some_report_table' ) |
+
+Table comment syntax
+
+	> 'v2/active'
+
+example
 
 	mysql> CREATE TABLE `active_reports` (
 			  `table_name` varchar(128) NOT NULL,
@@ -53,7 +86,7 @@ Active reports (unfinished)
 
 	mysql> select * from active_reports;
 	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	| table_name                              | report_name                             | kind | needs_engine | is_active |
+	| table_name                              | internal_name                           | kind | needs_engine | is_active |
 	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
 	| ./pinba/stats                           | <virtual table: 0>                      |    0 |            0 |         0 |
 	| ./pinba/report_host_script_server_tag10 | ./pinba/report_host_script_server_tag10 |    3 |            1 |         0 |
@@ -62,8 +95,61 @@ Active reports (unfinished)
 	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
 	4 rows in set (0.00 sec)
 
+**Packet reports (like info in tony2001/pinba_engine)**
 
-Request data report (report by script name only here)
+General information about incoming packets
+
+Table comment syntax
+
+	> 'v2/packet/<aggregation_window>/no_keys/<histogram+percentiles>/<filters>';
+
+- &lt;aggregation_window&gt;: time window we aggregate data in. values are
+	- 'default_history_time' to use global setting (= 60 seconds)
+	- (number of seconds) - whatever you want >0
+- no_keys: this report does not support key based aggregation (the intent is to give a global overview)
+- &lt;histogram+percentiles&gt;: histogram time and percentiles definition
+	- 'no_percentiles' - disable
+	- syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
+		- &lt;percentiles&gt;=p&lt;number&gt;[,p&lt;number&gt;[...]]
+	- example: 'hv=0:2000:20000,p99,p100'
+		- this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
+		- also adds 2 percentiles to report 99th and 100th, percentile calculation precision is 0.1ms given above
+		- report uses 'request_time' from incoming packets for percentiles calculation
+- &lt;filters&gt;: accept only packets maching these filters into this report
+	- to disable: put 'no_filters' here, report will accept all packets
+	- any of (separate with commas):
+		- 'min_time=&lt;milliseconds&gt;'
+		- 'max_time=&lt;milliseconds&gt;'
+		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has tags with given values and accept only those
+
+example
+
+	mysql> CREATE TABLE `info` (
+			  `req_count` bigint(20) unsigned NOT NULL,
+			  `timer_count` bigint(20) unsigned NOT NULL,
+			  `time_total` double NOT NULL,
+			  `ru_utime_total` double NOT NULL,
+			  `ru_stime_total` double NOT NULL,
+			  `traffic_kb` bigint(20) unsigned NOT NULL,
+			  `memory_usage` bigint(20) unsigned NOT NULL
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
+
+	mysql> select * from info;
+	+-----------+-------------+------------+----------------+----------------+------------+--------------+
+	| req_count | timer_count | time_total | ru_utime_total | ru_stime_total | traffic_kb | memory_usage |
+	+-----------+-------------+------------+----------------+----------------+------------+--------------+
+	|    254210 |      508420 |     254.21 |              0 |              0 |          0 |            0 |
+	+-----------+-------------+------------+----------------+----------------+------------+--------------+
+	1 row in set (0.00 sec)
+
+
+**Request data report (report by script name only here)**
+
+Table comment syntax
+
+	> 'v2/packet/<aggregation_window>/<key_spec>/<histogram+percentiles>/<filters>';
+
+example
 
 	mysql> CREATE TABLE `report_by_script_name` (
 			  `script` varchar(64) NOT NULL,
@@ -91,6 +177,12 @@ Request data report (report by script name only here)
 	10 rows in set (0.01 sec)
 
 Timer data report (grouped by hostname,scriptname,servername and value timer tag "tag10")
+
+Table comment syntax
+
+	> 'v2/packet/<aggregation_window>/<key_spec>/<histogram+percentiles>/<filters>';
+
+example
 
 	mysql> CREATE TABLE `report_host_script_server_tag10` (
 			  `host` varchar(64) NOT NULL,
@@ -129,4 +221,3 @@ Timer data report (grouped by hostname,scriptname,servername and value timer tag
 	| localhost | script-8.phtml | antoxa-test | something |       803 |       803 |     12.045 |              0 |              0 |
 	| localhost | script-7.phtml | antoxa-test | something |       801 |       801 |     12.015 |              0 |              0 |
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
-
