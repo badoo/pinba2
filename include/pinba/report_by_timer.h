@@ -51,7 +51,7 @@ struct report_conf___by_timer_t
 	std::string name;
 
 	duration_t  time_window;      // total time window this report covers (report host uses this for ticking)
-	uint32_t    ts_count;         // number of timeslices to store
+	uint32_t    tick_count;         // number of timeslices to store
 
 	uint32_t    hv_bucket_count;  // number of histogram buckets, each bucket is hv_bucket_d 'wide'
 	duration_t  hv_bucket_d;      // width of each hv_bucket
@@ -406,7 +406,7 @@ public:
 	report___by_timer_t(pinba_globals_t *globals, report_conf___by_timer_t const& conf)
 		: globals_(globals)
 		, conf_(conf)
-		, ticks_(conf.ts_count)
+		, ticks_(conf.tick_count)
 		, packet_unqiue_{1} // init this to 1, so it's different from 0 in default constructed data_t
 	{
 		// validate config
@@ -419,7 +419,7 @@ public:
 		info_ = report_info_t {
 			.kind            = REPORT_KIND__BY_TIMER_DATA,
 			.time_window     = conf_.time_window,
-			.tick_count      = conf_.ts_count,
+			.tick_count      = conf_.tick_count,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
 			.hv_bucket_count = conf_.hv_bucket_count,

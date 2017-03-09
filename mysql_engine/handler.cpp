@@ -155,7 +155,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 			if (time_window_s == "default_history_time")
 			{
 				conf->time_window = P_CTX_->settings.time_window;
-				conf->ts_count    = P_CTX_->settings.tick_count;
+				conf->tick_count  = P_CTX_->settings.tick_count;
 			}
 			else
 			{
@@ -168,10 +168,10 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				}
 
 				conf->time_window = time_window * d_second;
-				conf->ts_count    = time_window; // i.e. ticks are always 1 second wide
+				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
 			}
 
-			LOG_DEBUG(P_L_, "tw: {0}, count: {1}", conf->time_window, conf->ts_count);
+			LOG_DEBUG(P_L_, "tw: {0}, count: {1}", conf->time_window, conf->tick_count);
 		}
 
 		// keys
@@ -273,7 +273,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 			if (time_window_s == "default_history_time")
 			{
 				conf->time_window = P_CTX_->settings.time_window;
-				conf->ts_count    = P_CTX_->settings.tick_count;
+				conf->tick_count  = P_CTX_->settings.tick_count;
 			}
 			else
 			{
@@ -286,7 +286,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				}
 
 				conf->time_window = time_window * d_second;
-				conf->ts_count    = time_window; // i.e. ticks are always 1 second wide
+				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
 			}
 		}
 
@@ -427,7 +427,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 			if (time_window_s == "default_history_time")
 			{
 				conf->time_window = P_CTX_->settings.time_window;
-				conf->ts_count    = P_CTX_->settings.tick_count;
+				conf->tick_count  = P_CTX_->settings.tick_count;
 			}
 			else
 			{
@@ -440,7 +440,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				}
 
 				conf->time_window = time_window * d_second;
-				conf->ts_count    = time_window; // i.e. ticks are always 1 second wide
+				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
 			}
 		}
 

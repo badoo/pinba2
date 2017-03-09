@@ -81,7 +81,7 @@ try
 		static report_conf___by_request_t conf = {
 			.name            = "test_report",
 			.time_window     = 60 * d_second,
-			.ts_count        = 60,
+			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
 			.hv_bucket_d     = 1 * d_microsecond,
 

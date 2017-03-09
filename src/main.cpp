@@ -64,7 +64,7 @@ int main(int argc, char const *argv[])
 		static report_conf___by_request_t conf = {
 			.name            = "scripts",
 			.time_window     = 60 * d_second,
-			.ts_count        = 60,
+			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
 			.hv_bucket_d     = 1 * d_microsecond,
 
@@ -85,7 +85,7 @@ int main(int argc, char const *argv[])
 		static report_conf___by_timer_t conf = {
 			.name            = "script+tag10",
 			.time_window     = 60 * d_second,
-			.ts_count        = 60,
+			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
 			.hv_bucket_d     = 1 * d_microsecond,
 
