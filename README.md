@@ -37,6 +37,7 @@ Unfinished, use containers or
 	$ cat scripts/default_tables.sql | mysql
 	$ cat scripts/default_reports.sql | mysql
 
+
 # SQL
 All pinba tables are created with sql comment to tell the engine about table purpose and structure,
 general syntax for comment is as follows (not all reports use all the fields).
