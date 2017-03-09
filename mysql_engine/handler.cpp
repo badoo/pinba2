@@ -833,7 +833,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 		auto const *rinfo = snapshot_->report_info();
 		auto const key = snapshot_->get_key_str(pos_);
 
-		unsigned const key_size = rinfo->n_key_parts;
+		unsigned const n_key_fields = rinfo->n_key_parts;
 
 		for (Field **field = table->field; *field; field++)
 		{
@@ -849,51 +849,76 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 			// key comes first
 			{
-				if (findex < key_size)
+				if (findex < n_key_fields)
 				{
 					(*field)->set_notnull();
 					(*field)->store(key[findex].begin(), key[findex].c_length(), &my_charset_bin);
 					continue;
 				}
-				findex -= key_size;
+				findex -= n_key_fields;
 			}
 
 			// row data comes next
 			if (REPORT_KIND__BY_REQUEST_DATA == rinfo->kind)
 			{
-				static unsigned const n_data_fields = 6;
+				static unsigned const n_data_fields = 11;
 				if (findex < n_data_fields)
 				{
 					auto const *row = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(pos_));
 
 					switch (findex)
 					{
-					case 0:
+					case 0: // req_count
 						(*field)->set_notnull();
 						(*field)->store(row->req_count);
 					break;
 
-					case 1:
+					case 1: // req_per_sec
+						(*field)->set_notnull();
+						(*field)->store(double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 2: // time_total
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->time_total));
 					break;
 
-					case 2:
+					case 3: // time_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 4: // ru_utime
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->ru_utime));
 					break;
 
-					case 3:
+					case 5: // ru_utime_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 6: // ru_stime
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->ru_stime));
 					break;
 
-					case 4:
+					case 7: // ru_stime_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 8: // traffic_total
 						(*field)->set_notnull();
 						(*field)->store(row->traffic_kb);
 					break;
 
-					case 5:
+					case 9: // traffic_per_sec
+						(*field)->set_notnull();
+						(*field)->store(double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 10: // memory_footprint
 						(*field)->set_notnull();
 						(*field)->store(row->mem_usage);
 					break;
@@ -908,36 +933,61 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			}
 			else if (REPORT_KIND__BY_TIMER_DATA == rinfo->kind)
 			{
-				static unsigned const n_data_fields = 5;
+				static unsigned const n_data_fields = 10;
 				if (findex < n_data_fields)
 				{
 					auto const *row = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(pos_));
 
 					switch (findex)
 					{
-					case 0:
+					case 0: // req_count
 						(*field)->set_notnull();
 						(*field)->store(row->req_count);
 					break;
 
-					case 1:
+					case 1: // req_per_sec
+						(*field)->set_notnull();
+						(*field)->store(double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 2: // hit_count
 						(*field)->set_notnull();
 						(*field)->store(row->hit_count);
 					break;
 
-					case 2:
+					case 3: // hit_per_sec
+						(*field)->set_notnull();
+						(*field)->store(double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 4: // time_total
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->time_total));
 					break;
 
-					case 3:
+					case 5: // time_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 6: // ru_utime
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->ru_utime));
 					break;
 
-					case 4:
+					case 7: // ru_utime_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+					break;
+
+					case 8: // ru_stime
 						(*field)->set_notnull();
 						(*field)->store(duration_seconds_as_double(row->ru_stime));
+					break;
+
+					case 9: // ru_stime_per_sec
+						(*field)->set_notnull();
+						(*field)->store(duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
 					break;
 
 					default:

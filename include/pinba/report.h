@@ -19,8 +19,8 @@ struct report_info_t
 	uint32_t    tick_count;
 
 	uint32_t    n_key_parts;
-	bool        hv_enabled;
 
+	bool        hv_enabled;
 	uint32_t    hv_bucket_count;
 	duration_t  hv_bucket_d;
 

@@ -8,25 +8,46 @@
 use pinba;
 
 CREATE TABLE `report_by_host_name` (
-  `script` varchar(64) NOT NULL,
+  `host` varchar(64) NOT NULL,
   `req_count` int(10) unsigned NOT NULL,
-  `time_total` double NOT NULL,
-  `ru_utime_total` double NOT NULL,
-  `ru_stime_total` double NOT NULL
+  `req_per_sec` float NOT NULL,
+  `req_time_total` float NOT NULL,
+  `req_time_per_sec` float NOT NULL,
+  `ru_utime_total` float NOT NULL,
+  `ru_utime_per_sec` float NOT NULL,
+  `ru_stime_total` float NOT NULL,
+  `ru_stime_per_sec` float NOT NULL,
+  `traffic_total` bigint(20) unsigned NOT NULL,
+  `traffic_per_sec` float NOT NULL,
+  `memory_footprint` bigint(20) NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~host/no_percentiles/no_filters';
 
 CREATE TABLE `report_by_script_name` (
   `script` varchar(64) NOT NULL,
   `req_count` int(10) unsigned NOT NULL,
-  `time_total` double NOT NULL,
-  `ru_utime_total` double NOT NULL,
-  `ru_stime_total` double NOT NULL
+  `req_per_sec` float NOT NULL,
+  `req_time_total` float NOT NULL,
+  `req_time_per_sec` float NOT NULL,
+  `ru_utime_total` float NOT NULL,
+  `ru_utime_per_sec` float NOT NULL,
+  `ru_stime_total` float NOT NULL,
+  `ru_stime_per_sec` float NOT NULL,
+  `traffic_total` bigint(20) unsigned NOT NULL,
+  `traffic_per_sec` float NOT NULL,
+  `memory_footprint` bigint(20) NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~script/no_percentiles/no_filters';
 
 CREATE TABLE `report_by_server_name` (
-  `script` varchar(64) NOT NULL,
+  `server` varchar(64) NOT NULL,
   `req_count` int(10) unsigned NOT NULL,
-  `time_total` double NOT NULL,
-  `ru_utime_total` double NOT NULL,
-  `ru_stime_total` double NOT NULL
+  `req_per_sec` float NOT NULL,
+  `req_time_total` float NOT NULL,
+  `req_time_per_sec` float NOT NULL,
+  `ru_utime_total` float NOT NULL,
+  `ru_utime_per_sec` float NOT NULL,
+  `ru_stime_total` float NOT NULL,
+  `ru_stime_per_sec` float NOT NULL,
+  `traffic_total` bigint(20) unsigned NOT NULL,
+  `traffic_per_sec` float NOT NULL,
+  `memory_footprint` bigint(20) NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~server/no_percentiles/no_filters';

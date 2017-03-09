@@ -184,27 +184,34 @@ example (report by script name only here)
 	mysql> CREATE TABLE `report_by_script_name` (
 			  `script` varchar(64) NOT NULL,
 			  `req_count` int(10) unsigned NOT NULL,
-			  `time_total` double NOT NULL,
+			  `req_per_sec` double NOT NULL,
+			  `req_time_total` double NOT NULL,
+			  `req_time_per_sec` double NOT NULL,
 			  `ru_utime_total` double NOT NULL,
-			  `ru_stime_total` double NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
+			  `ru_utime_per_sec` double NOT NULL,
+			  `ru_stime_total` double NOT NULL,
+			  `ru_stime_per_sec` double NOT NULL,
+			  `traffic_total` bigint(20) unsigned NOT NULL,
+			  `traffic_per_sec` double NOT NULL,
+			  `memory_footprint` bigint(20) NOT NULL
+  			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
 
-	mysql> select * from report_by_script_name;
-	+----------------+-----------+------------+----------------+----------------+
-	| script         | req_count | time_total | ru_utime_total | ru_stime_total |
-	+----------------+-----------+------------+----------------+----------------+
-	| script-0.phtml |      5721 |      5.721 |              0 |              0 |
-	| script-6.phtml |      5724 |      5.724 |              0 |              0 |
-	| script-3.phtml |      5719 |      5.719 |              0 |              0 |
-	| script-5.phtml |      5720 |       5.72 |              0 |              0 |
-	| script-4.phtml |      5729 |      5.729 |              0 |              0 |
-	| script-8.phtml |      5721 |      5.721 |              0 |              0 |
-	| script-9.phtml |      5723 |      5.723 |              0 |              0 |
-	| script-1.phtml |      5725 |      5.725 |              0 |              0 |
-	| script-2.phtml |      5723 |      5.723 |              0 |              0 |
-	| script-7.phtml |      5718 |      5.718 |              0 |              0 |
-	+----------------+-----------+------------+----------------+----------------+
-	10 rows in set (0.01 sec)
+	mysql> select * from report_by_script_name; -- skipped some fields for brevity
+	+----------------+-----------+-------------+----------------+------------------+----------------+------------------+-----------------+------------------+
+	| script         | req_count | req_per_sec | req_time_total | req_time_per_sec | ru_utime_total | ru_stime_per_sec | traffic_per_sec | memory_footprint |
+	+----------------+-----------+-------------+----------------+------------------+----------------+------------------+-----------------+------------------+
+	| script-0.phtml |    200001 |     3333.35 |        200.001 |          3.33335 |              0 |                0 |               0 |                0 |
+	| script-6.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-3.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-5.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-4.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-8.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-9.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-1.phtml |    200001 |     3333.35 |        200.001 |          3.33335 |              0 |                0 |               0 |                0 |
+	| script-2.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	| script-7.phtml |    200000 |     3333.33 |            200 |          3.33333 |              0 |                0 |               0 |                0 |
+	+----------------+-----------+-------------+----------------+------------------+----------------+------------------+-----------------+------------------+
+	10 rows in set (0.00 sec)
 
 **Timer data report**
 
@@ -220,13 +227,18 @@ example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 			  `server` varchar(64) NOT NULL,
 			  `tag10` varchar(64) NOT NULL,
 			  `req_count` int(10) unsigned NOT NULL,
+			  `req_per_sec` float NOT NULL,
 			  `hit_count` int(10) unsigned NOT NULL,
-			  `time_total` double NOT NULL,
-			  `ru_utime_total` double NOT NULL,
-			  `ru_stime_total` double NOT NULL
+			  `hit_per_sec` float NOT NULL,
+			  `time_total` float NOT NULL,
+			  `time_per_sec` float NOT NULL,
+			  `ru_utime_total` float NOT NULL,
+			  `ru_utime_per_sec` float NOT NULL,
+			  `ru_stime_total` float NOT NULL,
+			  `ru_stime_per_sec` float NOT NULL
 			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,tag10/no_percentiles/no_filters';
 
-	mysql> select * from report_host_script_server_tag10;
+	mysql> select * from report_host_script_server_tag10; -- skipped some fields for brevity
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
 	| host      | script         | server      | tag10     | req_count | hit_count | time_total | ru_utime_total | ru_stime_total |
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+

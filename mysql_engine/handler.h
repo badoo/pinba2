@@ -72,7 +72,7 @@ struct pinba_view_conf_t
 
 	uint32_t                    hv_bucket_count;
 	duration_t                  hv_bucket_d;
-	std::vector<uint32_t>       percentiles;
+	std::vector<double>         percentiles;
 
 	duration_t                  min_time;    // 0 if unset
 	duration_t                  max_time;    // 0 if unset

@@ -63,7 +63,8 @@ namespace { namespace aux {
 
 			auto const create_batch = [&]()
 			{
-				return packet_batch_ptr { new packet_batch_t(conf_->batch_size, 64 * 1024) };
+				constexpr size_t nmpa_block_size = 64 * 1024;
+				return packet_batch_ptr { new packet_batch_t(conf_->batch_size, nmpa_block_size) };
 			};
 
 			auto const try_send_batch = [&](packet_batch_ptr& b)
