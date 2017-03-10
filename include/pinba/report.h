@@ -61,6 +61,9 @@ struct report_snapshot_t
 	virtual void prepare() = 0;
 	virtual bool is_prepared() const = 0;
 
+	// will return 0 if !is_prepared()
+	virtual size_t row_count() const = 0;
+
 	// iteration, this should be very cheap
 	virtual position_t pos_first() = 0;
 	virtual position_t pos_last() = 0;

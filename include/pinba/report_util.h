@@ -144,6 +144,11 @@ private:
 		return ticks_.empty();
 	}
 
+	virtual size_t row_count() const override
+	{
+		return data_.size();
+	}
+
 private:
 
 	union real_position_t

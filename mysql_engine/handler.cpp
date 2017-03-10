@@ -836,7 +836,8 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			meow::stopwatch_t sw;
 			snapshot_->prepare();
 
-			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds", __func__, share->mysql_name, sw.stamp());
+			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds ({3} rows)",
+				__func__, share->mysql_name, sw.stamp(), snapshot_->row_count());
 		}
 
 		pos_ = snapshot_->pos_first();
