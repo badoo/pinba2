@@ -1,64 +1,75 @@
+#include <algorithm>
+#include <vector>
+
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
-inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& conf, double percentile)
+
+struct histogram_item_t
+{
+	uint64_t kv;
+	uint32_t key() const { return uint32_t(kv >> 32); }
+	uint32_t value() const { return uint32_t(kv & 0xFFFFFFFF); }
+};
+
+inline bool operator<(histogram_item_t const& l, histogram_item_t const& r)
+{
+	return l.key() < r.key();
+}
+
+struct hv_items_t
+{
+	uint32_t items_total;
+	uint32_t inf_value;
+	std::vector<histogram_item_t> items;
+};
+
+inline duration_t get_percentile_flat(hv_items_t const& hv, histogram_conf_t const& conf, double percentile)
 {
 	if (percentile == 0.) // 0'th percentile is always 0
 		return {0};
 
 	uint32_t const required_sum = [&]()
 	{
-		uint32_t const res = std::ceil(hv.items_total() * percentile / 100.0);
+		uint32_t const res = std::ceil(hv.items_total * percentile / 100.0);
 
-		return (res > hv.items_total())
-				? hv.items_total()
+		return (res > hv.items_total)
+				? hv.items_total
 				: res;
 	}();
 
-	ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total(), required_sum);
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total, required_sum);
 
 	// fastpath - are we going to hit infinity bucket?
-	if (required_sum > (hv.items_total() - hv.inf_value()))
+	if (required_sum > (hv.items_total - hv.inf_value))
 	{
-		ff::fmt(stdout, "[{0}] inf fastpath, need {1}, got histogram for {2} values\n",
-			bucket_id, required_sum, (hv.items_total() - hv.inf_value()));
+		// ff::fmt(stdout, "inf fastpath; need {0}, got histogram for {1} values\n",
+		// 	required_sum, (hv.items_total - hv.inf_value));
 		return conf.bucket_d * conf.bucket_count;
 	}
-
-
-	auto const& map = hv.map_cref();
-	auto const map_end = map.end();
 
 	uint32_t current_sum = 0;
 	uint32_t bucket_id   = 0;
 
-	for (; current_sum < required_sum; bucket_id++)
+	// for (; current_sum < required_sum; bucket_id++)
+	for (auto const& item : hv.items)
 	{
-		// infinity checked before the loop
-		assert(bucket_id < conf.bucket_count);
+		bucket_id = item.key();
 
-		auto const it = map.find(bucket_id);
-		if (it == map_end)
-		{
-			// ff::fmt(stdout, "[{0}] empty; current_sum = {1}\n", bucket_id, current_sum);
-			continue;
-		}
-
-		uint32_t const next_has_values = it->second;
+		uint32_t const next_has_values = item.value();
 		uint32_t const need_values     = required_sum - current_sum;
 
 		if (next_has_values < need_values) // take bucket and move on
 		{
 			current_sum += next_has_values;
-			ff::fmt(stdout, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			// ff::fmt(stdout, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
 			continue;
 		}
 
 		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
 		{
-			ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
 			return conf.bucket_d * (bucket_id + 1);
 		}
 
@@ -66,7 +77,7 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 		{
 			duration_t const d = conf.bucket_d * need_values / next_has_values;
 
-			ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
+			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
 			return conf.bucket_d * bucket_id + d;
 		}
 	}
@@ -74,7 +85,7 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	assert(!"must not be reached");
 	// return conf.bucket_d * conf.bucket_count;
 }
-#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char const *argv[])
@@ -96,7 +107,17 @@ int main(int argc, char const *argv[])
 
 	auto const print_percentile = [&](double percentile)
 	{
-		ff::fmt(stdout, "percentile {0} = {1}\n", percentile, get_percentile(hv, hv_conf, percentile));
+		hv_items_t hvi;
+		hvi.items_total = hv.items_total();
+		hvi.inf_value = hv.inf_value();
+
+		// std::copy(hv.map_cref().begin(), hv.map_cref().end(), std::back_inserter(hvi.items));
+		for (auto const& pair : hv.map_cref())
+			hvi.items.push_back(histogram_item_t{uint64_t(pair.first) << 32 | pair.second});
+		std::sort(hvi.items.begin(), hvi.items.end());
+
+		ff::fmt(stdout, "percentile_flat {0} = {1}, {2}\n",
+			percentile, get_percentile(hv, hv_conf, percentile), get_percentile_flat(hvi, hv_conf, percentile));
 	};
 
 	print_percentile(0);

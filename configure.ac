@@ -38,6 +38,7 @@ changequote([,])
 #CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
 CXXFLAGS="$CXXFLAGS -pthread -DMYSQL_DYNAMIC_PLUGIN"
 CXXFLAGS="$CXXFLAGS -Wall -Wformat-security -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Werror"
+CXXFLAGS="$CXXFLAGS -fno-omit-frame-pointer"
 
 AX_CONFIG_NICE([config.nice])
 
