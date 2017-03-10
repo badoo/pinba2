@@ -9,6 +9,7 @@
 #include <sparsehash/sparse_hash_map>
 
 #include "t1ha/t1ha.h"
+#include "sparsepp/spp.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -52,7 +53,8 @@ struct histogram_t
 	//  8. maybe use google in-memory btree, since we need to sort to calc percentiles,
 	//     or do N a zillion hash lookups to traverse hashmap in a 'sorted' way by key
 	//
-	typedef google::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
+	// typedef google::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
+	typedef spp::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
 
 private:
 	map_t     map_;
