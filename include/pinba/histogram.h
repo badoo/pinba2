@@ -8,12 +8,22 @@
 #include <boost/noncopyable.hpp>
 #include <sparsehash/sparse_hash_map>
 
+#include "t1ha/t1ha.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct histogram_conf_t
 {
 	uint32_t    bucket_count;
 	duration_t  bucket_d;
+};
+
+struct histogram_hasher_t
+{
+	inline uint64_t operator()(uint32_t const v) const
+	{
+		return t1ha0(&v, sizeof(v), (uint64_t)this /*seed*/);
+	}
 };
 
 struct histogram_t
@@ -42,7 +52,7 @@ struct histogram_t
 	//  8. maybe use google in-memory btree, since we need to sort to calc percentiles,
 	//     or do N a zillion hash lookups to traverse hashmap in a 'sorted' way by key
 	//
-	typedef google::sparse_hash_map<uint32_t, uint32_t> map_t;
+	typedef google::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
 
 private:
 	map_t     map_;
