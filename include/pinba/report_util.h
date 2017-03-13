@@ -33,8 +33,7 @@ struct report_key__hasher_t
 	}
 };
 
-// suitable for comaring any report keys (i.e. diff length)
-struct report_key__equal_generic_t
+struct report_key__equal_t
 {
 	template<size_t N>
 	inline bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
@@ -43,16 +42,6 @@ struct report_key__equal_generic_t
 				? (0 == memcmp(l.data(), r.data(), (l.size() * sizeof(typename report_key_base_t<N>::value_type)) ))
 				: false
 				;
-	}
-};
-
-// report keys must have same length
-struct report_key__equal_t
-{
-	template<size_t N>
-	inline bool operator()(report_key_base_t<N> const& l, report_key_base_t<N> const& r) const
-	{
-		return (0 == memcmp(l.data(), r.data(), (l.size() * sizeof(typename report_key_base_t<N>::value_type)) ));
 	}
 };
 
