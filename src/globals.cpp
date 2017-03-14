@@ -7,6 +7,7 @@
 #include <meow/intrusive_ptr.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/engine.h"
 #include "pinba/dictionary.h"
 #include "pinba/coordinator.h"
 #include "pinba/collector.h"

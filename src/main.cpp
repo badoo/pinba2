@@ -7,6 +7,7 @@
 #include <meow/stopwatch.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/engine.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 

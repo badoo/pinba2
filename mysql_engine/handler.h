@@ -21,7 +21,7 @@
 #include <meow/logging/logger.hpp>
 #include <meow/logging/log_write.hpp>
 
-#include "pinba/globals.h"
+#include "pinba/engine.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

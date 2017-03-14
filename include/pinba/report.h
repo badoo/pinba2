@@ -2,7 +2,6 @@
 #define PINBA__REPORT_H_
 
 #include "pinba/globals.h"
-#include "pinba/histogram.h"
 #include "pinba/report_key.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -31,6 +30,7 @@ struct report_info_t
 
 struct packet_t;
 struct dictionary_t;
+struct histogram_t;
 
 struct report_snapshot_t
 {

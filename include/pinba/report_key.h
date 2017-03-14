@@ -5,8 +5,6 @@
 #include <meow/chunk.hpp>
 #include <meow/str_ref.hpp>
 
-using meow::str_ref;
-
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // max number of key parts we support for reports
@@ -16,7 +14,7 @@ template<size_t N>
 using report_key_base_t = meow::chunk<uint32_t, N, uint32_t>;
 
 template<size_t N>
-using report_key_str_base_t = meow::chunk<str_ref, N, uint32_t>;
+using report_key_str_base_t = meow::chunk<meow::str_ref, N, uint32_t>;
 
 using report_key_t     = report_key_base_t<REPORT_MAX_KEY_PARTS>;
 using report_key_str_t = report_key_str_base_t<REPORT_MAX_KEY_PARTS>;
