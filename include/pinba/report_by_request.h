@@ -347,10 +347,7 @@ public:
 		{
 			auto const& filter = conf_.filters[i];
 			if (!filter.func(packet))
-			{
-				ff::fmt(stdout, "packet {0} skipped by filter {1}\n", packet, filter.name);
 				return;
-			}
 		}
 
 		// construct a key, by runinng all key fetchers
@@ -362,10 +359,7 @@ public:
 
 			report_conf___by_request_t::key_fetch_result_t const r = key_descriptor.fetcher(packet);
 			if (!r.found)
-			{
-				ff::fmt(stdout, "packet {0} skipped by key fetcher {1}\n", packet, key_descriptor.name);
 				return;
-			}
 
 			k.push_back(r.key_value);
 		}

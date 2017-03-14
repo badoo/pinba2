@@ -142,7 +142,7 @@ namespace { namespace aux {
 
 					Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
 					if (request == NULL) {
-						ff::fmt(stderr, "packet decode failed\n");
+						++stats_->udp.packet_decode_err;
 						continue;
 					}
 
@@ -174,7 +174,7 @@ namespace { namespace aux {
 						continue;
 					}
 
-					ff::fmt(stderr, "recv failed: {0}:{1}\n", errno, strerror(errno));
+					LOG_WARN(globals_->logger(), "recv() failed: {0}:{1}", errno, strerror(errno));
 					continue;
 				}
 
@@ -275,7 +275,7 @@ namespace { namespace aux {
 							return true;
 						}
 
-						ff::fmt(stderr, "recv failed: {0}:{1}\n", errno, strerror(errno));
+						LOG_WARN(globals_->logger(), "recvmmsg() failed: {0}:{1}\n", errno, strerror(errno));
 						return false;
 					}
 

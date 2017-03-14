@@ -11,9 +11,7 @@
 
 #include <meow/format/format.hpp>
 #include <meow/format/format_to_string.hpp>
-#include <meow/logging/log_level.hpp>
-#include <meow/logging/log_prefix.hpp>
-#include <meow/logging/logger_impl.hpp>
+#include <meow/logging/fd_logger.hpp>
 
 namespace ff = meow::format;
 
@@ -47,6 +45,18 @@ static int pinba_engine_init(void *p)
 		return new (mem_root) pinba_handler_t(hton, table);
 	};
 
+	auto logger = [&]()
+	{
+		// TODO: this will suffice for now, but improve logger to look like mysql native thing
+		auto logger = std::make_shared<meow::logging::fd_logger_t<meow::logging::default_prefix_t>>(STDERR_FILENO);
+
+		logger->set_level(meow::logging::log_level::debug);
+		logger->prefix().set_fields(meow::logging::prefix_field::_all);
+		logger->prefix().set_log_name("pinba");
+
+		return logger;
+	}();
+
 	// TODO: take more values from global mysql config (aka pinba_variables)
 	static pinba_options_t options = {
 		.net_address              = pinba_variables()->address,
@@ -62,6 +72,8 @@ static int pinba_engine_init(void *p)
 		.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
 
 		.coordinator_input_buffer = pinba_variables()->report_input_buffer,
+
+		.logger                   = logger,
 	};
 
 	try
@@ -69,22 +81,7 @@ static int pinba_engine_init(void *p)
 		pinba_MYSQL__instance = [&]()
 		{
 			auto PM = meow::make_unique<pinba_mysql_ctx_t>();
-			PM->logger = [&]()
-			{
-				// TODO: this will suffice for now, but improve logger to look like mysql native thing
-				auto logger = meow::make_unique<meow::logging::logger_impl_t<meow::logging::default_prefix_t>>();
-
-				logger->set_level(meow::logging::log_level::debug);
-				logger->prefix().set_fields(meow::logging::prefix_field::_all);
-				logger->prefix().set_log_name("pinba");
-
-				logger->set_writer([](size_t total_len, str_ref const *slices, size_t n_slices)
-				{
-					for (size_t i = 0; i < n_slices; ++i)
-						ff::write(stderr, slices[i]);
-				});
-				return move(logger);
-			}();
+			PM->logger = logger;
 
 			// process defaults
 			PM->settings.time_window = pinba_variables()->default_history_time_sec * d_second;
@@ -99,8 +96,7 @@ static int pinba_engine_init(void *p)
 	}
 	catch (std::exception const& e)
 	{
-		// no logger here, so just dump stuff to stderr directly
-		ff::fmt(stderr, "[pinba] init failed: {0}\n", e.what());
+		LOG_ALERT(logger, "init failed: {0}\n", e.what());
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
 

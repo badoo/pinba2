@@ -15,6 +15,7 @@
 #include <meow/str_ref.hpp>
 #include <meow/std_unique_ptr.hpp>
 #include <meow/format/format.hpp>
+#include <meow/logging/logger.hpp>
 #include <meow/unix/time.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -28,23 +29,6 @@ typedef struct _Pinba__Request Pinba__Request;
 typedef meow::error_t pinba_error_t;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct pinba_options_t
-{
-	std::string net_address;
-	std::string net_port;
-
-	uint32_t    udp_threads;
-	uint32_t    udp_batch_messages;
-	duration_t  udp_batch_timeout;
-
-	uint32_t    repacker_threads;
-	uint32_t    repacker_input_buffer;
-	uint32_t    repacker_batch_messages;
-	duration_t  repacker_batch_timeout;
-
-	uint32_t    coordinator_input_buffer;
-};
 
 struct nmsg_ticker_t;
 struct dictionary_t;
@@ -90,6 +74,31 @@ struct pinba_stats_t
 	std::vector<repacker_stats_t> repacker_threads;
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+using pinba_logger_t   = meow::logging::logger_t;
+using pinba_logger_ptr = std::shared_ptr<pinba_logger_t>;
+
+
+struct pinba_options_t
+{
+	std::string net_address;
+	std::string net_port;
+
+	uint32_t    udp_threads;
+	uint32_t    udp_batch_messages;
+	duration_t  udp_batch_timeout;
+
+	uint32_t    repacker_threads;
+	uint32_t    repacker_input_buffer;
+	uint32_t    repacker_batch_messages;
+	duration_t  repacker_batch_timeout;
+
+	uint32_t    coordinator_input_buffer;
+
+	pinba_logger_ptr logger;
+};
+
 struct pinba_globals_t : private boost::noncopyable
 {
 	virtual ~pinba_globals_t() {}
@@ -97,7 +106,7 @@ struct pinba_globals_t : private boost::noncopyable
 	virtual pinba_stats_t* stats() = 0;             // get shared stats and obey the rules
 	// virtual pinba_stats_t  stats_copy() const = 0;  // get your own private copy and use it without locking
 
-	// virtual logger_t* logger() const = 0;
+	virtual pinba_logger_t*  logger() const = 0;
 	virtual pinba_options_t const* options() const = 0;
 	virtual nmsg_ticker_t* ticker() const = 0;
 	virtual dictionary_t*  dictionary() const = 0;

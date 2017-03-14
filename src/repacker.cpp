@@ -131,7 +131,7 @@ namespace { namespace aux {
 
 				if (r < 0)
 				{
-					ff::fmt(stderr, "poll() failed: {0}:{1}\n", errno, strerror(errno));
+					LOG_WARN(globals_->logger(), "repacker; poll() failed: {0}:{1}\n", errno, strerror(errno));
 					break;
 				}
 
@@ -167,7 +167,7 @@ namespace { namespace aux {
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)
 						{
-							ff::fmt(stderr, "request validation failed: {0}: {1}\n", vr, enum_as_str_ref(vr));
+							LOG_DEBUG(globals_->logger(), "request validation failed: {0}: {1}\n", vr, enum_as_str_ref(vr));
 							continue;
 						}
 
@@ -181,8 +181,6 @@ namespace { namespace aux {
 
 						if (batch->packet_count >= conf_->batch_size)
 						{
-							// ff::fmt(stderr, "sending batch due to size limit {0}, {1}\n", batch->packet_count, conf_->batch_size);
-
 							try_send_batch(batch);
 							batch = create_batch();
 

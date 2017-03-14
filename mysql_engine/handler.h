@@ -127,11 +127,11 @@ using pinba_open_shares_t = std::unordered_map<std::string, pinba_share_ptr>;
 
 struct pinba_mysql_ctx_t : private boost::noncopyable
 {
-	std::mutex                 lock;
-	pinba_engine_ptr           engine;
-	std::unique_ptr<logger_t>  logger;
+	std::mutex          lock;
+	pinba_engine_ptr    engine;
+	pinba_logger_ptr    logger;
 
-	pinba_open_shares_t        open_shares;
+	pinba_open_shares_t open_shares;
 
 	struct {
 		duration_t  time_window;

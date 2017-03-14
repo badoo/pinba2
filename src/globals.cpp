@@ -5,6 +5,7 @@
 #include <nanomsg/reqrep.h>
 
 #include <meow/intrusive_ptr.hpp>
+#include <meow/logging/fd_logger.hpp>
 
 #include "pinba/globals.h"
 #include "pinba/engine.h"
@@ -26,6 +27,10 @@ namespace { namespace aux {
 		pinba_globals_impl_t(pinba_options_t *options)
 			: options_(options)
 		{
+			logger_ = (options->logger)
+					? options->logger
+					: std::make_shared<meow::logging::fd_logger_t<meow::logging::empty_prefix_t>>(STDERR_FILENO);
+
 			ticker_     = meow::make_unique<nmsg_ticker___single_thread_t>();
 			dictionary_ = meow::make_unique<dictionary_t>();
 
@@ -46,6 +51,11 @@ namespace { namespace aux {
 		// 	return *static_cast<pinba_stats_t const*>(&stats_);
 		// }
 
+		virtual pinba_logger_t* logger() const override
+		{
+			return logger_.get();
+		}
+
 		virtual pinba_options_t const* options() const override
 		{
 			return options_;
@@ -64,6 +74,7 @@ namespace { namespace aux {
 	private:
 		pinba_options_t                *options_;
 
+		pinba_logger_ptr               logger_;
 		pinba_stats_t                  stats_;
 		std::unique_ptr<nmsg_ticker_t> ticker_;
 		std::unique_ptr<dictionary_t>  dictionary_;

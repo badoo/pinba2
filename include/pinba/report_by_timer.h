@@ -350,8 +350,6 @@ public: // key extraction and transformation
 						.remap_to   = i,
 					};
 
-					// ff::fmt(stdout, "d: {{ {0}, {1}, {2}, {3} }\n", d.d.kind, d.d.timer_tag, d.remap_from, d.remap_to);
-
 					split_key_d.push_back(d);
 				}
 			}
@@ -470,10 +468,7 @@ public:
 		{
 			auto const& filter = conf_.filters[i];
 			if (!filter.func(packet))
-			{
-				ff::fmt(stdout, "packet {0} skipped by filter {1}\n", packet, filter.name);
 				return;
-			}
 		}
 
 		// finds timer with required tags
@@ -548,17 +543,11 @@ public:
 
 		bool const tags_found = find_request_tags(ki_, &key_inprogress);
 		if (!tags_found)
-		{
-			ff::fmt(stdout, "packet rejected, required request tags not found\n");
 			return;
-		}
 
 		bool const fields_found = find_request_fields(ki_, &key_inprogress);
 		if (!fields_found)
-		{
-			ff::fmt(stdout, "packet rejected, required request fields not found\n");
 			return;
-		}
 
 		// need to scan all timers, find matching and increment for each one
 		{
@@ -574,11 +563,7 @@ public:
 				if (!timer_found)
 					continue;
 
-				// ff::fmt(stdout, "found key: {0}\n", report_key_to_string(key_inprogress, globals_->dictionary()));
-
 				key_t const k = ki_.remap_key(key_inprogress);
-
-				// ff::fmt(stdout, "real key: {0}\n", report_key_to_string(k, globals_->dictionary()));
 
 				// finally - find and update item
 				item_t& item = ticks_.current().data[k];
