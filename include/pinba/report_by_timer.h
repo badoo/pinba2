@@ -269,26 +269,29 @@ public: // snapshot
 			return &it->second.hv;
 		}
 
-		// merge full tick from src ringbuffer to current hashtable_t state
-		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
+		// merge from src ringbuffer to snapshot data
+		static void merge_ticks_into_data(pinba_globals_t*, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
 		{
-			if (!from)
-				return;
-
-			for (auto const& from_pair : from->data)
+			for (auto const& tick : ticks)
 			{
-				auto const& src = from_pair.second;
-				auto      & dst = to[from_pair.first];
+				if (!tick)
+					continue;
 
-				dst.data.req_count  += src.data.req_count;
-				dst.data.hit_count  += src.data.hit_count;
-				dst.data.time_total += src.data.time_total;
-				dst.data.ru_utime   += src.data.ru_utime;
-				dst.data.ru_stime   += src.data.ru_stime;
-
-				if (rinfo.hv_enabled)
+				for (auto const& tick_pair : tick->data)
 				{
-					dst.hv.merge_other(src.hv);
+					auto const& src = tick_pair.second;
+					auto      & dst = to[tick_pair.first];
+
+					dst.data.req_count  += src.data.req_count;
+					dst.data.hit_count  += src.data.hit_count;
+					dst.data.time_total += src.data.time_total;
+					dst.data.ru_utime   += src.data.ru_utime;
+					dst.data.ru_stime   += src.data.ru_stime;
+
+					if (rinfo.hv_enabled)
+					{
+						dst.hv.merge_other(src.hv);
+					}
 				}
 			}
 		}
@@ -420,6 +423,7 @@ public:
 			.tick_count      = conf_.tick_count,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
+			.hv_kind         = HISTOGRAM_KIND__HASHTABLE,
 			.hv_bucket_count = conf_.hv_bucket_count,
 			.hv_bucket_d     = conf_.hv_bucket_d,
 		};
@@ -456,7 +460,7 @@ public:
 
 	virtual report_snapshot_ptr get_snapshot() override
 	{
-		return meow::make_unique<snapshot_t>(ticks_.get_internal_buffer(), info_, globals_->dictionary());
+		return meow::make_unique<snapshot_t>(globals_, ticks_.get_internal_buffer(), info_);
 	}
 
 public:

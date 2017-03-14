@@ -10,9 +10,12 @@
 #define REPORT_KIND__BY_TIMER_DATA    1
 #define REPORT_KIND__BY_PACKET_DATA   2
 
+#define HISTOGRAM_KIND__HASHTABLE  0
+#define HISTOGRAM_KIND__FLAT       1
+
 struct report_info_t
 {
-	int         kind; // see defines above
+	int         kind;         // REPORT_KIND__*
 
 	duration_t  time_window;
 	uint32_t    tick_count;
@@ -20,6 +23,7 @@ struct report_info_t
 	uint32_t    n_key_parts;
 
 	bool        hv_enabled;
+	int         hv_kind;      // HISTOGRAM_KIND__*
 	uint32_t    hv_bucket_count;
 	duration_t  hv_bucket_d;
 
@@ -80,7 +84,8 @@ struct report_snapshot_t
 	virtual void* get_data(position_t const&) = 0;
 
 	// histograms
-	virtual histogram_t const* get_histogram(position_t const&) = 0;
+	virtual int   histogram_kind() const = 0;
+	virtual void* get_histogram(position_t const&) = 0;
 };
 typedef std::unique_ptr<report_snapshot_t> report_snapshot_ptr;
 

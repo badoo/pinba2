@@ -39,7 +39,7 @@ namespace { namespace detail {
 	inline void maybe_reserve(std::vector<T>& cont, size_t sz) { cont.reserve(sz); }
 }} // namespace { namespace detail {
 
-// merge a range (defined by 'begin' and 'end') of *sorted* ranges into 'result'
+// merge a range (defined by 'begin' and 'end') of pointers to *sorted* sequences into 'result'
 // 'result' shall also be sorted and should support emplace(iterator, value)
 // 'compare_fn' should return <0 for less, ==0 for equal, >0 for greater
 // 'merge_fn' is used to merge equal elements
@@ -123,32 +123,6 @@ static inline void multi_merge(ResultContainer& result, Iterator begin, Iterator
 		}
 	}
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct hv_value_t
-{
-	uint32_t bucket_id;
-	uint32_t value;
-
-	hv_value_t()
-		: bucket_id(0)
-		, value(0)
-	{
-	}
-};
-
-inline bool operator<(hv_value_t const& l, hv_value_t const& r)
-{
-	return l.bucket_id < r.bucket_id;
-}
-
-struct histogram_values_t
-{
-	std::vector<hv_value_t> items;
-	uint32_t items_total;
-	uint32_t inf_value;
-};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -625,13 +599,18 @@ public: // snapshot
 			// return Traits::value_at_position(data_, it);
 		}
 
-		virtual /*histogram_values_t*/ histogram_t const* get_histogram(position_t const& pos) override
+		virtual int histogram_kind() const override
+		{
+			return rinfo_.hv_kind;
+		}
+
+		virtual void* get_histogram(position_t const& pos) override
 		{
 			if (!rinfo_.hv_enabled)
-				return NULL;
+				return nullptr;
 
 			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return (histogram_t* /*dirty hack!*/)&it->second.hvalues;
+			return &it->second.hvalues;
 			// return Traits::hv_at_position(data_, it);
 		}
 
@@ -807,7 +786,7 @@ public:
 			if (info_.hv_enabled)
 			{
 				dst.hvalues.inf_value = src.hv.inf_value();
-				dst.hvalues.items_total = src.hv.items_total();
+				dst.hvalues.total_value = src.hv.items_total();
 
 				for (auto const& hv_pair : src.hv.map_cref())
 				{
@@ -1047,13 +1026,28 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 	auto const write_hv = [&](report_snapshot_t::position_t const& pos)
 	{
 		ff::fmt(sink, " [");
-		auto const *hv = snapshot->get_histogram(pos);
-		if (NULL != hv)
+		auto const *histogram = snapshot->get_histogram(pos);
+		if (histogram != nullptr)
 		{
-			auto const& hv_map = hv->map_cref();
-			for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+			if (HISTOGRAM_KIND__HASHTABLE == snapshot->histogram_kind())
 			{
-				ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+				auto const *hv = static_cast<histogram_t const*>(histogram);
+
+				auto const& hv_map = hv->map_cref();
+				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+				}
+			}
+			else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
+			{
+				auto const *hv = static_cast<histogram_values_t const*>(histogram);
+
+				auto const& hvalues = hv->items;
+				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+				}
 			}
 		}
 

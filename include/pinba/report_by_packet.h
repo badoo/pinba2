@@ -142,25 +142,29 @@ public: // snapshot
 		static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
 		static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
 
-		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
+		// merge from src ringbuffer to snapshot data
+		static void merge_ticks_into_data(pinba_globals_t*, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
 		{
-			if (!from)
-				return;
-
-			auto const& src = from->data;
-			auto      & dst = to[0];
-
-			dst.data.req_count   += src.data.req_count;
-			dst.data.timer_count += src.data.timer_count;
-			dst.data.time_total  += src.data.time_total;
-			dst.data.ru_utime    += src.data.ru_utime;
-			dst.data.ru_stime    += src.data.ru_stime;
-			dst.data.traffic_kb  += src.data.traffic_kb;
-			dst.data.mem_usage   += src.data.mem_usage;
-
-			if (rinfo.hv_enabled)
+			for (auto const& tick : ticks)
 			{
-				dst.hv.merge_other(src.hv);
+				if (!tick)
+					continue;
+
+				auto const& src = tick->data;
+				auto      & dst = to[0];
+
+				dst.data.req_count   += src.data.req_count;
+				dst.data.timer_count += src.data.timer_count;
+				dst.data.time_total  += src.data.time_total;
+				dst.data.ru_utime    += src.data.ru_utime;
+				dst.data.ru_stime    += src.data.ru_stime;
+				dst.data.traffic_kb  += src.data.traffic_kb;
+				dst.data.mem_usage   += src.data.mem_usage;
+
+				if (rinfo.hv_enabled)
+				{
+					dst.hv.merge_other(src.hv);
+				}
 			}
 		}
 	};
@@ -180,6 +184,7 @@ public:
 			.tick_count      = conf_.tick_count,
 			.n_key_parts     = 0,
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
+			.hv_kind         = HISTOGRAM_KIND__HASHTABLE,
 			.hv_bucket_count = conf_.hv_bucket_count,
 			.hv_bucket_d     = conf_.hv_bucket_d,
 		};
@@ -214,7 +219,7 @@ public:
 
 	virtual report_snapshot_ptr get_snapshot() override
 	{
-		return meow::make_unique<snapshot_t>(ticks_.get_internal_buffer(), info_, globals_->dictionary());
+		return meow::make_unique<snapshot_t>(globals_, ticks_.get_internal_buffer(), info_);
 	}
 
 public:

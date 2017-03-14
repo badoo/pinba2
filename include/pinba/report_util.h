@@ -99,11 +99,11 @@ struct report_snapshot__impl_t : public report_snapshot_t
 
 public:
 
-	report_snapshot__impl_t(src_ticks_t const& ticks, report_info_t const& rinfo, dictionary_t *d)
+	report_snapshot__impl_t(pinba_globals_t *globals, src_ticks_t const& ticks, report_info_t const& rinfo)
 		: data_()
 		, ticks_(ticks)
 		, rinfo_(rinfo)
-		, dictionary_(d)
+		, globals_(globals)
 	{
 	}
 
@@ -116,7 +116,7 @@ private:
 
 	virtual dictionary_t const* dictionary() const override
 	{
-		return dictionary_;
+		return globals_->dictionary();
 	}
 
 	virtual void prepare() override
@@ -124,17 +124,7 @@ private:
 		if (this->is_prepared())
 			return;
 
-		for (auto& tick : ticks_)
-		{
-			// perform merge
-			Traits::merge_from_to(rinfo_, tick.get(), data_);
-
-			// release ref counted pointer as soon as we're done merging a tick
-			// this allows to reduce memory footprint when merging in other thread
-			// since report is working and ticks are being erased from it
-			// (but this merge is holding them alive still)
-			tick.reset();
-		}
+		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_);
 
 		ticks_.clear();
 	}
@@ -213,7 +203,7 @@ private:
 		report_key_str_t result;
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
-			result.push_back(dictionary_->get_word(k[i]));
+			result.push_back(dictionary()->get_word(k[i]));
 		}
 		return result;
 	}
@@ -229,20 +219,25 @@ private:
 		return Traits::value_at_position(data_, it);
 	}
 
-	virtual histogram_t const* get_histogram(position_t const& pos) override
+	virtual int histogram_kind() const override
+	{
+		return rinfo_.hv_kind;
+	}
+
+	virtual void* get_histogram(position_t const& pos) override
 	{
 		if (!rinfo_.hv_enabled)
-			return NULL;
+			return nullptr;
 
 		auto const& it = reinterpret_cast<iterator_t const&>(pos);
 		return Traits::hv_at_position(data_, it);
 	}
 
 private:
-	hashtable_t    data_;         // real data we iterate over
-	src_ticks_t    ticks_;        // ticks we merge our data from (in other thread potentially)
-	report_info_t  rinfo_;        // report info, immutable copy taken in ctor
-	dictionary_t   *dictionary_;  // dictionary used to transform string ids to their values
+	hashtable_t      data_;      // real data we iterate over
+	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
+	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
+	pinba_globals_t  *globals_;  // globals for logging / dictionary
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

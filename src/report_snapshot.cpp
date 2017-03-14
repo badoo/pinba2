@@ -17,13 +17,28 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 	auto const write_hv = [&](report_snapshot_t::position_t const& pos)
 	{
 		ff::fmt(sink, " [");
-		auto const *hv = snapshot->get_histogram(pos);
-		if (NULL != hv)
+		auto const *histogram = snapshot->get_histogram(pos);
+		if (histogram != nullptr)
 		{
-			auto const& hv_map = hv->map_cref();
-			for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+			if (HISTOGRAM_KIND__HASHTABLE == snapshot->histogram_kind())
 			{
-				ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+				auto const *hv = static_cast<histogram_t const*>(histogram);
+
+				auto const& hv_map = hv->map_cref();
+				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+				}
+			}
+			else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
+			{
+				auto const *hv = static_cast<histogram_values_t const*>(histogram);
+
+				auto const& hvalues = hv->items;
+				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+				}
 			}
 		}
 

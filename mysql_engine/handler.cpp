@@ -1092,13 +1092,28 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			unsigned const n_percentile_fields = pct.size();
 			if (findex < n_percentile_fields)
 			{
-				auto const *hv = snapshot_->get_histogram(pos_);
-				assert(hv != NULL);
+				auto const *histogram = snapshot_->get_histogram(pos_);
+				assert(histogram != nullptr);
 
-				auto const pct_d = get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+				auto const percentile_d = [&]() -> duration_t
+				{
+					if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+					{
+						auto const *hv = static_cast<histogram_t const*>(histogram);
+						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+					}
+					else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+					{
+						auto const *hv = static_cast<histogram_values_t const*>(histogram);
+						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+					}
+
+					assert(!"must not be reached");
+					return {0};
+				}();
 
 				(*field)->set_notnull();
-				(*field)->store(duration_seconds_as_double(pct_d));
+				(*field)->store(duration_seconds_as_double(percentile_d));
 
 				continue;
 			}
