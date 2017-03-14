@@ -87,6 +87,156 @@ inline duration_t get_percentile_flat(hv_items_t const& hv, histogram_conf_t con
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+#if 0
+struct merge_item_t
+{
+	uint32_t src; // string offset in data
+	uint32_t off; // offset in string, UINT_MAX is 'nothing left'
+};
+
+std::string multi_merge(std::vector<std::string> const& data)
+{
+	std::string result = {};
+	uint32_t result_length = 0; // init later
+
+	merge_item_t tmp[data.size()];
+	merge_item_t *tmp_end = tmp + data.size();
+
+	auto const item_greater = [&data](merge_item_t const& l, merge_item_t const& r)
+	{
+		return data[l.src][l.off] > data[r.src][r.off];
+	};
+
+	auto const item_equal = [&data](merge_item_t const& l, merge_item_t const& r)
+	{
+		return data[l.src][l.off] == data[r.src][r.off];
+	};
+
+	for (uint32_t i = 0; i < data.size(); i++)
+	{
+		tmp[i] = { i, 0 };
+		result_length += data[i].size();
+	}
+
+	std::make_heap(tmp, tmp_end, item_greater);
+
+	while (result_length > 0)
+	{
+		// ff::fmt(stdout, "result_length = {0}\n", result_length);
+
+		std::pop_heap(tmp, tmp_end, item_greater);
+		merge_item_t *last = tmp_end - 1;
+
+		printf("last = { %d, %d '%c' }\n", last->src, last->off, data[last->src][last->off]);
+
+		auto const v = data[last->src][last->off];
+
+		if (v == result.back())
+		{
+			result.back() = '-';
+		}
+		else
+		{
+			result.push_back(v);
+		}
+
+		--result_length;
+
+		if ((last->off + 1) < data[last->src].size())
+		{
+			*last = { last->src, last->off + 1 };
+			std::push_heap(tmp, tmp_end, item_greater);
+		}
+		else
+		{
+			--tmp_end;
+		}
+	}
+
+	return result;
+}
+#endif
+
+template<class I>
+struct merge_heap_item_t
+{
+	I value_iter;  // current value iterator
+	I end_iter;    // end iterator
+};
+
+template<class Container>
+inline void maybe_reserve(Container& cont, size_t sz) { /* nothing */ }
+
+template<class T>
+inline void maybe_reserve(std::vector<T>& cont, size_t sz) { cont.reserve(sz); }
+
+// merge a range (defined by 'begin' and 'end') of *sorted* ranges into 'result'
+// 'result' shall also be sorted and should support emplace(iterator, value)
+// 'compare_fn' should return <0 for less, ==0 for equal, >0 for greater
+// 'merge_fn' is used to merge equal elements
+template<class ResultContainer, class Iterator, class Compare, class Merge>
+static inline void multi_merge(ResultContainer& result, Iterator begin, Iterator end, Compare const& compare_fn, Merge const& merge_fn)
+{
+	using merge_item_t = merge_heap_item_t<typename Iterator::value_type::const_iterator>;
+
+	auto const item_greater = [&](merge_item_t const& l, merge_item_t const& r)
+	{
+		return compare_fn(*l.value_iter, *r.value_iter) > 0;
+	};
+
+	size_t           result_length = 0; // initialized later
+	size_t const     input_size = std::distance(begin, end);
+
+	merge_item_t tmp[input_size];
+	merge_item_t *tmp_end = tmp + input_size;
+
+	// init
+	{
+		size_t offset = 0;
+		for (auto i = begin; i != end; i = std::next(i))
+		{
+			auto const curr_b = std::begin(*i);
+			auto const curr_e = std::end(*i);
+			result_length += std::distance(curr_b, curr_e);
+			tmp[offset++] = { curr_b, curr_e };
+		}
+	}
+
+	maybe_reserve(result, result_length);
+
+	std::make_heap(tmp, tmp_end, item_greater);
+
+	while (result_length > 0)
+	{
+		std::pop_heap(tmp, tmp_end, item_greater);
+		merge_item_t *last = tmp_end - 1;
+
+		// make room for next item, if it's not there
+		if (compare_fn(result.back(), *last->value_iter) != 0)
+		{
+			result.push_back({}); // emplace :(
+		}
+
+		// merge current into existing (possibly empty item)
+		merge_fn(result.back(), *last->value_iter);
+
+		--result_length;
+
+		// advance to next item if exists
+		auto const next_it = std::next(last->value_iter);
+		if (next_it != last->end_iter)
+		{
+			last->value_iter = next_it;
+			std::push_heap(tmp, tmp_end, item_greater);
+		}
+		else
+		{
+			--tmp_end;
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char const *argv[])
 {
@@ -126,6 +276,15 @@ int main(int argc, char const *argv[])
 	print_percentile(99);
 	print_percentile(99.9);
 	print_percentile(100);
+
+	{
+		std::string result;
+		std::vector<std::string> const strings = {"3467778", "112YYZZabdd"};
+		multi_merge(result, std::begin(strings), std::end(strings),
+			[](unsigned char const l, unsigned char const r) { return (l < r) ? -1 : (r < l) ? 1 : 0; },
+			[](char& l, char const& r) { l = (l != 0) ? '-' : r; });
+		ff::fmt(stdout, "multi_merge = '{0}'\n", result);
+	}
 
 	return 0;
 }

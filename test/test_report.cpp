@@ -1,5 +1,5 @@
 #include <memory>
-#include <list>
+#include <algorithm>
 #include <vector>
 #include <unordered_map>
 #include <type_traits>
@@ -9,7 +9,6 @@
 #include <boost/smart_ptr/intrusive_ref_counter.hpp>
 
 #include <sparsehash/dense_hash_map>
-#include <sparsehash/sparse_hash_map>
 
 #include <meow/stopwatch.hpp>
 #include <meow/hash/hash.hpp>
@@ -21,6 +20,135 @@
 #include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/report_by_request.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+namespace { namespace detail {
+	template<class I>
+	struct merge_heap_item_t
+	{
+		I value_iter;  // current value iterator
+		I end_iter;    // end iterator
+	};
+
+	template<class Container>
+	inline void maybe_reserve(Container& cont, size_t sz) { /* nothing */ }
+
+	template<class T>
+	inline void maybe_reserve(std::vector<T>& cont, size_t sz) { cont.reserve(sz); }
+}} // namespace { namespace detail {
+
+// merge a range (defined by 'begin' and 'end') of *sorted* ranges into 'result'
+// 'result' shall also be sorted and should support emplace(iterator, value)
+// 'compare_fn' should return <0 for less, ==0 for equal, >0 for greater
+// 'merge_fn' is used to merge equal elements
+template<class ResultContainer, class Iterator, class Compare, class Merge>
+static inline void multi_merge(ResultContainer& result, Iterator begin, Iterator end, Compare const& compare_fn, Merge const& merge_fn)
+{
+	using SequencePtr = typename std::iterator_traits<Iterator>::value_type;
+	static_assert(std::is_pointer<SequencePtr>::value, "expected a range of pointers to sequences");
+
+	using SequenceT    = typename std::remove_pointer<SequencePtr>::type;
+	using merge_item_t = detail::merge_heap_item_t<typename SequenceT::const_iterator>;
+
+	auto const item_greater = [&compare_fn](merge_item_t const& l, merge_item_t const& r)
+	{
+		return compare_fn(*l.value_iter, *r.value_iter) > 0;
+	};
+
+	size_t       result_length = 0; // initialized later
+	size_t const input_size = std::distance(begin, end);
+
+	merge_item_t tmp[input_size];
+	merge_item_t *tmp_end = tmp + input_size;
+
+	{
+		size_t offset = 0;
+		for (auto i = begin; i != end; i = std::next(i))
+		{
+			auto const *sequence = *i;
+
+			auto const curr_b = std::begin(*sequence);
+			auto const curr_e = std::end(*sequence);
+
+			// FIXME: this is only useful if input sequence's iterator is random access
+			// but fixing depends on reserve() optimization
+			size_t const seq_size = std::distance(curr_b, curr_e);
+			if (seq_size == 0)
+				continue;
+
+			result_length += seq_size;
+			tmp[offset++] = { curr_b, curr_e };
+		}
+
+		tmp_end = tmp + offset;
+	}
+
+	detail::maybe_reserve(result, result_length);
+
+	std::make_heap(tmp, tmp_end, item_greater);
+
+	while (tmp != tmp_end)
+	{
+		// ff::fmt(stdout, "heap: {{ ");
+		// for (merge_item_t *i = tmp; i != tmp_end; i++)
+		// {
+		// 	ff::fmt(stdout, "{0}:{1} ", i->value_iter->bucket_id, i->value_iter->value);
+		// }
+		// ff::fmt(stdout, "}\n");
+
+		std::pop_heap(tmp, tmp_end, item_greater);
+		merge_item_t *last = tmp_end - 1;
+
+		// make room for next item, if it's not there
+		if (compare_fn(result.back(), *last->value_iter) != 0)
+		{
+			result.push_back({}); // emplace not implemented for std::string :(
+		}
+
+		// merge current into existing (possibly empty item)
+		merge_fn(result.back(), *last->value_iter);
+
+		// advance to next item if exists
+		auto const next_it = std::next(last->value_iter);
+		if (next_it != last->end_iter)
+		{
+			last->value_iter = next_it;
+			std::push_heap(tmp, tmp_end, item_greater);
+		}
+		else
+		{
+			--tmp_end;
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct hv_value_t
+{
+	uint32_t bucket_id;
+	uint32_t value;
+
+	hv_value_t()
+		: bucket_id(0)
+		, value(0)
+	{
+	}
+};
+
+inline bool operator<(hv_value_t const& l, hv_value_t const& r)
+{
+	return l.bucket_id < r.bucket_id;
+}
+
+struct histogram_values_t
+{
+	std::vector<hv_value_t> items;
+	uint32_t items_total;
+	uint32_t inf_value;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -195,7 +323,8 @@ struct report___by_timer_t : public report_t
 		histogram_t hv;
 
 		item_t()
-			: data()
+			: last_unique(0)
+			, data()
 			, hv()
 		{
 		}
@@ -207,7 +336,8 @@ struct report___by_timer_t : public report_t
 		//        but gcc 4.9.4 doesn't support the type_traits it requires
 		//        so live this is for now, but probably - move to gcc6 or something
 		item_t(item_t const& other)
-			: data(other.data)
+			: last_unique(0)
+			, data(other.data)
 			, hv(other.hv)
 		{
 		}
@@ -219,8 +349,9 @@ struct report___by_timer_t : public report_t
 
 		void operator=(item_t&& other)
 		{
-			data = other.data;           // a copy
-			hv   = std::move(other.hv);  // real move
+			last_unique = other.last_unique;
+			data        = other.data;           // a copy
+			hv          = std::move(other.hv);  // real move
 		}
 
 		void data_increment(packed_timer_t const *timer)
@@ -262,76 +393,254 @@ struct report___by_timer_t : public report_t
 
 public: // ticks
 
-	using raw_hashtable_t = google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>;
-
-	struct hashtable_t : public raw_hashtable_t
+	struct raw_hashtable_t
+		: public google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>
 	{
-		hashtable_t()
+		raw_hashtable_t()
 		{
 			this->set_empty_key(key_t{});
 		}
 	};
 
-	using ticks_t       = ticks_ringbuffer_t<hashtable_t>;
+	raw_hashtable_t raw_data_;
+
+	struct tick_data_t
+	{
+		struct row_t
+		{
+			data_t              data;
+			histogram_values_t  hvalues;
+		}; // __attribute__((packed));
+
+		struct hashtable_t
+			: public google::dense_hash_map<key_t, row_t, report_key__hasher_t, report_key__equal_t>
+		{
+			hashtable_t()
+			{
+				this->set_empty_key(key_t{});
+			}
+		};
+
+		hashtable_t ht;
+	};
+
+	using ticks_t       = ticks_ringbuffer_t<tick_data_t>;
 	using tick_t        = ticks_t::tick_t;
 	using ticks_list_t  = ticks_t::ringbuffer_t;
 
 public: // snapshot
 
-	struct snapshot_traits
+	struct snapshot_t : public report_snapshot_t
 	{
-		using src_ticks_t = ticks_list_t;
+		using parent_t    = report___by_timer_t;
 
-		struct hashtable_t : public google::dense_hash_map<
-											  key_t
-											, report_row___by_timer_t
-											, report_key__hasher_t
-											, report_key__equal_t>
-		{
-			hashtable_t() { this->set_empty_key(key_t{}); }
-		};
+		using src_ticks_t = parent_t::ticks_list_t;
+		using hashtable_t = parent_t::tick_data_t::hashtable_t;
+		using iterator_t  = typename hashtable_t::iterator;
 
-		static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+	public:
+
+		snapshot_t(src_ticks_t const& ticks, report_info_t const& rinfo, dictionary_t *d)
+			: data_()
+			, ticks_(ticks)
+			, rinfo_(rinfo)
+			, dictionary_(d)
 		{
-			return it->first;
 		}
 
-		static void* value_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+	private:
+
+		virtual report_info_t const* report_info() const override
 		{
-			return (void*)&it->second;
+			return &rinfo_;
 		}
 
-		static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		virtual dictionary_t const* dictionary() const override
 		{
-			return &it->second.hv;
+			return dictionary_;
 		}
 
-		// merge full tick from src ringbuffer to current hashtable_t state
-		static void merge_from_to(report_info_t& rinfo, tick_t const *from, hashtable_t& to)
+		virtual void prepare() override
 		{
-			if (!from)
+			if (this->is_prepared())
 				return;
 
-			for (auto const& from_pair : from->data)
+			for (auto const& from : ticks_)
 			{
-				auto const& src = from_pair.second;
-				auto      & dst = to[from_pair.first];
+				if (!from)
+					return;
 
-				dst.data.req_count  += src.data.req_count;
-				dst.data.hit_count  += src.data.hit_count;
-				dst.data.time_total += src.data.time_total;
-				dst.data.ru_utime   += src.data.ru_utime;
-				dst.data.ru_stime   += src.data.ru_stime;
-
-				if (rinfo.hv_enabled)
+				for (auto const& from_pair : from->data.ht)
 				{
-					dst.hv.merge_other(src.hv);
+					auto const& src = from_pair.second;
+					auto      & dst = data_[from_pair.first];
+
+					dst.data.req_count  += src.data.req_count;
+					dst.data.hit_count  += src.data.hit_count;
+					dst.data.time_total += src.data.time_total;
+					dst.data.ru_utime   += src.data.ru_utime;
+					dst.data.ru_stime   += src.data.ru_stime;
 				}
 			}
-		}
-	};
 
-	using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
+			if (rinfo_.hv_enabled)
+			{
+				std::vector<std::vector<hv_value_t> const*> hv_range;
+
+				for (auto& pair : data_)
+				{
+					auto const& key = pair.first;
+
+					// find hvalues in all ticks for this key
+					// and put pointers to them into hv_range
+					for (auto const& tick : ticks_)
+					{
+						if (!tick)
+							continue;
+
+						auto const it = tick->data.ht.find(key);
+						if (it == tick->data.ht.end())
+							continue;
+
+						hv_range.push_back(&it->second.hvalues.items);
+					}
+
+					// merge them all at once into empty destination
+					multi_merge(pair.second.hvalues.items, hv_range.begin(), hv_range.end(),
+						[](hv_value_t const& l, hv_value_t const& r) { return (l < r) ? -1 : (r < l) ? 1 : 0; },
+						[](hv_value_t& l, hv_value_t const& r) {
+							if (l.bucket_id == 0)
+								l.bucket_id = r.bucket_id;
+							l.value += r.value;
+						});
+
+					// clear hv for next iteration
+					hv_range.clear();
+				}
+
+/*
+				histogram_values_t vv;
+
+				multi_merge(vv.items, range, range + 2,
+					[](hv_value_t const& l, hv_value_t const& r) { return (l < r) ? -1 : (r < l) ? 1 : 0; },
+					[](hv_value_t& l, hv_value_t const& r) {
+						if (l.bucket_id == 0)
+							l.bucket_id = r.bucket_id;
+						l.value += r.value;
+					});
+
+				dst.hvalues.items = std::move(vv.items);
+*/
+			}
+		}
+
+		virtual bool is_prepared() const override
+		{
+			return ticks_.empty();
+		}
+
+		virtual size_t row_count() const override
+		{
+			return data_.size();
+		}
+
+	private:
+
+		union real_position_t
+		{
+			static_assert(sizeof(iterator_t) <= sizeof(position_t), "position_t must be able to hold iterator contents");
+
+			real_position_t(iterator_t i) : it(i) {}
+			real_position_t(position_t p) : pos(p) {}
+
+			position_t pos;
+			iterator_t it;
+		};
+
+		position_t position_from_iterator(iterator_t const& it)
+		{
+			real_position_t p { it };
+			return p.pos;
+		}
+
+	private:
+
+		virtual position_t pos_first() override
+		{
+			return position_from_iterator(data_.begin());
+		}
+
+		virtual position_t pos_last() override
+		{
+			return position_from_iterator(data_.end());
+		}
+
+		virtual position_t pos_next(position_t const& pos) override
+		{
+			auto const& it = reinterpret_cast<iterator_t const&>(pos);
+			return position_from_iterator(std::next(it));
+		}
+
+		virtual position_t pos_prev(position_t const& pos) override
+		{
+			auto const& it = reinterpret_cast<iterator_t const&>(pos);
+			return position_from_iterator(std::prev(it));
+		}
+
+		virtual bool pos_equal(position_t const& l, position_t const& r) const override
+		{
+			auto const& l_it = reinterpret_cast<iterator_t const&>(l);
+			auto const& r_it = reinterpret_cast<iterator_t const&>(r);
+			return (l_it == r_it);
+		}
+
+		virtual report_key_t get_key(position_t const& pos) const override
+		{
+			auto const& it = reinterpret_cast<iterator_t const&>(pos);
+			return it->first;
+			// return Traits::key_at_position(data_, it);
+		}
+
+		virtual report_key_str_t get_key_str(position_t const& pos) const override
+		{
+			report_key_t k = this->get_key(pos);
+
+			report_key_str_t result;
+			for (uint32_t i = 0; i < k.size(); ++i)
+			{
+				result.push_back(dictionary_->get_word(k[i]));
+			}
+			return result;
+		}
+
+		virtual int data_kind() const override
+		{
+			return rinfo_.kind;
+		}
+
+		virtual void* get_data(position_t const& pos) override
+		{
+			auto const& it = reinterpret_cast<iterator_t const&>(pos);
+			return &it->second.data;
+			// return Traits::value_at_position(data_, it);
+		}
+
+		virtual /*histogram_values_t*/ histogram_t const* get_histogram(position_t const& pos) override
+		{
+			if (!rinfo_.hv_enabled)
+				return NULL;
+
+			auto const& it = reinterpret_cast<iterator_t const&>(pos);
+			return (histogram_t* /*dirty hack!*/)&it->second.hvalues;
+			// return Traits::hv_at_position(data_, it);
+		}
+
+	private:
+		hashtable_t    data_;         // real data we iterate over
+		src_ticks_t    ticks_;        // ticks we merge our data from (in other thread potentially)
+		report_info_t  rinfo_;        // report info, immutable copy taken in ctor
+		dictionary_t   *dictionary_;  // dictionary used to transform string ids to their values
+	};
 
 public: // key extraction and transformation
 
@@ -442,7 +751,7 @@ public:
 		: globals_(globals)
 		, conf_(conf)
 		, ticks_(conf_->ts_count)
-		, packet_unqiue_{0}
+		, packet_unqiue_{1}
 	{
 		// validate config
 		if (conf_->key_d.size() > key_t::static_size)
@@ -486,6 +795,35 @@ public:
 
 	virtual void tick_now(timeval_t curr_tv) override
 	{
+		tick_t *tick = &ticks_.current();
+
+		for (auto const& raw_pair : raw_data_)
+		{
+			auto const& src = raw_pair.second;
+			auto&       dst = tick->data.ht[raw_pair.first];
+
+			dst.data = src.data;
+
+			if (info_.hv_enabled)
+			{
+				dst.hvalues.inf_value = src.hv.inf_value();
+				dst.hvalues.items_total = src.hv.items_total();
+
+				for (auto const& hv_pair : src.hv.map_cref())
+				{
+					hv_value_t v;
+					v.bucket_id = hv_pair.first;
+					v.value = hv_pair.second;
+					// ff::fmt(stdout, "{0} <- {{ {1}, {2} }\n", report_key_to_string(raw_pair.first), v.bucket_id, v.value);
+					dst.hvalues.items.push_back(v);
+				}
+
+				std::sort(dst.hvalues.items.begin(), dst.hvalues.items.end());
+			}
+		}
+
+		raw_data_.clear();
+
 		ticks_.tick(curr_tv);
 	}
 
@@ -611,10 +949,11 @@ public:
 
 				key_t const k = ki_.remap_key(key_inprogress);
 
+				// ff::fmt(stdout, "real key: {0}\n", report_key_to_string(k));
 				// ff::fmt(stdout, "real key: {0}\n", report_key_to_string(k, globals_->dictionary()));
 
 				// finally - find and update item
-				item_t& item = ticks_.current().data[k];
+				item_t& item = raw_data_[k];
 				item.data_increment(timer);
 
 				item.packet_increment(packet, packet_unqiue_);
@@ -654,7 +993,7 @@ public:
 
 			time_window += duration_from_timeval(tick->end_tv - tick->start_tv);
 
-			for (auto const& pair : tick->data)
+			for (auto const& pair : tick->data.ht)
 			{
 				auto const& key  = pair.first;
 				auto const& item = pair.second;
@@ -664,13 +1003,14 @@ public:
 				hit_time_total  += data.time_total;
 
 				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4}, {5} } [",
-					report_key_to_string(key, globals_->dictionary()),
+					// report_key_to_string(key, globals_->dictionary()),
+					report_key_to_string(key),
 					data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
 
-				auto const& hv_map = item.hv.map_cref();
-				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+				auto const& hvalues = item.hvalues.items;
+				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
-					ff::fmt(f, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+					ff::fmt(f, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
 				}
 				ff::fmt(f, "]\n");
 			}
@@ -723,7 +1063,8 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 	for (auto pos = snapshot->pos_first(), end = snapshot->pos_last(); !snapshot->pos_equal(pos, end); pos = snapshot->pos_next(pos))
 	{
 		auto const key = snapshot->get_key(pos);
-		ff::fmt(sink, "[{0}] -> ", report_key_to_string(key, snapshot->dictionary()));
+		// ff::fmt(sink, "[{0}] -> ", report_key_to_string(key, snapshot->dictionary()));
+		ff::fmt(sink, "[{0}] -> ", report_key_to_string(key));
 
 		auto const data_kind = snapshot->data_kind();
 
@@ -763,7 +1104,19 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 				ff::as_printf("%.06lf", data.req_count / time_window),
 				ff::as_printf("%.06lf", data.hit_count / time_window));
 
-			write_hv(pos);
+			ff::fmt(sink, " [");
+			auto const *hv = (histogram_values_t*)snapshot->get_histogram(pos);
+			if (NULL != hv)
+			{
+				auto const& hvalues = hv->items;
+				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
+				{
+					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+				}
+			}
+
+			ff::fmt(sink, "]");
+
 		}
 		break;
 
@@ -901,7 +1254,7 @@ try
 	report___by_timer_conf_t rconf_timer = [&]()
 	{
 		report___by_timer_conf_t conf = {};
-		conf.time_window     = 60 * d_second,
+		conf.time_window     = 5 * d_second,
 		conf.ts_count        = 5;
 		conf.hv_bucket_d     = 1 * d_microsecond;
 		conf.hv_bucket_count = 1 * 1000 * 1000;
