@@ -270,8 +270,11 @@ public: // snapshot
 		}
 
 		// merge from src ringbuffer to snapshot data
-		static void merge_ticks_into_data(pinba_globals_t*, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
+		static void merge_ticks_into_data(pinba_globals_t *globals, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
 		{
+			uint64_t key_lookups = 0;
+			uint64_t hv_lookups = 0;
+
 			for (auto const& tick : ticks)
 			{
 				if (!tick)
@@ -282,6 +285,8 @@ public: // snapshot
 					auto const& src = tick_pair.second;
 					auto      & dst = to[tick_pair.first];
 
+					++key_lookups;
+
 					dst.data.req_count  += src.data.req_count;
 					dst.data.hit_count  += src.data.hit_count;
 					dst.data.time_total += src.data.time_total;
@@ -291,9 +296,14 @@ public: // snapshot
 					if (rinfo.hv_enabled)
 					{
 						dst.hv.merge_other(src.hv);
+						hv_lookups += src.hv.map_cref().size();
 					}
 				}
+
+				key_lookups += tick->data.size();
 			}
+
+			LOG_DEBUG(globals->logger(), "prepare '{0}'; key_lookups: {1}, hv_lookups: {2}", rinfo.name, key_lookups, hv_lookups);
 		}
 	};
 
@@ -418,6 +428,7 @@ public:
 		}
 
 		info_ = report_info_t {
+			.name            = conf_.name,
 			.kind            = REPORT_KIND__BY_TIMER_DATA,
 			.time_window     = conf_.time_window,
 			.tick_count      = conf_.tick_count,
@@ -433,7 +444,7 @@ public:
 
 	virtual str_ref name() const override
 	{
-		return conf_.name;
+		return info_.name;
 	}
 
 	virtual report_info_t const* info() const override

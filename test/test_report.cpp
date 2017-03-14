@@ -740,6 +740,7 @@ public:
 		}
 
 		info_ = report_info_t {
+			.name        = conf_->name,
 			.kind        = REPORT_KIND__BY_TIMER_DATA,
 			.time_window = conf_->time_window,
 			.tick_count  = conf_->ts_count,

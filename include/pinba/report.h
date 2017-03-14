@@ -15,6 +15,8 @@
 
 struct report_info_t
 {
+	std::string name;
+
 	int         kind;         // REPORT_KIND__*
 
 	duration_t  time_window;

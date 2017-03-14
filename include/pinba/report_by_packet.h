@@ -179,6 +179,7 @@ public:
 		, ticks_(conf.tick_count)
 	{
 		info_ = report_info_t {
+			.name            = conf_.name,
 			.kind            = REPORT_KIND__BY_PACKET_DATA,
 			.time_window     = conf_.time_window,
 			.tick_count      = conf_.tick_count,
@@ -192,7 +193,7 @@ public:
 
 	virtual str_ref name() const override
 	{
-		return conf_.name;
+		return info_.name;
 	}
 
 	virtual report_info_t const* info() const override
