@@ -16,6 +16,7 @@
 #include <meow/std_unique_ptr.hpp>
 #include <meow/format/format.hpp>
 #include <meow/logging/logger.hpp>
+#include <meow/logging/log_write.hpp>
 #include <meow/unix/time.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
