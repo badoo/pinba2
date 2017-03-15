@@ -285,8 +285,6 @@ public: // snapshot
 					auto const& src = tick_pair.second;
 					auto      & dst = to[tick_pair.first];
 
-					++key_lookups;
-
 					dst.data.req_count  += src.data.req_count;
 					dst.data.hit_count  += src.data.hit_count;
 					dst.data.time_total += src.data.time_total;
@@ -303,7 +301,8 @@ public: // snapshot
 				key_lookups += tick->data.size();
 			}
 
-			LOG_DEBUG(globals->logger(), "prepare '{0}'; key_lookups: {1}, hv_lookups: {2}", rinfo.name, key_lookups, hv_lookups);
+			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
+				rinfo.name, ticks.size(), key_lookups, hv_lookups);
 		}
 	};
 
