@@ -20,9 +20,41 @@
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+template<size_t N>
+using key_base_t = std::array<uint32_t, N>;
+
+struct key__hasher_t
+{
+	template<size_t N>
+	inline constexpr size_t operator()(key_base_t<N> const& key) const
+	{
+		return t1ha0(key.data(), key.size() * sizeof(key[0]), 0);
+	}
+};
+
+struct key__equal_t
+{
+	template<size_t N>
+	inline bool operator()(key_base_t<N> const& l, key_base_t<N> const& r) const
+	{
+		return l == r;
+	}
+};
+
+template<size_t N>
+inline key_base_t<N> key__make_empty()
+{
+	key_base_t<N> result;
+	result.fill(0);
+	return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+template<size_t NKeys>
 struct report___by_timer_t : public report_t
 {
-	typedef report_key_t                  key_t;
+	typedef key_base_t<NKeys>             key_t;
 	typedef report_row_data___by_timer_t  data_t;
 
 	struct item_t
@@ -106,11 +138,11 @@ struct report___by_timer_t : public report_t
 private: // raw data
 
 	struct raw_hashtable_t
-		: public google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>
+		: public google::dense_hash_map<key_t, item_t, key__hasher_t, key__equal_t>
 	{
 		raw_hashtable_t()
 		{
-			this->set_empty_key(key_t{});
+			this->set_empty_key(key__make_empty<NKeys>());
 		}
 	};
 
@@ -123,63 +155,11 @@ private: // tick data
 		std::vector<key_t>        keys;
 		std::vector<data_t>       datas;
 		std::vector<histogram_t>  hvs;
-#if 0
-		struct iterator : public std::vector<key_t>::iterator // std::random_access_iterator_tag
-		{
-			tick_data_t *td_;
-
-			struct value_type
-			{
-				key_t       *key;
-				data_t      *data;
-				histogram_t *hv;
-
-				void swap(value_type& other)
-				{
-					using std::swap;
-					swap(*key, *other.key);
-					swap(*data, *other.data);
-
-				}
-			};
-
-			explicit iterator(tick_data_t *td, size_t off = 0)
-				: td_(td)
-				, off_(off)
-			{
-			}
-
-			value_type operator*()
-			{
-				return value_type { &td_->keys[off_], &td_->datas[off_], (off_ < td_->keys.size()) ? &td_->hvs[off_] : nullptr };
-			}
-
-			iterator& operator=(iterator const& other)
-			{
-				td_  = other.td_;
-				off_ = other.off_;
-				return *this;
-			}
-
-			bool operator==(iterator const& other) const { return (other.off_ == off_) && (other.td_ == td_); }
-			bool operator!=(iterator const& other) const { return (other.off_ != off_) || (other.td_ != td_); }
-			bool operator<(iterator const& other) const { return off_ < other.off_; }
-
-			// iterator operator+(iterator const& other) const { return iterator(td_, off_ + other.off_); }
-			difference_type operator-(iterator const& other) const { return (ssize_t)off_ - (ssize_t)other.off_; }
-
-			iterator& operator+=(size_t n) { off_ += n; return *this; }
-			iterator& operator-=(size_t n) { off_ -= n; return *this; }
-		};
-
-		iterator begin() { return iterator(this, 0); }
-		iterator end() { return iterator(this, keys.size()); }
-#endif
 	};
 
 	using ticks_t       = ticks_ringbuffer_t<tick_data_t>;
-	using tick_t        = ticks_t::tick_t;
-	using ticks_list_t  = ticks_t::ringbuffer_t;
+	using tick_t        = typename ticks_t::tick_t;
+	using ticks_list_t  = typename ticks_t::ringbuffer_t;
 
 public: // snapshot
 
@@ -198,17 +178,20 @@ public: // snapshot
 		{
 		};
 
-		static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			return it->key;
+			report_key_t k;
+			for (auto const& kpart : it->key)
+				k.push_back(kpart);
+			return k;
 		}
 
-		static void* value_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
 			return &it->data;
 		}
 
-		static void* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+		static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
 			return &it->hv;
 		}
@@ -226,19 +209,21 @@ public: // snapshot
 
 				inline bool compare(key_t const& l, key_t const& r)
 				{
-					static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t, and we pass key data there");
+					// static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t, and we pass key data there");
 
-					assert(l.size() == r.size());
+					// assert(l.size() == r.size());
 
 					++n_compare_calls;
 					// return wmemcmp((wchar_t*)l.data(), (wchar_t*)r.data(), l.size());
-					return std::lexicographical_compare(l.begin(), l.end(), r.begin(), r.end());
+					// return std::lexicographical_compare(l.begin(), l.end(), r.begin(), r.end());
+					return l < r;
 				}
 
 				inline bool equal(key_t const& l, key_t const& r)
 				{
-					assert(l.size() == r.size());
-					return std::equal(l.begin(), l.end(), r.begin());
+					// assert(l.size() == r.size());
+					// return std::equal(l.begin(), l.end(), r.begin());
+					return l == r;
 				}
 
 				inline void reserve(size_t const sz)
@@ -334,7 +319,7 @@ public: // key extraction and transformation
 	struct key_info_t
 	{
 		template<class T>
-		using chunk_t = meow::chunk<T, key_t::static_size, uint32_t>;
+		using chunk_t = meow::chunk<T, NKeys, uint32_t>;
 
 		using key_descriptor_t = report_conf___by_timer_t::key_descriptor_t;
 
@@ -407,9 +392,6 @@ public: // key extraction and transformation
 		{
 			key_t result;
 
-			for (uint32_t i = 0; i < flat_key.size(); i++)
-				result.push_back();
-
 			for (auto const& d : split_key_d)
 			{
 				result[d.remap_to] = flat_key[d.remap_from];
@@ -438,12 +420,7 @@ public:
 		, ticks_(conf.tick_count)
 		, packet_unqiue_{1} // init this to 1, so it's different from 0 in default constructed data_t
 	{
-		// validate config
-		if (conf_.keys.size() > key_t::static_size)
-		{
-			throw std::runtime_error(ff::fmt_str(
-				"required keys ({0}) > supported keys ({1})", conf_.keys.size(), key_t::static_size));
-		}
+		assert(conf_.keys.size() == NKeys);
 
 		info_ = report_info_t {
 			.name            = conf_.name,
@@ -494,7 +471,7 @@ public:
 		// and then we're going to copy full values to destination already sorted
 		struct sort_elt_t
 		{
-			raw_hashtable_t::value_type const *ptr;
+			typename raw_hashtable_t::value_type const *ptr;
 		};
 
 		// fill
@@ -634,8 +611,7 @@ public:
 		};
 
 		key_t key_inprogress;
-		for (uint32_t i = 0; i < info_.n_key_parts; ++i) // zerofill the key for now
-			key_inprogress.push_back();
+		key_inprogress.fill(0); // zerofill the key for now
 
 		bool const tags_found = find_request_tags(ki_, &key_inprogress);
 		if (!tags_found)
@@ -689,5 +665,29 @@ public:
 
 report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_timer_t const& conf)
 {
-	return meow::make_unique<aux::report___by_timer_t>(globals, conf);
+	constexpr size_t max_keys = 8;
+	size_t const n_keys = conf.keys.size();
+
+	switch (n_keys)
+	{
+		case 0:
+			throw std::logic_error(ff::fmt_str("report_by_timer doesn't support 0 keys aggregation"));
+		default:
+			throw std::logic_error(ff::fmt_str("report_by_timer supports up to {0} keys, {1} given", max_keys, n_keys));
+
+	#define CASE(N) \
+		case N: return meow::make_unique<aux::report___by_timer_t<N>>(globals, conf);
+
+		CASE(1);
+		CASE(2);
+		CASE(3);
+		CASE(4);
+		CASE(5);
+		CASE(6);
+		CASE(7);
+		CASE(8);
+
+	#undef CASE
+	}
+	// return meow::make_unique<aux::report___by_timer_t>(globals, conf);
 }
