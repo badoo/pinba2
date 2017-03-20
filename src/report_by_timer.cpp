@@ -328,15 +328,19 @@ public: // snapshot
 				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
 #endif
 
+			uint64_t n_ticks = 0;
+			uint64_t key_lookups = 0;
+			uint64_t hv_lookups = 0;
+
 			for (auto const& tick : ticks)
 			{
 				if (!tick)
 					continue;
 
+				n_ticks++;
+
 				for (size_t i = 0; i < tick->data.keys.size(); i++)
 				{
-					// LOG_DEBUG(globals->logger(), "merging key: '{0}'", key_to_string(tick->data.keys[i]));
-
 					row_t       & dst      = to[tick->data.keys[i]];
 					data_t const& src_data = tick->data.datas[i];
 
@@ -349,9 +353,15 @@ public: // snapshot
 					if (rinfo.hv_enabled)
 					{
 						dst.hv.merge_other(tick->data.hvs[i]);
+						hv_lookups += tick->data.hvs[i].map_cref().size();
 					}
 				}
+
+				key_lookups += tick->data.keys.size();
 			}
+
+			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
+				rinfo.name, ticks.size(), key_lookups, hv_lookups);
 		}
 	};
 
@@ -435,7 +445,7 @@ public: // key extraction and transformation
 
 		key_t remap_key(key_t const& flat_key) const
 		{
-			key_t result;
+			key_t result = {}; // avoid might-be-unitialized warning
 
 			for (auto const& d : split_key_d)
 			{
@@ -535,8 +545,6 @@ public:
 
 		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
 			[](sort_elt_t const& l, sort_elt_t const& r) { return l.ptr->first < r.ptr->first; });
-				// return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
-				// return std::lexicographical_compare(l.ptr->first.begin(), l.ptr->first.end(), r.ptr->first.begin(), r.ptr->first.end()); });
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
@@ -555,7 +563,6 @@ public:
 		// copy, according to pointers
 		for (auto const& sort_elt : raw_data_pointers)
 		{
-			// td.keys.push_back(sort_elt.ptr->first);
 			td.keys.push_back(sort_elt.ptr->first);
 			td.datas.push_back(sort_elt.ptr->second.data);
 
