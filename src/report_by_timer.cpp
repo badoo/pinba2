@@ -486,6 +486,7 @@ public:
 		// and then we're going to copy full values to destination already sorted
 		struct sort_elt_t
 		{
+			key_t key;
 			raw_hashtable_t::value_type const *ptr;
 		};
 
@@ -494,12 +495,16 @@ public:
 		raw_data_pointers.reserve(raw_data_.size());
 
 		for (auto const& raw_pair : raw_data_)
-			raw_data_pointers.push_back({&raw_pair});
+			raw_data_pointers.push_back({raw_pair.first, &raw_pair});
+
+		LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
 
 		// sort
+		sw.reset();
+
 		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
 			[](sort_elt_t const& l, sort_elt_t const& r) {
-				return wmemcmp((wchar_t*)l.ptr->first.data(), (wchar_t*)r.ptr->first.data(), l.ptr->first.size()) < 0; });
+				return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
@@ -522,7 +527,8 @@ public:
 
 		for (auto const& sort_elt : raw_data_pointers)
 		{
-			td.keys.push_back(sort_elt.ptr->first);
+			// td.keys.push_back(sort_elt.ptr->first);
+			td.keys.push_back(sort_elt.key);
 			td.datas.push_back(sort_elt.ptr->second.data);
 
 			if (info_.hv_enabled)
