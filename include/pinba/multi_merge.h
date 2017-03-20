@@ -57,7 +57,8 @@ namespace pinba {
 		// FIXME: benchmark labmda vs free template function
 		auto const item_greater = [&result](merge_item_t const& l, merge_item_t const& r)
 		{
-			return result->compare(*l.iter, *r.iter) > 0;
+			// return result->compare(*l.iter, *r.iter) > 0;
+			return !result->compare(*l.iter, *r.iter);
 		};
 
 		size_t       result_length = 0;

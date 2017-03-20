@@ -224,14 +224,21 @@ public: // snapshot
 
 				uint64_t n_compare_calls;
 
-				inline int compare(key_t const& l, key_t const& r)
+				inline bool compare(key_t const& l, key_t const& r)
 				{
 					static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t, and we pass key data there");
 
 					assert(l.size() == r.size());
 
 					++n_compare_calls;
-					return wmemcmp((wchar_t*)l.data(), (wchar_t*)r.data(), l.size());
+					// return wmemcmp((wchar_t*)l.data(), (wchar_t*)r.data(), l.size());
+					return std::lexicographical_compare(l.begin(), l.end(), r.begin(), r.end());
+				}
+
+				inline bool equal(key_t const& l, key_t const& r)
+				{
+					assert(l.size() == r.size());
+					return std::equal(l.begin(), l.end(), r.begin());
 				}
 
 				inline void reserve(size_t const sz)
@@ -249,7 +256,8 @@ public: // snapshot
 						if (to->empty())
 							return true;
 
-						return (0 != compare(to->back().key, v));
+						// return (0 != compare(to->back().key, v));
+						return !equal(to->back().key, v);
 					}();
 
 					if (should_insert)
@@ -504,7 +512,8 @@ public:
 
 		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
 			[](sort_elt_t const& l, sort_elt_t const& r) {
-				return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
+				// return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
+				return std::lexicographical_compare(l.key.begin(), l.key.end(), r.key.begin(), r.key.end()); });
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
