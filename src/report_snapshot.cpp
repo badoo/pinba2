@@ -32,9 +32,9 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 			}
 			else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
 			{
-				auto const *hv = static_cast<histogram_values_t const*>(histogram);
+				auto const *hv = static_cast<flat_histogram_t const*>(histogram);
 
-				auto const& hvalues = hv->items;
+				auto const& hvalues = hv->values;
 				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
 					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);

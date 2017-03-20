@@ -20,10 +20,11 @@
 #include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/report_by_request.h"
+#include "pinba/multi_merge.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-
+#if 0
 namespace { namespace detail {
 	template<class I>
 	struct merge_heap_item_t
@@ -123,7 +124,7 @@ static inline void multi_merge(ResultContainer& result, Iterator begin, Iterator
 		}
 	}
 }
-
+#endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct report_row_data___by_timer_t
@@ -382,8 +383,8 @@ public: // ticks
 	{
 		struct row_t
 		{
-			data_t              data;
-			histogram_values_t  hvalues;
+			data_t            data;
+			flat_histogram_t  hv;
 		}; // __attribute__((packed));
 
 		struct hashtable_t
@@ -459,7 +460,39 @@ public: // snapshot
 
 			if (rinfo_.hv_enabled)
 			{
-				std::vector<std::vector<hv_value_t> const*> hv_range;
+				struct merger_t
+				{
+					std::vector<histogram_value_t> *to;
+
+					inline int compare(histogram_value_t const& l, histogram_value_t const& r) const
+					{
+						return (l < r) ? -1 : (r < l) ? 1 : 0;
+					}
+
+					inline void reserve(size_t const sz)
+					{
+						to->reserve(sz);
+					}
+
+					inline void push_back(std::vector<histogram_value_t> *seq, histogram_value_t const& v)
+					{
+						// TODO: try removing this if or put 'unlikely'
+						if (to->empty())
+						{
+							to->push_back(v);
+							return;
+						}
+
+						auto& back = to->back();
+
+						if (0 == compare(back, v)) // same elt, must merge
+							back.value += v.value;
+						else                       // new one
+							to->push_back(v);
+					}
+				};
+
+				std::vector<std::vector<histogram_value_t>*> hv_range;
 
 				for (auto& pair : data_)
 				{
@@ -476,35 +509,16 @@ public: // snapshot
 						if (it == tick->data.ht.end())
 							continue;
 
-						hv_range.push_back(&it->second.hvalues.items);
+						hv_range.push_back(&it->second.hv.values);
 					}
 
 					// merge them all at once into empty destination
-					multi_merge(pair.second.hvalues.items, hv_range.begin(), hv_range.end(),
-						[](hv_value_t const& l, hv_value_t const& r) { return (l < r) ? -1 : (r < l) ? 1 : 0; },
-						[](hv_value_t& l, hv_value_t const& r) {
-							if (l.bucket_id == 0)
-								l.bucket_id = r.bucket_id;
-							l.value += r.value;
-						});
+					merger_t merger = { .to = &pair.second.hv.values };
+					pinba::multi_merge(&merger, hv_range.begin(), hv_range.end());
 
 					// clear hv for next iteration
 					hv_range.clear();
 				}
-
-/*
-				histogram_values_t vv;
-
-				multi_merge(vv.items, range, range + 2,
-					[](hv_value_t const& l, hv_value_t const& r) { return (l < r) ? -1 : (r < l) ? 1 : 0; },
-					[](hv_value_t& l, hv_value_t const& r) {
-						if (l.bucket_id == 0)
-							l.bucket_id = r.bucket_id;
-						l.value += r.value;
-					});
-
-				dst.hvalues.items = std::move(vv.items);
-*/
 			}
 		}
 
@@ -610,7 +624,7 @@ public: // snapshot
 				return nullptr;
 
 			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return &it->second.hvalues;
+			return &it->second.hv;
 			// return Traits::hv_at_position(data_, it);
 		}
 
@@ -786,19 +800,19 @@ public:
 
 			if (info_.hv_enabled)
 			{
-				dst.hvalues.inf_value = src.hv.inf_value();
-				dst.hvalues.total_value = src.hv.items_total();
+				dst.hv.inf_value = src.hv.inf_value();
+				dst.hv.total_value = src.hv.items_total();
 
 				for (auto const& hv_pair : src.hv.map_cref())
 				{
-					hv_value_t v;
+					histogram_value_t v;
 					v.bucket_id = hv_pair.first;
 					v.value = hv_pair.second;
 					// ff::fmt(stdout, "{0} <- {{ {1}, {2} }\n", report_key_to_string(raw_pair.first), v.bucket_id, v.value);
-					dst.hvalues.items.push_back(v);
+					dst.hv.values.push_back(v);
 				}
 
-				std::sort(dst.hvalues.items.begin(), dst.hvalues.items.end());
+				std::sort(dst.hv.values.begin(), dst.hv.values.end());
 			}
 		}
 
@@ -987,7 +1001,7 @@ public:
 					report_key_to_string(key),
 					data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
 
-				auto const& hvalues = item.hvalues.items;
+				auto const& hvalues = item.hv.values;
 				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
 					ff::fmt(f, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
@@ -1042,9 +1056,9 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 			}
 			else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
 			{
-				auto const *hv = static_cast<histogram_values_t const*>(histogram);
+				auto const *hv = static_cast<flat_histogram_t const*>(histogram);
 
-				auto const& hvalues = hv->items;
+				auto const& hvalues = hv->values;
 				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
 					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
@@ -1100,10 +1114,10 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 				ff::as_printf("%.06lf", data.hit_count / time_window));
 
 			ff::fmt(sink, " [");
-			auto const *hv = (histogram_values_t*)snapshot->get_histogram(pos);
+			auto const *hv = (flat_histogram_t*)snapshot->get_histogram(pos);
 			if (NULL != hv)
 			{
-				auto const& hvalues = hv->items;
+				auto const& hvalues = hv->values;
 				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
 					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);

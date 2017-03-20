@@ -192,7 +192,6 @@ private:
 	virtual report_key_t get_key(position_t const& pos) const override
 	{
 		auto const& it = reinterpret_cast<iterator_t const&>(pos);
-		// return it->first;
 		return Traits::key_at_position(data_, it);
 	}
 

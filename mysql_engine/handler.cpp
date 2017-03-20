@@ -1104,7 +1104,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 					}
 					else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 					{
-						auto const *hv = static_cast<histogram_values_t const*>(histogram);
+						auto const *hv = static_cast<flat_histogram_t const*>(histogram);
 						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
 					}
 
@@ -1169,7 +1169,7 @@ pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 		case pinba_view_kind::report_by_request_data:
 			return meow::make_unique<report___by_request_t>(P_G_, conf.by_request_conf);
 		case pinba_view_kind::report_by_timer_data:
-			return meow::make_unique<report___by_timer_t>(P_G_, conf.by_timer_conf);
+			return create_report_by_timer(P_G_, conf.by_timer_conf);
 		case pinba_view_kind::report_by_packet_data:
 			return meow::make_unique<report___by_packet_t>(P_G_, conf.by_packet_conf);
 

@@ -6,7 +6,7 @@
 #include <utility> // c++11 swap
 
 #include <boost/noncopyable.hpp>
-#include <sparsehash/sparse_hash_map>
+// #include <sparsehash/sparse_hash_map>
 
 #include "t1ha/t1ha.h"
 #include "sparsepp/spp.h"
@@ -137,29 +137,31 @@ public:
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // plain sorted-array histograms, should be faster to merge and calculate percentiles from
 
-struct hv_value_t
+struct histogram_value_t
 {
 	uint32_t bucket_id;
 	uint32_t value;
 
-	hv_value_t()
+	histogram_value_t()
 		: bucket_id(0)
 		, value(0)
 	{
 	}
 
-	inline bool operator<(hv_value_t const& other) const
+	inline bool operator<(histogram_value_t const& other) const
 	{
 		return bucket_id < other.bucket_id;
 	}
 };
-static_assert(sizeof(hv_value_t) == sizeof(uint64_t), "hv_value_t must have no padding");
+static_assert(sizeof(histogram_value_t) == sizeof(uint64_t), "histogram_value_t must have no padding");
 
-struct histogram_values_t
+typedef std::vector<histogram_value_t> histogram_values_t;
+
+struct flat_histogram_t
 {
-	std::vector<hv_value_t> items;
-	uint32_t total_value;
-	uint32_t inf_value;
+	histogram_values_t  values;
+	uint32_t            total_value;
+	uint32_t            inf_value;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +239,7 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 }
 
 
-inline duration_t get_percentile(histogram_values_t const& hv, histogram_conf_t const& conf, double percentile)
+inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t const& conf, double percentile)
 {
 	if (percentile == 0.) // 0'th percentile is always 0
 		return {0};
@@ -264,8 +266,7 @@ inline duration_t get_percentile(histogram_values_t const& hv, histogram_conf_t 
 	uint32_t current_sum = 0;
 	uint32_t bucket_id   = 0;
 
-	// for (; current_sum < required_sum; bucket_id++)
-	for (auto const& item : hv.items)
+	for (auto const& item : hv.values)
 	{
 		bucket_id = item.bucket_id;
 
