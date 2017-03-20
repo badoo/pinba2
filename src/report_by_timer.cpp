@@ -494,7 +494,6 @@ public:
 		// and then we're going to copy full values to destination already sorted
 		struct sort_elt_t
 		{
-			key_t key;
 			raw_hashtable_t::value_type const *ptr;
 		};
 
@@ -503,7 +502,7 @@ public:
 		raw_data_pointers.reserve(raw_data_.size());
 
 		for (auto const& raw_pair : raw_data_)
-			raw_data_pointers.push_back({raw_pair.first, &raw_pair});
+			raw_data_pointers.push_back({&raw_pair});
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
 
@@ -513,14 +512,14 @@ public:
 		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
 			[](sort_elt_t const& l, sort_elt_t const& r) {
 				// return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
-				return std::lexicographical_compare(l.key.begin(), l.key.end(), r.key.begin(), r.key.end()); });
+				return std::lexicographical_compare(l.ptr->first.begin(), l.ptr->first.end(), r.ptr->first.begin(), r.ptr->first.end()); });
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
 		// can copy now
 		sw.reset();
 
-		// reserve memory in advance, since we know the final size
+		// reserve memory in advance, since we know the final size (this is really fast, not worth measuring generally)
 		{
 			td.keys.reserve(raw_data_.size());
 			td.datas.reserve(raw_data_.size());
@@ -529,15 +528,11 @@ public:
 				td.hvs.reserve(raw_data_.size());
 		}
 
-		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data storage allocated, elapsed: {2}", name(), curr_tv, sw.stamp());
-
 		// copy, according to pointers
-		sw.reset();
-
 		for (auto const& sort_elt : raw_data_pointers)
 		{
 			// td.keys.push_back(sort_elt.ptr->first);
-			td.keys.push_back(sort_elt.key);
+			td.keys.push_back(sort_elt.ptr->first);
 			td.datas.push_back(sort_elt.ptr->second.data);
 
 			if (info_.hv_enabled)
