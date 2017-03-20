@@ -225,7 +225,7 @@ public: // snapshot
 
 				inline int compare(key_t const& l, key_t const& r)
 				{
-					static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t");
+					static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t, and we pass key data there");
 
 					assert(l.size() == r.size());
 
@@ -258,7 +258,9 @@ public: // snapshot
 						row.data = td->datas[v_offset];
 
 						if (rinfo->hv_enabled)
+						{
 							row.hv.merge_other(td->hvs[v_offset]);
+						}
 
 						// LOG_DEBUG(globals->logger(), "prev empty, adding {0}", report_key_to_string(v));
 
@@ -268,24 +270,22 @@ public: // snapshot
 					}
 
 					row_t& prev_row = to->back();
-					if (0 == compare(prev_row.key, v)) // merge
+
+					data_t      & dst_data = prev_row.data;
+					data_t const& src_data = td->datas[v_offset];
+
+					dst_data.req_count  += src_data.req_count;
+					dst_data.hit_count  += src_data.hit_count;
+					dst_data.time_total += src_data.time_total;
+					dst_data.ru_utime   += src_data.ru_utime;
+					dst_data.ru_stime   += src_data.ru_stime;
+
+					if (rinfo->hv_enabled)
 					{
-						data_t      & dst_data = prev_row.data;
-						data_t const& src_data = td->datas[v_offset];
-
-						dst_data.req_count  += src_data.req_count;
-						dst_data.hit_count  += src_data.hit_count;
-						dst_data.time_total += src_data.time_total;
-						dst_data.ru_utime   += src_data.ru_utime;
-						dst_data.ru_stime   += src_data.ru_stime;
-
-						if (rinfo->hv_enabled)
-						{
-							prev_row.hv.merge_other(td->hvs[v_offset]);
-						}
-
-						// LOG_DEBUG(globals->logger(), "prev is equal, merging {0}", report_key_to_string(v));
+						prev_row.hv.merge_other(td->hvs[v_offset]);
 					}
+
+					// LOG_DEBUG(globals->logger(), "prev is equal, merging {0}", report_key_to_string(v));
 				}
 			};
 
@@ -311,7 +311,8 @@ public: // snapshot
 
 			pinba::multi_merge(&merger, td, td_end);
 
-			LOG_DEBUG(globals->logger(), "{0} done; n_compare_calls: {1}, result_length: {2}", __func__, merger.n_compare_calls, merger.to->size());
+			LOG_DEBUG(globals->logger(), "{0} done; n_compare_calls: {1}, result_length: {2}",
+				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
 		}
 	};
 
