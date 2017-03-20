@@ -3,6 +3,7 @@
 #include <functional>
 #include <utility>
 
+#include <meow/stopwatch.hpp>
 #include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
 
 #include <sparsehash/dense_hash_map>
@@ -311,7 +312,7 @@ public: // snapshot
 
 			pinba::multi_merge(&merger, td, td_end);
 
-			LOG_DEBUG(globals->logger(), "{0} done; n_compare_calls: {1}, result_length: {2}",
+			LOG_DEBUG(globals->logger(), "{0} done; n_ticks: {1}, n_compare_calls: {2}, result_length: {3}",
 				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
 		}
 	};
@@ -478,6 +479,8 @@ public:
 		tick_t *tick = &ticks_.current();
 		tick_data_t& td = tick->data;
 
+		meow::stopwatch_t sw;
+
 		// this builds an array of pointers to raw_data_ hashtable values (aka std::pair<key_t, item_t>*)
 		// then sorts pointers, according to keys, inside the hash
 		// and then we're going to copy full values to destination already sorted
@@ -498,7 +501,10 @@ public:
 			[](sort_elt_t const& l, sort_elt_t const& r) {
 				return wmemcmp((wchar_t*)l.ptr->first.data(), (wchar_t*)r.ptr->first.data(), l.ptr->first.size()) < 0; });
 
+		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
+
 		// can copy now
+		sw.reset();
 
 		// reserve memory in advance, since we know the final size
 		{
@@ -509,7 +515,11 @@ public:
 				td.hvs.reserve(raw_data_.size());
 		}
 
+		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data storage allocated, elapsed: {2}", name(), curr_tv, sw.stamp());
+
 		// copy, according to pointers
+		sw.reset();
+
 		for (auto const& sort_elt : raw_data_pointers)
 		{
 			td.keys.push_back(sort_elt.ptr->first);
@@ -520,6 +530,8 @@ public:
 				td.hvs.push_back(std::move(sort_elt.ptr->second.hv));
 			}
 		}
+
+		LOG_DEBUG(globals_->logger(), "{0}/{1} tick finished, {2} entries, copy elapsed: {3}", name(), curr_tv, td.keys.size(), sw.stamp());
 
 		raw_data_.clear();
 
