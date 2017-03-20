@@ -221,9 +221,9 @@ public: // snapshot
 				report_info_t   *rinfo;
 				pinba_globals_t *globals;
 
-				uint64_t n_compare_calls = 0;
+				uint64_t n_compare_calls;
 
-				inline int compare(key_t const& l, key_t const& r) const
+				inline int compare(key_t const& l, key_t const& r)
 				{
 					static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t");
 
@@ -306,11 +306,12 @@ public: // snapshot
 				.to      = &to,
 				.rinfo   = &rinfo,
 				.globals = globals,
+				.n_compare_calls = 0,
 			};
 
 			pinba::multi_merge(&merger, td, td_end);
 
-			LOG_DEBUG(globals->logger(), "{0} done; n_compare_calls: {1}, result_length: {2}", __func__, n_compare_calls, merger.to->size());
+			LOG_DEBUG(globals->logger(), "{0} done; n_compare_calls: {1}, result_length: {2}", __func__, merger.n_compare_calls, merger.to->size());
 		}
 	};
 
