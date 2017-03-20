@@ -504,6 +504,8 @@ public:
 		for (auto const& raw_pair : raw_data_)
 			raw_data_pointers.push_back({&raw_pair});
 
+		assert(raw_data_pointers.size() == raw_data_.size());
+
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
 
 		// sort
