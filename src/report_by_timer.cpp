@@ -49,6 +49,19 @@ inline key_base_t<N> key__make_empty()
 	return result;
 }
 
+template<size_t N>
+std::string key_to_string(key_base_t<N> const& k)
+{
+	std::string result;
+
+	for (size_t i = 0; i < k.size(); ++i)
+	{
+		ff::write(result, (i == 0) ? "" : "|", k[i]);
+	}
+
+	return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<size_t NKeys>
@@ -169,36 +182,42 @@ public: // snapshot
 
 		struct row_t
 		{
-			key_t        key;
+			// key_t        key;
 			data_t       data;
 			histogram_t  hv;
 		};
 
-		struct hashtable_t : public std::vector<row_t>
+		struct hashtable_t : public google::dense_hash_map<key_t, row_t, key__hasher_t, key__equal_t>
 		{
+			hashtable_t()
+			{
+				this->set_empty_key(key__make_empty<NKeys>());
+			}
 		};
 
 		static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
+			// FIXME: just patch meow::chunk to initialize this nicely
 			report_key_t k;
-			for (auto const& kpart : it->key)
+			for (auto const& kpart : it->first)
 				k.push_back(kpart);
 			return k;
 		}
 
 		static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			return &it->data;
+			return &it->second.data;
 		}
 
 		static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			return &it->hv;
+			return &it->second.hv;
 		}
 
 		// merge from src ringbuffer to snapshot data
 		static void merge_ticks_into_data(pinba_globals_t *globals, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
 		{
+#if 0
 			struct merger_t
 			{
 				hashtable_t     *to;
@@ -307,6 +326,32 @@ public: // snapshot
 
 			LOG_DEBUG(globals->logger(), "{0} done; n_ticks: {1}, n_compare_calls: {2}, result_length: {3}",
 				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
+#endif
+
+			for (auto const& tick : ticks)
+			{
+				if (!tick)
+					continue;
+
+				for (size_t i = 0; i < tick->data.keys.size(); i++)
+				{
+					// LOG_DEBUG(globals->logger(), "merging key: '{0}'", key_to_string(tick->data.keys[i]));
+
+					row_t       & dst      = to[tick->data.keys[i]];
+					data_t const& src_data = tick->data.datas[i];
+
+					dst.data.req_count  += src_data.req_count;
+					dst.data.hit_count  += src_data.hit_count;
+					dst.data.time_total += src_data.time_total;
+					dst.data.ru_utime   += src_data.ru_utime;
+					dst.data.ru_stime   += src_data.ru_stime;
+
+					if (rinfo.hv_enabled)
+					{
+						dst.hv.merge_other(tick->data.hvs[i]);
+					}
+				}
+			}
 		}
 	};
 
@@ -489,9 +534,9 @@ public:
 		sw.reset();
 
 		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
-			[](sort_elt_t const& l, sort_elt_t const& r) {
+			[](sort_elt_t const& l, sort_elt_t const& r) { return l.ptr->first < r.ptr->first; });
 				// return wmemcmp((wchar_t*)l.key.data(), (wchar_t*)r.key.data(), l.key.size()) < 0; });
-				return std::lexicographical_compare(l.ptr->first.begin(), l.ptr->first.end(), r.ptr->first.begin(), r.ptr->first.end()); });
+				// return std::lexicographical_compare(l.ptr->first.begin(), l.ptr->first.end(), r.ptr->first.begin(), r.ptr->first.end()); });
 
 		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
@@ -635,7 +680,11 @@ public:
 				if (!timer_found)
 					continue;
 
+				// LOG_DEBUG(globals_->logger(), "found key '{0}'", key_to_string(key_inprogress));
+
 				key_t const k = ki_.remap_key(key_inprogress);
+
+				// LOG_DEBUG(globals_->logger(), "remapped key '{0}'", key_to_string(k));
 
 				// finally - find and update item
 				item_t& item = raw_data_[k];
