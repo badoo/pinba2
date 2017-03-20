@@ -28,8 +28,8 @@ struct report_key__hasher_t
 	{
 		// TODO: try a "better" hash function here, like https://github.com/leo-yuriev/t1ha
 		// return meow::hash_blob(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type));
-		// return t1ha1_le(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), (uint64_t)this /*seed*/ );
-		return t1ha0(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), (uint64_t)this /*seed*/ );
+		// return t1ha1_le(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), 0);
+		return t1ha0(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), 0);
 	}
 };
 

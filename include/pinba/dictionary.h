@@ -83,7 +83,7 @@ struct dictionary_word_hasher_t
 {
 	inline uint64_t operator()(str_ref const& key) const
 	{
-		return t1ha0(key.data(), key.size(), (uint64_t)this /*seed*/);
+		return t1ha0(key.data(), key.size(), 0);
 	}
 };
 

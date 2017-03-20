@@ -23,7 +23,7 @@ struct histogram_hasher_t
 {
 	inline uint64_t operator()(uint32_t const v) const
 	{
-		return t1ha0(&v, sizeof(v), (uint64_t)this /*seed*/);
+		return t1ha0(&v, sizeof(v), 0);
 	}
 };
 
