@@ -319,7 +319,7 @@ public: // key extraction and transformation
 	struct key_info_t
 	{
 		template<class T>
-		using chunk_t = meow::chunk<T, NKeys, uint32_t>;
+		using array_t = std::array<T, NKeys>;
 
 		using key_descriptor_t = report_conf___by_timer_t::key_descriptor_t;
 
@@ -330,11 +330,11 @@ public: // key extraction and transformation
 			uint32_t          remap_to;    // offset in conf.key_d
 		};
 
-		typedef chunk_t<descriptor_t>          rkd_chunk_t;
+		typedef array_t<descriptor_t>          rkd_array_t;
 		typedef meow::string_ref<descriptor_t> rkd_range_t;
 
 		// key descriptors grouped by kind
-		rkd_chunk_t split_key_d;
+		rkd_array_t split_key_d;
 
 		// these are ranges, describing which keys are where in split_key_d
 		rkd_range_t request_tag_r;
@@ -362,11 +362,11 @@ public: // key extraction and transformation
 				{
 					descriptor_t const d = {
 						.d          = key_d[i],
-						.remap_from = split_key_d.size(),
+						.remap_from = static_cast<uint32_t>(split_key_d.size()),
 						.remap_to   = i,
 					};
 
-					split_key_d.push_back(d);
+					split_key_d[i] = d;
 				}
 			}
 
@@ -390,7 +390,7 @@ public: // key extraction and transformation
 
 		key_t remap_key(key_t const& flat_key) const
 		{
-			key_t result;
+			key_t result = {}; // silence maybe uninitialized warning, we're initializing this stuff right below
 
 			for (auto const& d : split_key_d)
 			{
