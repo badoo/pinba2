@@ -1361,6 +1361,8 @@ int pinba_handler_t::rnd_init(bool scan)
 			{
 				assert(share_->report);
 
+				// FIXME: if report activation fails, we will have lost the report (and assert abouve would fire)
+				//        should be fixed with re-creating report again, or just make it ref counted
 				pinba_error_t err = P_E_->add_report(move(share_->report));
 				if (err)
 					throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));

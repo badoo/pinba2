@@ -40,6 +40,8 @@ namespace { namespace aux {
 		virtual ~report_host_t() {}
 		virtual void startup(report_ptr) = 0;
 		virtual void shutdown() = 0;
+
+		virtual void process_batch(packet_batch_ptr) = 0;
 		virtual void call_with_report(report_host_call_func_t const&) = 0;
 	};
 	typedef std::unique_ptr<report_host_t> report_host_ptr;
@@ -67,7 +69,9 @@ namespace { namespace aux {
 
 		std::thread            t_;
 
-		nmsg_socket_t          packets_sock_;
+		nmsg_socket_t          packets_send_sock_;
+		nmsg_socket_t          packets_recv_sock_;
+
 		nmsg_socket_t          reqrep_sock_;
 		nmsg_socket_t          shutdown_sock_;
 		nmsg_ticker_chan_ptr   ticker_chan_;
@@ -82,10 +86,19 @@ namespace { namespace aux {
 			, conf_(conf)
 			, packets_received(0)
 		{
-			packets_sock_
-				.open(AF_SP, NN_SUB)
-				.set_option(NN_SUB, NN_SUB_SUBSCRIBE, "")
-				.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, "report_handler_t::in_sock")
+			// packets_sock_
+			// 	.open(AF_SP, NN_SUB)
+			// 	.set_option(NN_SUB, NN_SUB_SUBSCRIBE, "")
+			// 	.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, "report_handler_t::in_sock")
+			// 	.connect(conf_.nn_packets);
+
+			packets_send_sock_
+				.open(AF_SP, NN_PUSH)
+				.bind(conf_.nn_packets);
+
+			packets_recv_sock_
+				.open(AF_SP, NN_PULL)
+				.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, ff::fmt_str("{0}/in_sock", conf_.name))
 				.connect(conf_.nn_packets);
 
 			reqrep_sock_
@@ -128,9 +141,9 @@ namespace { namespace aux {
 						chan.recv();
 						report_->tick_now(now);
 					})
-					.read_sock(*packets_sock_, [this](timeval_t now)
+					.read_sock(*packets_recv_sock_, [this](timeval_t now)
 					{
-						auto const batch = packets_sock_.recv<packet_batch_ptr>();
+						auto const batch = packets_recv_sock_.recv<packet_batch_ptr>();
 						packets_received += batch->packet_count;
 
 						report_->add_multi(batch->packets, batch->packet_count);
@@ -156,6 +169,15 @@ namespace { namespace aux {
 			});
 
 			t_ = move(t);
+		}
+
+		virtual void process_batch(packet_batch_ptr batch) override
+		{
+			bool const success = packets_send_sock_.send_message(batch, NN_DONTWAIT);
+			if (!success)
+			{
+				// TODO: increment stats, etc.
+			}
 		}
 
 		virtual void call_with_report(std::function<void(report_t*)> const& func) override
@@ -267,6 +289,13 @@ namespace { namespace aux {
 				{
 					auto batch = in_sock_.recv<packet_batch_ptr>();
 
+					// relay the batch to all reports
+					// maybe move this to a separate thread?
+					for (auto& report_host : report_hosts_)
+					{
+						report_host.second->process_batch(batch);
+					}
+#if 0
 					// FIXME: this is fundamentally broken with PUB/SUB sadly
 					// since we have no idea if the report handler is slow, and in that case messages will be dropped
 					// and ref counts will not be decremented and memory will leak and we won't have any stats about that either
@@ -281,6 +310,7 @@ namespace { namespace aux {
 
 						report_sock_.send_ex(batch, 0);
 					}
+#endif
 				})
 				.read_sock(*control_sock_, [this, &poller](timeval_t now)
 				{
@@ -326,7 +356,7 @@ namespace { namespace aux {
 									.thread_name       = thr_name,
 									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
 									.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
-									.nn_packets        = conf_->nn_report_output,
+									.nn_packets        = ff::fmt_str("inproc://{0}/packets", rh_name),
 									.nn_packets_buffer = conf_->nn_report_output_buffer,
 								};
 

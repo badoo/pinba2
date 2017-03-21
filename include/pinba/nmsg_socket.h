@@ -240,7 +240,12 @@ public:
 	bool send(boost::intrusive_ptr<T> const& value, int flags = 0)
 	{
 		intrusive_ptr_add_ref(value.get());
-		return this->send_ex(value, flags);
+
+		bool const success = this->send_ex(value, flags);
+		if (!success)
+			intrusive_ptr_release(value.get());
+
+		return success;
 	}
 
 	template<class T>
@@ -250,8 +255,7 @@ public:
 			(std::is_base_of<nmsg_message_ex_t<T>, T>::value || std::is_base_of<nmsg_message_t, T>::value),
 			"send_message expects an intrusive_ptr to something derived from nmsg_message_t");
 
-		intrusive_ptr_add_ref(value.get());
-		return this->send_ex(value, flags);
+		return this->send(value, flags);
 	}
 };
 
