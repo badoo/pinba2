@@ -3,12 +3,19 @@
 
 #include <poll.h>
 
+#include <cassert>
 #include <vector>
-#include <stdexcept>
+#include <memory>      // unique_ptr
+#include <stdexcept>   // runtime_error
+#include <functional>  // function
 
 #include <boost/noncopyable.hpp>
 
-#include "pinba/globals.h"
+#include <meow/format/format.hpp>
+#include <meow/format/format_to_string.hpp>
+
+#include <nanomsg/nn.h>
+
 #include "pinba/nmsg_channel.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,7 +139,7 @@ public:
 			size_t sz = sizeof(sys_fd);
 			int const r = nn_getsockopt(chan->fd(), NN_SOL_SOCKET, NN_RCVFD, &sys_fd, &sz);
 			if (r < 0)
-				throw std::runtime_error(ff::fmt_str("nn_getsockopt(RCVFD) failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno())));
+				throw std::runtime_error(meow::format::fmt_str("nn_getsockopt(RCVFD) failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno())));
 
 			assert(sz == sizeof(sys_fd));
 			assert(sys_fd >= 0);
@@ -164,11 +171,11 @@ private:
 	int poll_and_callback(struct pollfd *pfd, size_t pfd_size, int wait_for_ms)
 	{
 		int const r = poll(pfd, pfd_size, wait_for_ms);
-		// ff::fmt(stderr, "r = {0}\n", r);
+		// meow::format::fmt(stderr, "r = {0}\n", r);
 
 		if (r < 0)
 		{
-			ff::fmt(stderr, "poll failed, {0}:{1}\n", errno, strerror(errno));
+			meow::format::fmt(stderr, "poll failed, {0}:{1}\n", errno, strerror(errno));
 			return -1;
 		}
 
@@ -194,11 +201,11 @@ private:
 	int poll_and_callback(struct nn_pollfd *pfd, size_t pfd_size, int wait_for_ms)
 	{
 		int const r = nn_poll(pfd, pfd_size, wait_for_ms);
-		// ff::fmt(stderr, "r = {0}\n", r);
+		// meow::format::fmt(stderr, "r = {0}\n", r);
 
 		if (r < 0)
 		{
-			ff::fmt(stderr, "nn_poll failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno()));
+			meow::format::fmt(stderr, "nn_poll failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno()));
 			return -1;
 		}
 

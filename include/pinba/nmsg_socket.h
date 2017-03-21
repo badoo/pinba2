@@ -9,11 +9,10 @@
 #include <boost/noncopyable.hpp>
 
 #include <meow/intrusive_ptr.hpp>
+#include <meow/format/format.hpp>
 #include <meow/format/format_to_string.hpp>
 
 #include <nanomsg/nn.h>
-
-#include "pinba/globals.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -93,7 +92,7 @@ public:
 	{
 		int const sock = nn_socket(af, type);
 		if (sock < 0)
-			throw std::runtime_error(ff::fmt_str("nn_socket({0}, {1}) failed: {2}:{3}", af, type, nn_errno(), nn_strerror(errno)));
+			throw std::runtime_error(meow::format::fmt_str("nn_socket({0}, {1}) failed: {2}:{3}", af, type, nn_errno(), nn_strerror(errno)));
 
 		this->close();
 
@@ -111,7 +110,7 @@ public:
 	{
 		int const r = nn_connect(fd_, endpoint);
 		if (r < 0)
-			throw std::runtime_error(ff::fmt_str("nn_connect({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
+			throw std::runtime_error(meow::format::fmt_str("nn_connect({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
 
 		return *this;
 	}
@@ -125,7 +124,7 @@ public:
 	{
 		int const r = nn_bind(fd_, endpoint);
 		if (r < 0)
-			throw std::runtime_error(ff::fmt_str("nn_bind({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
+			throw std::runtime_error(meow::format::fmt_str("nn_bind({0}) failed: {1}:{2}", endpoint, nn_errno(), nn_strerror(nn_errno())));
 
 		return *this;
 	}
@@ -138,7 +137,7 @@ public:
 		int const r = nn_setsockopt(fd_, level, option, &value, sizeof(value));
 		if (r < 0)
 		{
-			throw std::runtime_error(ff::fmt_str(
+			throw std::runtime_error(meow::format::fmt_str(
 				"nn_setsockopt({0}, {1}, {2}, {3}) failed: {4}:{5}",
 				sockname, level, option, value, nn_errno(), nn_strerror(errno)));
 		}
@@ -151,7 +150,7 @@ public:
 		int const r = nn_setsockopt(fd_, level, option, value.data(), value.length());
 		if (r < 0)
 		{
-			throw std::runtime_error(ff::fmt_str(
+			throw std::runtime_error(meow::format::fmt_str(
 				"nn_setsockopt({0}, {1}, '{2}') failed: {3}:{4}",
 				sockname, level, value, nn_errno(), nn_strerror(errno)));
 		}
@@ -167,7 +166,7 @@ public:
 		int const r = nn_getsockopt(fd_, level, option, &value, &sz);
 		if (r < 0)
 		{
-			throw std::runtime_error(ff::fmt_str("nn_getsockopt({0}, {1}, {2}) failed, {3}:{4}\n",
+			throw std::runtime_error(meow::format::fmt_str("nn_getsockopt({0}, {1}, {2}) failed, {3}:{4}\n",
 				sockname, level, option,
 				nn_errno(), nn_strerror(nn_errno())));
 		}
@@ -185,7 +184,7 @@ public:
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))
 				return false;
 
-			throw std::runtime_error(ff::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, nn_errno(), nn_strerror(nn_errno())));
+			throw std::runtime_error(meow::format::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, nn_errno(), nn_strerror(nn_errno())));
 		}
 
 		return true;
@@ -204,7 +203,7 @@ public:
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))
 				return value;
 
-			throw std::runtime_error(ff::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, err, nn_strerror(err)));
+			throw std::runtime_error(meow::format::fmt_str("nn_recv({0}) failed: {1}:{2}", sockname, err, nn_strerror(err)));
 		}
 
 		return value;
@@ -221,7 +220,7 @@ public:
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))
 				return false;
 
-			throw std::runtime_error(ff::fmt_str("nn_send() failed: {0}:{1}", err, nn_strerror(err)));
+			throw std::runtime_error(meow::format::fmt_str("nn_send() failed: {0}:{1}", err, nn_strerror(err)));
 		}
 		return true;
 	}

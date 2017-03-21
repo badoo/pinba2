@@ -7,7 +7,7 @@
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] docs
 	- [ ] guidelines - how to run mysql with jemalloc
-- [ ] proper logging (i mean writing to stderr from a 'library' is not something you'd call nice)
+- [x] decent logging (i mean writing to stderr from a 'library' is not something you'd call nice)
 - [ ] timer tag based filtering (i.e. take only timers with tag:browser=chrome)
 - per-report
 	- [ ] rusage
@@ -23,6 +23,8 @@
 # Performance
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
+	- [ ] configure support
+- [ ] {easy} sorted arrays for histograms
 - [ ] {easy} thread affinity
 - [ ] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
