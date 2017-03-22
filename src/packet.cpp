@@ -8,7 +8,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-request_validate_result_t pinba_validate_request(Pinba__Request *r)
+request_validate_result_t pinba_validate_request(Pinba__Request const *r)
 {
 	if (r->n_timer_value != r->n_timer_hit_count) // all timers have hit counts
 		return request_validate_result::bad_hit_count;
@@ -28,14 +28,14 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 			return request_validate_result::bad_timer_hit_count;
 	}
 
-	auto const total_tag_count = [](Pinba__Request *r)
+	auto const total_tag_count = [&]()
 	{
 		size_t result = 0;
 		for (unsigned i = 0; i < r->n_timer_tag_count; i++) {
 			result += r->timer_tag_count[i];
 		}
 		return result;
-	}(r);
+	}();
 
 	if (total_tag_count != r->n_timer_tag_name) // all tags have names
 		return request_validate_result::not_enough_tag_names;
@@ -91,9 +91,9 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 }
 
 
-packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmpa_s *nmpa)
+packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa)
 {
-	auto p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
+	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
 	uint32_t td[r->n_dictionary];
 
@@ -117,7 +117,7 @@ packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmp
 
 	p->timer_count = r->n_timer_value;
 	p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
-	for_each_timer(r, [&](Pinba__Request *r, timer_data_t const& timer)
+	for_each_timer(r, [&](Pinba__Request const *r, timer_data_t const& timer)
 	{
 		packed_timer_t *t = p->timers + timer.id;
 		t->hit_count = timer.hit_count;

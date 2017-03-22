@@ -6,7 +6,6 @@
 #include <meow/error.hpp>
 
 #include "pinba/globals.h"
-#include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/nmsg_socket.h" // nmsg_message_ex_t
 

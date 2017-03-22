@@ -95,7 +95,8 @@ struct report___by_timer_t : public report_t
 		//        but gcc 4.9.4 doesn't support the type_traits it requires
 		//        so live this is for now, but probably - move to gcc6 or something
 		item_t(item_t const& other)
-			: data(other.data)
+			: last_unique(other.last_unique)
+			, data(other.data)
 			, hv(other.hv)
 		{
 		}

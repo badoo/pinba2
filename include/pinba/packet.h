@@ -131,7 +131,7 @@ struct timer_data_t
 // run Function for each timer
 // Function = std::function<void(Pinba__Request *r, timer_data_t const& timer)>
 template<class Function>
-inline void for_each_timer(Pinba__Request *r, Function const& cb)
+inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 {
 	unsigned current_tag_offset = 0;
 
@@ -240,8 +240,8 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((negative_float_timer_ru_stime,  "negative_float_timer_ru_stime"))
 					);
 
-request_validate_result_t pinba_validate_request(Pinba__Request *r);
-packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmpa_s *nmpa);
+request_validate_result_t pinba_validate_request(Pinba__Request const *r);
+packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

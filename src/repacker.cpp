@@ -1,6 +1,7 @@
 #include <thread>
 #include <vector>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
@@ -68,7 +69,7 @@ namespace { namespace aux {
 			auto const create_batch = [&]()
 			{
 				constexpr size_t nmpa_block_size = 64 * 1024;
-				return packet_batch_ptr { new packet_batch_t(conf_->batch_size, nmpa_block_size) };
+				return meow::make_intrusive<packet_batch_t>(conf_->batch_size, nmpa_block_size);
 			};
 
 			auto const try_send_batch = [&](packet_batch_ptr& b)
@@ -162,7 +163,7 @@ namespace { namespace aux {
 
 					for (uint32_t i = 0; i < req->request_count; i++)
 					{
-						auto const pb_req = req->requests[i];
+						auto const *pb_req = req->requests[i];
 
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)

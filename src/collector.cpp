@@ -134,7 +134,7 @@ namespace { namespace aux {
 
 					if (!req)
 					{
-						req.reset(new raw_request_t(conf_->batch_size, 16 * 1024));
+						req = meow::make_intrusive<raw_request_t>(conf_->batch_size, 16 * 1024);
 						request_unpack_pba.allocator_data = &req->nmpa;
 					}
 
@@ -231,7 +231,7 @@ namespace { namespace aux {
 						{
 							if (!req)
 							{
-								req.reset(new raw_request_t(conf_->batch_size, 16 * 1024));
+								req = meow::make_intrusive<raw_request_t>(conf_->batch_size, 16 * 1024);
 								request_unpack_pba.allocator_data = &req->nmpa;
 							}
 
