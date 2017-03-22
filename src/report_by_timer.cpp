@@ -167,9 +167,9 @@ private: // tick data
 
 	struct tick_data_t
 	{
-		std::vector<key_t>        keys;
-		std::vector<data_t>       datas;
-		std::vector<histogram_t>  hvs;
+		std::vector<key_t>             keys;
+		std::vector<data_t>            datas;
+		std::vector<flat_histogram_t>  hvs;
 	};
 
 	using ticks_t       = ticks_ringbuffer_t<tick_data_t>;
@@ -184,7 +184,6 @@ public: // snapshot
 
 		struct row_t
 		{
-			// key_t        key;
 			data_t       data;
 			histogram_t  hv;
 		};
@@ -354,8 +353,17 @@ public: // snapshot
 
 					if (rinfo.hv_enabled)
 					{
-						dst.hv.merge_other(tick->data.hvs[i]);
-						hv_lookups += tick->data.hvs[i].map_cref().size();
+						// dst.hv.merge_other(tick->data.hvs[i]);
+
+						flat_histogram_t const& src_hv = tick->data.hvs[i];
+
+						dst.hv.increment_inf(src_hv.inf_value);
+
+						for (auto const& hv_value : src_hv.values)
+						{
+							dst.hv.increment_bucket(hv_value.bucket_id, hv_value.value);
+						}
+						hv_lookups += src_hv.values.size();
 					}
 				}
 
@@ -486,7 +494,7 @@ public:
 			.tick_count      = conf_.tick_count,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
-			.hv_kind         = HISTOGRAM_KIND__HASHTABLE,
+			.hv_kind         = HISTOGRAM_KIND__HASHTABLE, // HISTOGRAM_KIND__FLAT,
 			.hv_bucket_count = conf_.hv_bucket_count,
 			.hv_bucket_d     = conf_.hv_bucket_d,
 		};
@@ -523,37 +531,40 @@ public:
 
 		meow::stopwatch_t sw;
 
+		// NOTE: since we're using hash based merger for main keys, there is no need to sort anything
+
 		// this builds an array of pointers to raw_data_ hashtable values (aka std::pair<key_t, item_t>*)
 		// then sorts pointers, according to keys, inside the hash
 		// and then we're going to copy full values to destination already sorted
-		struct sort_elt_t
-		{
-			typename raw_hashtable_t::value_type const *ptr;
-		};
+		// struct sort_elt_t
+		// {
+		// 	typename raw_hashtable_t::value_type const *ptr;
+		// };
 
-		// fill
-		std::vector<sort_elt_t> raw_data_pointers;
-		raw_data_pointers.reserve(raw_data_.size());
+		// // fill
+		// std::vector<sort_elt_t> raw_data_pointers;
+		// raw_data_pointers.reserve(raw_data_.size());
 
-		for (auto const& raw_pair : raw_data_)
-			raw_data_pointers.push_back({&raw_pair});
+		// for (auto const& raw_pair : raw_data_)
+		// 	raw_data_pointers.push_back({&raw_pair});
 
-		assert(raw_data_pointers.size() == raw_data_.size());
+		// assert(raw_data_pointers.size() == raw_data_.size());
 
-		LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
+		// LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
 
-		// sort
-		sw.reset();
+		// // sort
+		// sw.reset();
 
-		std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
-			[](sort_elt_t const& l, sort_elt_t const& r) { return l.ptr->first < r.ptr->first; });
+		// std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
+		// 	[](sort_elt_t const& l, sort_elt_t const& r) { return l.ptr->first < r.ptr->first; });
 
-		LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
+		// LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
 
 		// can copy now
 		sw.reset();
 
-		// reserve memory in advance, since we know the final size (this is really fast, not worth measuring generally)
+		// reserve memory in advance, since we know the final size
+		// this is really fast (as we haven't touched this memory yet), not worth measuring generally
 		{
 			td.keys.reserve(raw_data_.size());
 			td.datas.reserve(raw_data_.size());
@@ -563,14 +574,34 @@ public:
 		}
 
 		// copy, according to pointers
-		for (auto const& sort_elt : raw_data_pointers)
+		// for (auto const& sort_elt : raw_data_pointers)
+
+		for (auto const& raw_pair : raw_data_)
 		{
-			td.keys.push_back(sort_elt.ptr->first);
-			td.datas.push_back(sort_elt.ptr->second.data);
+			td.keys.push_back(raw_pair.first);
+			td.datas.push_back(raw_pair.second.data);
 
 			if (info_.hv_enabled)
 			{
-				td.hvs.push_back(std::move(sort_elt.ptr->second.hv));
+				histogram_t const& src_hv = raw_pair.second.hv;
+
+				flat_histogram_t dst_hv = {
+					.values      = {},
+					.total_value = src_hv.items_total(),
+					.inf_value   = src_hv.inf_value(),
+				};
+
+				dst_hv.values.reserve(src_hv.map_cref().size());
+
+				for (auto const& hv_pair : src_hv.map_cref())
+				{
+					dst_hv.values.push_back(histogram_value_t { .bucket_id = hv_pair.first, .value = hv_pair.second });
+				}
+
+				// sorting could be done before merging?
+				std::sort(dst_hv.values.begin(), dst_hv.values.end());
+
+				td.hvs.push_back(std::move(dst_hv));
 			}
 		}
 

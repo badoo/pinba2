@@ -19,7 +19,7 @@ struct histogram_conf_t
 	duration_t  bucket_d;
 };
 
-struct histogram_hasher_t
+struct histogram_hasher_t // TODO: try std::hash here, should be good for uint32_t
 {
 	inline uint64_t operator()(uint32_t const v) const
 	{
@@ -132,6 +132,17 @@ public:
 
 		items_total_ += increment_by;
 	}
+
+	void increment_bucket(uint32_t bucket_id, uint32_t increment_by)
+	{
+		map_[bucket_id] += increment_by;
+		items_total_ += increment_by;
+	}
+
+	void increment_inf(uint32_t increment_by)
+	{
+		inf_value_ += increment_by;
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,11 +153,11 @@ struct histogram_value_t
 	uint32_t bucket_id;
 	uint32_t value;
 
-	histogram_value_t()
-		: bucket_id(0)
-		, value(0)
-	{
-	}
+	// histogram_value_t()
+	// 	: bucket_id(0)
+	// 	, value(0)
+	// {
+	// }
 
 	inline bool operator<(histogram_value_t const& other) const
 	{
@@ -162,6 +173,20 @@ struct flat_histogram_t
 	histogram_values_t  values;
 	uint32_t            total_value;
 	uint32_t            inf_value;
+
+	// flat_histogram_t(flat_histogram_t&& other)
+	// {
+	// 	(*this) = std::move(other);
+	// }
+
+	// flat_histogram_t& operator=(flat_histogram_t&& other)
+	// {
+	// 	using std::swap;
+	// 	swap(values, other.values);
+	// 	swap(total_value, other.total_value);
+	// 	swap(inf_value, other.inf_value);
+	// 	return *this;
+	// }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
