@@ -108,8 +108,9 @@ struct report___by_timer_t : public report_t
 
 		void operator=(item_t&& other)
 		{
-			data = other.data;           // a copy
-			hv   = std::move(other.hv);  // real move
+			last_unique = other.last_unique;    // a copy
+			data        = other.data;           // a copy
+			hv          = std::move(other.hv);  // real move
 		}
 
 		void data_increment(packed_timer_t const *timer)

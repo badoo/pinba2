@@ -289,28 +289,17 @@ namespace { namespace aux {
 				{
 					auto batch = in_sock_.recv<packet_batch_ptr>();
 
-					// relay the batch to all reports
-					// maybe move this to a separate thread?
+					// relay the batch to all reports,
+					// TODO(antoxa): maybe move this to a separate thread?
+					// NOTE:
+					// this is fundamentally broken and can't be implemented with nanomsg PUB/SUB sadly
+					// since we have no idea if the report handler is slow, and in that case messages will be dropped
+					// and ref counts will not be decremented and memory will leak and we won't have any stats about that either
+					// (we also have no need for the pub/sub routing part at the moment and probably won't need it ever)
 					for (auto& report_host : report_hosts_)
 					{
 						report_host.second->process_batch(batch);
 					}
-#if 0
-					// FIXME: this is fundamentally broken with PUB/SUB sadly
-					// since we have no idea if the report handler is slow, and in that case messages will be dropped
-					// and ref counts will not be decremented and memory will leak and we won't have any stats about that either
-					// (we also have no need for the pub/sub routing part at the moment and probably won't need it ever)
-					// so should probably reimplement this with just a loop sending things to all reports
-					// (might also try avoid blocking with threads/polls, but this might get too complicated)
-					// and _add_ref() should be called only if send was successful (with NN_DONTWAIT ofc), to avoid the need to call _release()
-					// note that this requires multiple calls to _add_ref() instead of single one
-					{
-						for (size_t i = 0, i_end = report_hosts_.size(); i < i_end; i++)
-							intrusive_ptr_add_ref(batch.get());
-
-						report_sock_.send_ex(batch, 0);
-					}
-#endif
 				})
 				.read_sock(*control_sock_, [this, &poller](timeval_t now)
 				{

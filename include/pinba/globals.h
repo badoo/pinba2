@@ -34,9 +34,6 @@ typedef meow::error_t pinba_error_t;
 struct nmsg_ticker_t;
 struct dictionary_t;
 
-struct report_conf___by_request_t;
-struct report_conf___by_timer_t;
-
 struct repacker_stats_t
 {
 	timeval_t ru_utime = {0,0};

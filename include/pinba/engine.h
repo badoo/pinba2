@@ -6,6 +6,9 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct report_conf___by_request_t;
+struct report_conf___by_timer_t;
+
 // TODO: maybe have this as global registry for all threaded objects here
 //       and not just explicit stats, but everything (and ticker for example!)
 struct pinba_engine_t : private boost::noncopyable
