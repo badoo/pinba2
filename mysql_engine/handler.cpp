@@ -1,3 +1,4 @@
+#include <meow/defer.hpp>
 #include <meow/stopwatch.hpp>
 #include <meow/str_ref_algo.hpp>
 #include <meow/convert/number_from_string.hpp>
@@ -637,6 +638,13 @@ struct pinba_view___stats_t : public pinba_view___base_t
 			return result;
 		}();
 
+		// mark all fields as writeable to avoid assert() in ::store() calls
+		// got no idea how to do this properly anyway
+		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		MEOW_DEFER(
+			tmp_restore_column_map(table->write_set, old_map);
+		);
+
 		for (Field **field = table->field; *field; field++)
 		{
 			auto const field_index = (*field)->field_index;
@@ -646,7 +654,7 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 			// mark field as writeable to avoid assert() in ::store() calls
 			// got no idea how to do this properly anyway
-			bitmap_set_bit(table->write_set, field_index);
+			// bitmap_set_bit(table->write_set, field_index);
 
 			switch(field_index)
 			{
@@ -754,10 +762,17 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			return HA_ERR_END_OF_FILE;
 
 		auto const *share = pos_->second.get();
-		auto const *table = handler->current_table();
+		auto       *table = handler->current_table();
 
 		// remember to lock, might be too coarse, but whatever
 		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+		// mark all fields as writeable to avoid assert() in ::store() calls
+		// got no idea how to do this properly anyway
+		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		MEOW_DEFER(
+			tmp_restore_column_map(table->write_set, old_map);
+		);
 
 		for (Field **field = table->field; *field; field++)
 		{
@@ -768,7 +783,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 			// mark field as writeable to avoid assert() in ::store() calls
 			// got no idea how to do this properly anyway
-			bitmap_set_bit(table->write_set, field_index);
+			// bitmap_set_bit(table->write_set, field_index);
 
 			switch (field_index)
 			{
@@ -866,6 +881,13 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 		unsigned const n_key_fields = rinfo->n_key_parts;
 
+		// mark all fields as writeable to avoid assert() in ::store() calls
+		// got no idea how to do this properly anyway
+		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		MEOW_DEFER(
+			tmp_restore_column_map(table->write_set, old_map);
+		);
+
 		for (Field **field = table->field; *field; field++)
 		{
 			unsigned const field_index = (*field)->field_index;
@@ -876,7 +898,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 			// mark field as writeable to avoid assert() in ::store() calls
 			// got no idea how to do this properly anyway
-			bitmap_set_bit(table->write_set, field_index);
+			// bitmap_set_bit(table->write_set, field_index);
 
 			// key comes first
 			{
