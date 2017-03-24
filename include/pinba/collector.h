@@ -12,6 +12,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+// these are sent over PUSH/PULL channel
 struct raw_request_t
 	: public nmsg_message_ex_t<raw_request_t>
 {
@@ -31,15 +32,7 @@ struct raw_request_t
 		nmpa_free(&nmpa);
 	}
 };
-
-// these are sent over PUSH/PULL channel
-typedef boost::intrusive_ptr<raw_request_t> raw_request_ptr;
-
-// struct raw_request_t // these are sent over PUSH/PULL channel
-// {
-// 	struct nmpa_s   nmpa;
-// 	Pinba__Request *request;
-// };
+using raw_request_ptr = boost::intrusive_ptr<raw_request_t>;
 
 struct collector_conf_t
 {

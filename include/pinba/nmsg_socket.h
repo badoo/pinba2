@@ -241,9 +241,17 @@ public:
 	{
 		intrusive_ptr_add_ref(value.get());
 
-		bool const success = this->send_ex(value, flags);
-		if (!success)
+		try
+		{
+			bool const success = this->send_ex(value, flags);
+			if (!success)
+				intrusive_ptr_release(value.get());
+		}
+		catch (std::exception const& e)
+		{
 			intrusive_ptr_release(value.get());
+			throw;
+		}
 
 		return success;
 	}

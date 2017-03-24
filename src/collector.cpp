@@ -194,7 +194,7 @@ namespace { namespace aux {
 
 			for (unsigned i = 0; i < max_dgrams_to_recv; i++)
 			{
-				iov[i].iov_base           = malloc(max_message_size);
+				iov[i].iov_base           = calloc(max_message_size); // calloc to touch all memory on allocation
 				iov[i].iov_len            = max_message_size;
 
 				hdr[i].msg_hdr.msg_iov    = &iov[i];
