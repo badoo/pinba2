@@ -174,11 +174,13 @@ namespace { namespace aux {
 						continue;
 					}
 
-					LOG_WARN(globals_->logger(), "recv() failed: {0}:{1}", errno, strerror(errno));
+					LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
 					continue;
 				}
 
-				if (n == 0) {
+				if (n == 0)
+				{
+					LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
 					return;
 				}
 			}
@@ -242,7 +244,7 @@ namespace { namespace aux {
 							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
 							if (request == NULL) {
 								++stats_->udp.packet_decode_err;
-								return true;
+								continue;
 							}
 
 							req->requests[req->request_count] = request;
@@ -275,11 +277,13 @@ namespace { namespace aux {
 							return true;
 						}
 
-						LOG_WARN(globals_->logger(), "recvmmsg() failed: {0}:{1}\n", errno, strerror(errno));
+						LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
 						return false;
 					}
 
-					if (n == 0) {
+					if (n == 0)
+					{
+						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
 						return false;
 					}
 				} // recv loop

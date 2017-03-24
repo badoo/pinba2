@@ -181,7 +181,7 @@ public:
 					if (EINTR == nn_errno())
 						continue;
 
-					ff::fmt(stderr, "nn_poll failed, {0}:{1}\n", nn_errno(), strerror(nn_errno()));
+					ff::fmt(stderr, "{0}; nn_poll() failed, {1}:{2}\n", in_endpoint_, nn_errno(), strerror(nn_errno()));
 					break;
 				}
 
@@ -231,15 +231,24 @@ public:
 				}
 				else
 				{
-					for (auto it = subs_.begin(), it_end = subs_.end(); it != it_end; ++it)
+					auto const sub_it = [&]() // find subscription in the map by it's channel pointer
 					{
-						if (it->second->chan == sub->chan)
+						for (auto it = subs_.begin(), it_end = subs_.end(); it != it_end; ++it)
 						{
-							// ff::fmt(stdout, "erasing sub: {{ {0} }\n", sub->chan->endpoint());
-							subs_.erase(it);
-							in_sock_.send(1);
-							break;
+							if (it->second->chan == sub->chan)
+								return it;
 						}
+						return subs_.end();
+					}();
+
+					if (sub_it != subs_.end()) // found
+					{
+						subs_.erase(sub_it);
+						in_sock_.send(1);
+					}
+					else
+					{
+						in_sock_.send(0);
 					}
 				}
 			}
@@ -310,7 +319,7 @@ private:
 
 	channel_ptr make_channel(str_ref name, duration_t period)
 	{
-		std::string chan_name = [&]()
+		std::string const chan_name = [&]()
 		{
 			std::string const real_name = (name) ? name.str() : ff::write_str(os_unix::clock_monotonic_now());
 			return ff::fmt_str("nn_ticker/{0}/{1}", real_name, period);

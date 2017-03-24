@@ -154,7 +154,7 @@ public:
 			// but have it here for completeness
 			// (might be useful later from cross-thread shutdowns? - scary!)
 			if (shutting_down)
-				return -2;
+				return -1;
 
 			int const r = this->poll_and_callback(pfd, pfd_size, wait_for_ms);
 			if (r < 0)
@@ -173,8 +173,11 @@ private:
 
 		if (r < 0)
 		{
-			meow::format::fmt(stderr, "poll failed, {0}:{1}\n", errno, strerror(errno));
-			return -1;
+			// FIXME: should calculate remaining wait time here
+			if (EINTR == errno)
+				return 0;
+
+			throw std::runtime_error(meow::format::fmt_str("poll() failed, {0}:{1}\n", errno, strerror(errno)));
 		}
 
 		if (r == 0) // timeout
@@ -190,7 +193,7 @@ private:
 			channels_[i]->callback(now);
 
 			if (shutting_down) // this flag is set from inside the callback often
-				return -2;
+				return -1;
 		}
 
 		return 0;
@@ -203,8 +206,11 @@ private:
 
 		if (r < 0)
 		{
-			meow::format::fmt(stderr, "nn_poll failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno()));
-			return -1;
+			// FIXME: should calculate remaining wait time here
+			if (EINTR == nn_errno())
+				return 0;
+
+			throw std::runtime_error(meow::format::fmt_str("nn_poll() failed, {0}:{1}\n", nn_errno(), nn_strerror(nn_errno())));
 		}
 
 		if (r == 0) // timeout
@@ -220,7 +226,7 @@ private:
 			channels_[i]->callback(now);
 
 			if (shutting_down) // this flag is set from inside the callback often
-				return -2;
+				return -1;
 		}
 
 		return 0;
