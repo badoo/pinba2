@@ -246,14 +246,14 @@ public:
 			bool const success = this->send_ex(value, flags);
 			if (!success)
 				intrusive_ptr_release(value.get());
+
+			return success;
 		}
 		catch (std::exception const& e)
 		{
 			intrusive_ptr_release(value.get());
 			throw;
 		}
-
-		return success;
 	}
 
 	template<class T>
