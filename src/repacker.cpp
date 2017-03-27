@@ -126,8 +126,8 @@ namespace { namespace aux {
 					next_gerusage_tv += d_second;
 
 					std::lock_guard<std::mutex> lk_(stats_->mtx);
-					stats_->repacker_threads[thread_id].ru_utime = { .tv_sec = ru.ru_utime.tv_sec, .tv_nsec = ru.ru_utime.tv_usec * 1000 };
-					stats_->repacker_threads[thread_id].ru_stime = { .tv_sec = ru.ru_stime.tv_sec, .tv_nsec = ru.ru_stime.tv_usec * 1000 };
+					stats_->repacker_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
+					stats_->repacker_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
 				}
 
 				if (r < 0)

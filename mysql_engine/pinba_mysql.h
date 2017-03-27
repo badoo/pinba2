@@ -30,5 +30,44 @@ struct pinba_variables_t
 pinba_variables_t* pinba_variables();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+// status variables reported through show global status and the likes of it
+
+// use only standard c99 types here, like long, etc. to be compatible with mysql internals
+
+struct pinba_status_variables_t
+{
+	double              uptime;
+
+	unsigned long long  udp_recv_total;
+	unsigned long long  udp_recv_nonblocking;
+	unsigned long long  udp_recv_eagain;
+	unsigned long long  udp_recv_bytes;
+	unsigned long long  udp_packets_received;
+	unsigned long long  udp_packet_decode_err;
+	unsigned long long  udp_batch_send_total;
+	unsigned long long  udp_batch_send_err;
+
+	unsigned long long  repacker_poll_total;
+	unsigned long long  repacker_recv_total;
+	unsigned long long  repacker_recv_eagain;
+	unsigned long long  repacker_packets_processed;
+	double              repacker_ru_utime;
+	double              repacker_ru_stime;
+
+	unsigned long long  coordinator_batches_received;
+	unsigned long long  coordinator_batch_send_total;
+	unsigned long long  coordinator_batch_send_err;
+	unsigned long long  coordinator_control_requests;
+	double              coordinator_ru_utime;
+	double              coordinator_ru_stime;
+
+	unsigned long long  dictionary_size;
+	unsigned long long  dictionary_mem_used;
+};
+
+void                      pinba_update_status_variables(); // plugin.cpp
+pinba_status_variables_t* pinba_status_variables();        // handler.cpp
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 #endif // PINBA__PINBA_MYSQL_H_

@@ -90,6 +90,7 @@ struct dictionary_word_hasher_t
 struct dictionary_t
 {
 	using words_t = std::deque<std::string>; // deque to save a lil on push_back reallocs
+	// using words_t = std::vector<std::string>; // deque to save a lil on push_back reallocs
 	// using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
 	using hash_t  = google::dense_hash_map<str_ref, uint32_t, dictionary_word_hasher_t>;
 
@@ -113,6 +114,23 @@ struct dictionary_t
 	{
 		scoped_read_lock_t lock_(mtx_);
 		return words.size();
+	}
+
+	uint64_t memory_used() const
+	{
+		uint32_t n_buckets, sz;
+
+		{
+			scoped_read_lock_t lock_(mtx_);
+			n_buckets = hash.bucket_count();
+			// sz       = words.capacity(); // vector
+			sz       = words.size(); // deque
+		}
+
+		uint64_t const words_mem_sz = sz * sizeof(words_t::value_type);
+		uint64_t const hash_mem_sz  = n_buckets * sizeof(hash_t::value_type);
+
+		return words_mem_sz + hash_mem_sz;
 	}
 
 	str_ref get_word(uint32_t word_id) const

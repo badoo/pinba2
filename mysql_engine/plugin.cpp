@@ -17,11 +17,20 @@ namespace ff = meow::format;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-static pinba_variables_t pinba_variables_;
+static pinba_variables_t pinba_variables_ = {};
 
 pinba_variables_t* pinba_variables()
 {
 	return &pinba_variables_;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+static pinba_status_variables_t pinba_status_variables_ = {};
+
+pinba_status_variables_t* pinba_status_variables()
+{
+	return &pinba_status_variables_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -185,7 +194,7 @@ static MYSQL_SYSVAR_UINT(repacker_input_buffer,
 	"Buffer for X message for udp-reader -> packet-repack threads",
 	NULL,
 	NULL,
-	8 * 1024,
+	4 * 1024, // def: 4096 udp batches, 256 pinba requests each ~= 1M packets, per each repacker thread
 	128,
 	128 * 1024,
 	0);
@@ -218,7 +227,7 @@ static MYSQL_SYSVAR_UINT(report_input_buffer,
 	"Buffer for X batches (each has max repacker_batch_messages packets) for each activated report",
 	NULL,
 	NULL,
-	1024,
+	128, // def: 128 batches, 1024 packets each
 	16,
 	8 * 1024,
 	0);
@@ -236,6 +245,59 @@ static struct st_mysql_sys_var* system_variables[]= {
 	NULL
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+static SHOW_VAR pinba_status_variables_for_plugin[] = {
+#define SVAR(name, show_type) \
+	{ #name, (char*)&pinba_status_variables()->name, show_type }, \
+/**/
+
+	SVAR(uptime,                            SHOW_DOUBLE)
+	SVAR(udp_recv_total,                    SHOW_LONGLONG)
+	SVAR(udp_recv_nonblocking,              SHOW_LONGLONG)
+	SVAR(udp_recv_eagain,                   SHOW_LONGLONG)
+	SVAR(udp_recv_bytes,                    SHOW_LONGLONG)
+	SVAR(udp_packets_received,              SHOW_LONGLONG)
+	SVAR(udp_packet_decode_err,             SHOW_LONGLONG)
+	SVAR(udp_batch_send_total,              SHOW_LONGLONG)
+	SVAR(udp_batch_send_err,                SHOW_LONGLONG)
+	SVAR(repacker_poll_total,               SHOW_LONGLONG)
+	SVAR(repacker_recv_total,               SHOW_LONGLONG)
+	SVAR(repacker_recv_eagain,              SHOW_LONGLONG)
+	SVAR(repacker_packets_processed,        SHOW_LONGLONG)
+	SVAR(repacker_ru_utime,                 SHOW_DOUBLE)
+	SVAR(repacker_ru_stime,                 SHOW_DOUBLE)
+	SVAR(coordinator_batches_received,      SHOW_LONGLONG)
+	SVAR(coordinator_batch_send_total,      SHOW_LONGLONG)
+	SVAR(coordinator_batch_send_err,        SHOW_LONGLONG)
+	SVAR(coordinator_control_requests,      SHOW_LONGLONG)
+	SVAR(coordinator_ru_utime,              SHOW_DOUBLE)
+	SVAR(coordinator_ru_stime,              SHOW_DOUBLE)
+	SVAR(dictionary_size,                   SHOW_LONGLONG)
+	SVAR(dictionary_mem_used,               SHOW_LONGLONG)
+
+#undef SVAR
+	{ NullS, NullS, SHOW_LONG }
+};
+
+static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
+{
+	pinba_update_status_variables();
+	var->type = SHOW_ARRAY;
+	var->value = (char*)&pinba_status_variables_for_plugin;
+}
+
+static SHOW_VAR status_variables_export[]= {
+	{
+		.name  = "Pinba",
+		.value = (char*)&status_variables_show_func,
+		.type  = SHOW_FUNC,
+	},
+	{NullS, NullS, SHOW_LONG}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct st_mysql_storage_engine pinba_storage_engine = { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 mysql_declare_plugin(pinba)
@@ -249,7 +311,7 @@ mysql_declare_plugin(pinba)
 	pinba_engine_init,                            /* Plugin Init */
 	pinba_engine_shutdown,                        /* Plugin Deinit */
 	0x0200                                        /* version: 2.0 */,
-	NULL,                                         /* status variables */
+	status_variables_export,                      /* status variables */
 	system_variables,                             /* system variables */
 	NULL,                                         /* config options */
 	HTON_ALTER_NOT_SUPPORTED,                     /* flags */

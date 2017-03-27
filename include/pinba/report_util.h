@@ -261,7 +261,7 @@ struct ticks_ringbuffer_t : private boost::noncopyable
 		}
 	};
 
-	using tick_ptr     = boost::intrusive_ptr<tick_t> ;
+	using tick_ptr     = boost::intrusive_ptr<tick_t>;
 	using ringbuffer_t = std::vector<tick_ptr>;
 
 public:

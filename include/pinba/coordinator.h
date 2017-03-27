@@ -14,7 +14,6 @@
 
 struct coordinator_t;
 
-
 #define COORDINATOR_REQ__CALL                0
 #define COORDINATOR_REQ__SHUTDOWN            1
 #define COORDINATOR_REQ__ADD_REPORT          2
@@ -91,6 +90,8 @@ struct coordinator_response__with_id_t : public coordinator_response_t
 	}
 };
 
+// real responses
+
 struct coordinator_response___generic_t
 	: public coordinator_response__with_id_t<COORDINATOR_RES__GENERIC>
 {
@@ -110,7 +111,6 @@ struct coordinator_response___generic_t
 	}
 };
 
-// real responses
 struct coordinator_response___report_snapshot_t
 	: public coordinator_response__with_id_t<COORDINATOR_RES__REPORT_SNAPSHOT>
 {

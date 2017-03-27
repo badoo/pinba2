@@ -598,7 +598,7 @@ public:
 					dst_hv.values.push_back(histogram_value_t { .bucket_id = hv_pair.first, .value = hv_pair.second });
 				}
 
-				// sorting could be done before merging?
+				// sort here, as we can't sort on merge, since data must be immutable
 				std::sort(dst_hv.values.begin(), dst_hv.values.end());
 
 				td.hvs.push_back(std::move(dst_hv));

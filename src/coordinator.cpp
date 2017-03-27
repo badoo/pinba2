@@ -7,6 +7,7 @@
 #include <nanomsg/reqrep.h>
 
 #include <meow/intrusive_ptr.hpp>
+#include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
 #include "pinba/repacker.h"
@@ -41,7 +42,7 @@ namespace { namespace aux {
 		virtual void startup(report_ptr) = 0;
 		virtual void shutdown() = 0;
 
-		virtual void process_batch(packet_batch_ptr) = 0;
+		virtual bool process_batch(packet_batch_ptr) = 0;
 		virtual void call_with_report(report_host_call_func_t const&) = 0;
 	};
 	typedef std::unique_ptr<report_host_t> report_host_ptr;
@@ -171,13 +172,14 @@ namespace { namespace aux {
 			t_ = move(t);
 		}
 
-		virtual void process_batch(packet_batch_ptr batch) override
+		virtual bool process_batch(packet_batch_ptr batch) override
 		{
 			bool const success = packets_send_sock_.send_message(batch, NN_DONTWAIT);
 			if (!success)
 			{
 				// TODO: increment stats, etc.
 			}
+			return success;
 		}
 
 		virtual void call_with_report(std::function<void(report_t*)> const& func) override
@@ -207,6 +209,7 @@ namespace { namespace aux {
 	{
 		coordinator_impl_t(pinba_globals_t *globals, coordinator_conf_t *conf)
 			: globals_(globals)
+			, stats_(globals->stats())
 			, conf_(conf)
 		{
 			in_sock_ = nmsg_socket(AF_SP, NN_PULL);
@@ -284,10 +287,21 @@ namespace { namespace aux {
 				.read(*tick_chan, [this](nmsg_ticker_chan_t& chan, timeval_t now)
 				{
 					chan.recv(); // MUST do this, or chan will stay readable
+
+					// update accumulated rusage
+					{
+						os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+						std::lock_guard<std::mutex> lk_(stats_->mtx);
+						stats_->coordinator.ru_utime = timeval_from_os_timeval(ru.ru_utime);
+						stats_->coordinator.ru_stime = timeval_from_os_timeval(ru.ru_stime);
+					}
 				})
 				.read_sock(*in_sock_, [this](timeval_t now)
 				{
 					auto batch = in_sock_.recv<packet_batch_ptr>();
+
+					++stats_->coordinator.batches_received;
 
 					// relay the batch to all reports,
 					// TODO(antoxa): maybe move this to a separate thread?
@@ -298,12 +312,17 @@ namespace { namespace aux {
 					// (we also have no need for the pub/sub routing part at the moment and probably won't need it ever)
 					for (auto& report_host : report_hosts_)
 					{
-						report_host.second->process_batch(batch);
+						++stats_->coordinator.batch_send_total;
+						bool const success = report_host.second->process_batch(batch);
+						if (!success)
+							++stats_->coordinator.batch_send_err;
 					}
 				})
 				.read_sock(*control_sock_, [this, &poller](timeval_t now)
 				{
 					auto const req = this->control_recv();
+
+					++stats_->coordinator.control_requests;
 
 					try
 					{
@@ -422,6 +441,7 @@ namespace { namespace aux {
 
 	private:
 		pinba_globals_t     *globals_;
+		pinba_stats_t       *stats_;
 		coordinator_conf_t  *conf_;
 
 		// report_name -> report_host

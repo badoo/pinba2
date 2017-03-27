@@ -70,6 +70,16 @@ struct pinba_stats_t
 	} repacker;
 
 	std::vector<repacker_stats_t> repacker_threads;
+
+	struct {
+		std::atomic<uint64_t> batches_received = {0};    // packet batches received
+		std::atomic<uint64_t> batch_send_total = {0};    // total batch send attempts (to all reports)
+		std::atomic<uint64_t> batch_send_err   = {0};    // total batch send errors (to all reports)
+		std::atomic<uint64_t> control_requests = {0};    // control requests processed
+
+		timeval_t ru_utime                     = {0,0};
+		timeval_t ru_stime                     = {0,0};
+	} coordinator;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

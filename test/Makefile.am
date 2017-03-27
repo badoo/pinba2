@@ -32,6 +32,7 @@ noinst_PROGRAMS = \
 	test_nanomsg_broadcast \
 	test_nanomsg_ticker \
 	test_percentiles \
+	test_protobuf_nmpa \
 	#
 
 test_collector_SOURCES = \
@@ -56,4 +57,8 @@ test_nanomsg_ticker_SOURCES = \
 
 test_percentiles_SOURCES = \
 	test_percentiles.cpp \
+	#
+
+test_protobuf_nmpa_SOURCES = \
+	test_protobuf_nmpa.cpp \
 	#
