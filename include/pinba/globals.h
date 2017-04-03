@@ -63,10 +63,13 @@ struct pinba_stats_t
 	} udp;
 
 	struct {
-		std::atomic<uint64_t> poll_total        = {0};
-		std::atomic<uint64_t> recv_total        = {0};
-		std::atomic<uint64_t> recv_eagain       = {0};
-		std::atomic<uint64_t> packets_processed = {0};
+		std::atomic<uint64_t> poll_total          = {0};
+		std::atomic<uint64_t> recv_total          = {0};
+		std::atomic<uint64_t> recv_eagain         = {0};
+		std::atomic<uint64_t> packets_processed   = {0};
+		std::atomic<uint64_t> batch_send_total    = {0};
+		std::atomic<uint64_t> batch_send_by_timer = {0};
+		std::atomic<uint64_t> batch_send_by_size  = {0};
 	} repacker;
 
 	std::vector<repacker_stats_t> repacker_threads;

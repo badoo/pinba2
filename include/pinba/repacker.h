@@ -16,6 +16,7 @@ struct repacker_conf_t
 {
 	std::string  nn_input;         // read raw_request_t from this nanomsg pipe
 	std::string  nn_output;        // send batched repacked packets to this nanomsg pipe
+	std::string  nn_shutdown;      // bind on this socket, receive shutdown signal here (user should call shutdown())
 
 	size_t       nn_input_buffer;  // NN_RCVBUF for nn_input connection
 
@@ -51,6 +52,7 @@ struct repacker_t : private boost::noncopyable
 {
 	virtual ~repacker_t() {}
 	virtual void startup() = 0;
+	virtual void shutdown() = 0;
 };
 typedef std::unique_ptr<repacker_t> repacker_ptr;
 

@@ -62,14 +62,20 @@ namespace { namespace aux {
 					this->eat_udp(i);
 				});
 
-				t.detach();
+				// t.detach();
 				threads_.push_back(move(t));
 			}
 		}
 
-		virtual str_ref nn_output() override
+		virtual void shutdown() override
 		{
-			return conf_->nn_output;
+			// LOG_DEBUG(globals_->logger(), "collector_t::shutdown() called");
+			for (uint32_t i = 0; i < conf_->n_threads; i++)
+			{
+				// LOG_DEBUG(globals_->logger(), "joining {0} reader", i);
+				pthread_cancel(threads_[i].native_handle());
+				threads_[i].join();
+			}
 		}
 
 	private:
@@ -191,12 +197,15 @@ namespace { namespace aux {
 			size_t const max_message_size   = 64 * 1024; // max udp message size
 			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this
 
-			auto *hdr = (struct mmsghdr*)calloc(max_dgrams_to_recv, sizeof(struct mmsghdr));
-			auto *iov = (struct iovec*)calloc(max_dgrams_to_recv, sizeof(struct iovec));
+			struct mmsghdr hdr[max_dgrams_to_recv];  memset(&hdr, 0, sizeof(hdr));
+			struct iovec   iov[max_dgrams_to_recv];  memset(&iov, 0, sizeof(iov));
+
+			std::unique_ptr<char[]> recv_buffer_p { new char[max_dgrams_to_recv * max_message_size] };
+			char *recv_buffer = recv_buffer_p.get();
 
 			for (unsigned i = 0; i < max_dgrams_to_recv; i++)
 			{
-				iov[i].iov_base           = calloc(1, max_message_size); // calloc to touch all memory on allocation
+				iov[i].iov_base           = recv_buffer + i * max_message_size; //calloc(1, max_message_size); // calloc to touch all memory on allocation
 				iov[i].iov_len            = max_message_size;
 
 				hdr[i].msg_hdr.msg_iov    = &iov[i];
@@ -281,6 +290,7 @@ namespace { namespace aux {
 						return false;
 					}
 
+					// XXX: this will never happen, even if fd_ is closed from main thread
 					if (n == 0)
 					{
 						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);

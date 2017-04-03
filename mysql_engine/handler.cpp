@@ -36,7 +36,7 @@ pinba_share_t::~pinba_share_t()
 	thr_lock_delete(&this->lock);
 }
 
-pinba_share_ptr pinba_share_get_or_create(char const *table_name)
+static pinba_share_ptr pinba_share_get_or_create(char const *table_name)
 {
 	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
 
@@ -82,6 +82,9 @@ void pinba_update_status_variables()
 	vars->repacker_recv_total        = stats->repacker.recv_total;
 	vars->repacker_recv_eagain       = stats->repacker.recv_eagain;
 	vars->repacker_packets_processed = stats->repacker.packets_processed;
+	vars->repacker_batch_send_total  = stats->repacker.batch_send_total;
+	vars->repacker_batch_send_by_timer  = stats->repacker.batch_send_by_timer;
+	vars->repacker_batch_send_by_size  = stats->repacker.batch_send_by_size;
 
 	auto const repacker_threads_tmp = [&]()
 	{
@@ -626,7 +629,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 	} // timer options parsing
 
 	throw std::runtime_error(ff::fmt_str("{0}; unknown v2/<table_type> {1}", __func__, report_type));
-};
+}
 
 struct pinba_view___base_t : public pinba_view_t
 {
@@ -1214,7 +1217,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 };
 
 
-pinba_view_conf_ptr pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
+static pinba_view_conf_ptr pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
 {
 	auto result = do_pinba_parse_view_conf(table_name, conf_string);
 	LOG_DEBUG(P_L_, "{0}; result: {{ kind: {1} }", __func__, result->kind);
@@ -1222,7 +1225,7 @@ pinba_view_conf_ptr pinba_parse_view_conf(str_ref table_name, str_ref conf_strin
 }
 
 
-pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
+static pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
 {
 	switch (conf.kind)
 	{
@@ -1243,7 +1246,7 @@ pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
 	}
 }
 
-pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
+static pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 {
 	switch (conf.kind)
 	{
@@ -1264,7 +1267,7 @@ pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 	}
 }
 
-void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref table_comment)
+static void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref table_comment)
 {
 	assert(!share->view_conf);
 	assert(!share->report);
@@ -1622,11 +1625,11 @@ int pinba_handler_t::extra(enum ha_extra_function operation)
 */
 THR_LOCK_DATA **pinba_handler_t::store_lock(THD *thd, THR_LOCK_DATA **to, enum thr_lock_type lock_type)
 {
-  if (lock_type != TL_IGNORE && lock_data.type == TL_UNLOCK)
-    lock_data.type = lock_type;
+	if (lock_type != TL_IGNORE && lock_data.type == TL_UNLOCK)
+		lock_data.type = lock_type;
 
-  *to++ = &lock_data;
-  return to;
+	*to++ = &lock_data;
+	return to;
 }
 
 int pinba_handler_t::rename_table(const char *from, const char *to)

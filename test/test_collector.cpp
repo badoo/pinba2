@@ -57,6 +57,7 @@ try
 	repacker_conf_t repacker_conf = {
 		.nn_input        = collector_conf.nn_output,
 		.nn_output       = "inproc://repacker",
+		.nn_shutdown     = "inproc://repacker/shutdown",
 		.nn_input_buffer = 2 * 1024,
 		.n_threads       = 2, // FIXME: should be == 1, since dictionary is shared between threads
 		.batch_size      = 1024,

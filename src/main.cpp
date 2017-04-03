@@ -6,6 +6,8 @@
 
 #include <meow/stopwatch.hpp>
 
+#include <nanomsg/nn.h> // nn_term
+
 #include "pinba/globals.h"
 #include "pinba/engine.h"
 #include "pinba/report_by_request.h"
@@ -33,8 +35,11 @@ int main(int argc, char const *argv[])
 		.coordinator_input_buffer = 32,
 	};
 
-	static auto pinba = pinba_engine_init(&options);
+	auto pinba = pinba_engine_init(&options);
 	pinba->startup();
+
+	auto *logger = pinba->globals()->logger();
+	logger->set_level(meow::logging::log_level::debug);
 
 	auto const threaded_print_report_snapshot = [&](std::string report_name)
 	{
@@ -79,7 +84,7 @@ int main(int argc, char const *argv[])
 		};
 		pinba->start_report_with_config(conf);
 
-		threaded_print_report_snapshot(conf.name);
+		// threaded_print_report_snapshot(conf.name);
 	}
 
 	{
@@ -102,13 +107,15 @@ int main(int argc, char const *argv[])
 		};
 		pinba->start_report_with_config(conf);
 
-		threaded_print_report_snapshot(conf.name);
+		// threaded_print_report_snapshot(conf.name);
 	}
 
 	getchar();
 
 	pinba->shutdown();
 	pinba.reset();
+
+	nn_term();
 
 	return 0;
 }

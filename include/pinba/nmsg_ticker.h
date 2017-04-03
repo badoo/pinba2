@@ -27,6 +27,7 @@ struct nmsg_ticker_t : private boost::noncopyable
 	typedef nmsg_ticker_chan_ptr channel_ptr;
 
 	virtual ~nmsg_ticker_t() {}
+
 	virtual channel_ptr subscribe(duration_t period, str_ref name = {}) = 0;
 	virtual channel_ptr once_after(duration_t after, str_ref name = {}) = 0;
 	virtual channel_ptr once_at(timeval_t at, channel_ptr chan) = 0;
@@ -120,11 +121,12 @@ struct nmsg_ticker___single_thread_t : public nmsg_ticker_t
 {
 	struct subscription_t : public nmsg_message_t
 	{
-		channel_ptr  chan;
-		timeval_t    next_tick;
-		duration_t   period;
-		bool         once;
-		bool         unsub;
+		channel_ptr  chan      = {};
+		timeval_t    next_tick = {};
+		duration_t   period    = {};
+		bool         once      = false;
+		bool         unsub     = false;
+		bool         shutdown  = false;
 	};
 	typedef boost::intrusive_ptr<subscription_t> subscription_ptr;
 
@@ -135,7 +137,7 @@ private:
 	std::string    in_endpoint_;
 	nmsg_socket_t  in_sock_;
 
-	std::thread t_;
+	std::thread    t_;
 
 public:
 
@@ -222,14 +224,9 @@ public:
 				if (!sub) // empty sub = nothing has been received
 					continue;
 
-				// ff::fmt(stdout, "got new sub request: {0}, {1}, {2}\n", sub->chan->endpoint(), sub->period, sub->unsub);
+				// ff::fmt(stdout, "got new sub request: {0}, {1}, {2}, {3}\n", sub->chan->endpoint(), sub->period, sub->unsub, sub->shutdown);
 
-				if (!sub->unsub)
-				{
-					subs_.insert({sub->next_tick, sub});
-					in_sock_.send(1);
-				}
-				else
+				if (sub->unsub)
 				{
 					auto const sub_it = [&]() // find subscription in the map by it's channel pointer
 					{
@@ -250,11 +247,34 @@ public:
 					{
 						in_sock_.send(0);
 					}
+
+					continue;
+				}
+
+				if (sub->shutdown)
+				{
+					in_sock_.send(1);
+					return;
+				}
+
+				// regular message, subscribe
+
+				{
+					subs_.insert({sub->next_tick, sub});
+					in_sock_.send(1);
+
+					continue;
 				}
 			}
 		});
-		t.detach();
 		t_ = move(t);
+	}
+
+	~nmsg_ticker___single_thread_t()
+	{
+		// avoid std::terminate(), since our thread is joinable
+		// this is required anyway, as object dtor will close nmsg sockets and thread will start getting exceptions
+		this->do_shutdown();
 	}
 
 	virtual channel_ptr subscribe(duration_t period, str_ref name = {}) override
@@ -262,11 +282,9 @@ public:
 		auto chan = this->make_channel(name, period);
 
 		auto sub = meow::make_intrusive<subscription_t>();
-		sub->chan = chan;
+		sub->chan      = chan;
 		sub->next_tick = os_unix::clock_monotonic_now() + period;
-		sub->period = period;
-		sub->once = false;
-		sub->unsub = false;
+		sub->period    = period;
 
 		this->do_send_message_to_thread(sub);
 
@@ -278,11 +296,9 @@ public:
 		auto chan = this->make_channel(name, after);
 
 		auto sub = meow::make_intrusive<subscription_t>();
-		sub->chan = chan;
+		sub->chan      = chan;
 		sub->next_tick = os_unix::clock_monotonic_now() + after;
-		sub->period = {};
-		sub->once = true;
-		sub->unsub = false;
+		sub->once      = true;
 
 		this->do_send_message_to_thread(sub);
 
@@ -292,11 +308,9 @@ public:
 	virtual channel_ptr once_at(timeval_t at, channel_ptr chan) override
 	{
 		auto sub = meow::make_intrusive<subscription_t>();
-		sub->chan = chan;
+		sub->chan      = chan;
 		sub->next_tick = at;
-		sub->period = {};
-		sub->once = true;
-		sub->unsub = false;
+		sub->once      = true;
 
 		this->do_send_message_to_thread(sub);
 
@@ -306,13 +320,21 @@ public:
 	virtual void unsubscribe(channel_ptr chan) override
 	{
 		auto sub = meow::make_intrusive<subscription_t>();
-		sub->chan = chan;
-		sub->next_tick = {};
-		sub->period = {};
-		sub->once = false;
+		sub->chan  = chan;
 		sub->unsub = true;
 
 		this->do_send_message_to_thread(sub);
+	}
+
+private:
+
+	void do_shutdown()
+	{
+		auto sub = meow::make_intrusive<subscription_t>();
+		sub->shutdown = true;
+
+		this->do_send_message_to_thread(sub);
+		t_.join();
 	}
 
 private:
@@ -328,13 +350,13 @@ private:
 		return nmsg_channel_create<timeval_t>(chan_name);
 	}
 
-	void do_send_message_to_thread(subscription_ptr& sub)
+	int do_send_message_to_thread(subscription_ptr& sub)
 	{
 		nmsg_socket_t sock;
 		sock.open(AF_SP, NN_REQ).connect(in_endpoint_);
 
 		sock.send_message(sub);
-		sock.recv<int>();
+		return sock.recv<int>();
 	}
 };
 

@@ -108,6 +108,7 @@ namespace { namespace aux {
 			static repacker_conf_t repacker_conf = {
 				.nn_input        = collector_conf.nn_output,
 				.nn_output       = "inproc://repacker",
+				.nn_shutdown     = "inproc://repacker/shutdown",
 				.nn_input_buffer = options->repacker_input_buffer,
 				.n_threads       = options->repacker_threads,
 				.batch_size      = options->repacker_batch_messages,
@@ -131,6 +132,8 @@ namespace { namespace aux {
 
 		virtual void shutdown() override
 		{
+			collector_->shutdown();
+			repacker_->shutdown();
 			coordinator_->shutdown();
 		}
 

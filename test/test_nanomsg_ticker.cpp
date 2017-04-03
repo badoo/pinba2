@@ -41,15 +41,15 @@ int main(int argc, char const *argv[])
 	}).detach();
 
 	nmsg_poller_t()
-		.read(*chan_1, [&](nmsg_ticker_chan_t& chan, timeval_t now) {
+		.read_nn_channel(*chan_1, [&](nmsg_ticker_chan_t& chan, timeval_t now) {
 			ff::fmt(stderr, "{0}; received: {1}, delay: {2}\n",
 				chan.endpoint(), chan.recv_dontwait(), os_unix::clock_monotonic_now() - now);
 		})
-		.read(*chan_2, [&](nmsg_ticker_chan_t& chan, timeval_t now) {
+		.read_nn_channel(*chan_2, [&](nmsg_ticker_chan_t& chan, timeval_t now) {
 			ff::fmt(stderr, "{0}; received: {1}, delay: {2}\n",
 				chan.endpoint(), chan.recv_dontwait(), os_unix::clock_monotonic_now() - now);
 		})
-		.read(*str_chan, [](nmsg_channel_t<str_ref>& chan, timeval_t now) {
+		.read_nn_channel(*str_chan, [](nmsg_channel_t<str_ref>& chan, timeval_t now) {
 			ff::fmt(stderr, "{0}; got new data! '{1}'\n", chan.endpoint(), chan.recv());
 		})
 		.loop();

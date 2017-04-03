@@ -15,7 +15,6 @@
 #include "pinba/report.h"
 
 #include "pinba/nmsg_socket.h"
-#include "pinba/nmsg_ticker.h"
 #include "pinba/nmsg_poller.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,7 +74,6 @@ namespace { namespace aux {
 
 		nmsg_socket_t          reqrep_sock_;
 		nmsg_socket_t          shutdown_sock_;
-		nmsg_ticker_chan_ptr   ticker_chan_;
 
 		report_ptr             report_;
 		uint64_t               packets_received;
@@ -125,9 +123,7 @@ namespace { namespace aux {
 			auto const *rinfo        = report_->info();
 			auto const tick_interval = rinfo->time_window / rinfo->tick_count;
 
-			ticker_chan_ = globals_->ticker()->subscribe(tick_interval, conf_.name);
-
-			std::thread t([this]()
+			std::thread t([this, tick_interval]()
 			{
 				{
 					pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
@@ -137,36 +133,30 @@ namespace { namespace aux {
 
 				nmsg_poller_t poller;
 				poller
-					.read(*ticker_chan_, [this](nmsg_ticker_chan_t& chan, timeval_t now)
+					.ticker(tick_interval, [this](timeval_t now)
 					{
-						chan.recv();
 						report_->tick_now(now);
 					})
-					.read_sock(*packets_recv_sock_, [this](timeval_t now)
+					.read_nn_socket(packets_recv_sock_, [this](timeval_t now)
 					{
 						auto const batch = packets_recv_sock_.recv<packet_batch_ptr>();
 						packets_received += batch->packet_count;
 
 						report_->add_multi(batch->packets, batch->packet_count);
 					})
-					.read_sock(*reqrep_sock_, [this](timeval_t now)
+					.read_nn_socket(reqrep_sock_, [this](timeval_t now)
 					{
 						auto const req = reqrep_sock_.recv<report_host_req_ptr>();
 						req->func(report_.get());
 						reqrep_sock_.send(meow::make_intrusive<report_host_result_t>());
 					})
-					.read_sock(*shutdown_sock_, [this, &poller](timeval_t)
+					.read_nn_socket(shutdown_sock_, [this, &poller](timeval_t)
 					{
 						shutdown_sock_.recv<int>();
 						poller.set_shutdown_flag(); // exit loop() after this iteration
 						shutdown_sock_.send(1);
 					})
 					.loop();
-
-				// unsub from ticker
-				// this is required to allow re-creation of report host with same name later
-				// (due to ticker channels having names that must be unique within nanomsg)
-				globals_->ticker()->unsubscribe(ticker_chan_);
 			});
 
 			t_ = move(t);
@@ -280,24 +270,18 @@ namespace { namespace aux {
 				pthread_setname_np(pthread_self(), thr_name.c_str());
 			}
 
-			auto const tick_chan = globals_->ticker()->subscribe(1000 * d_millisecond, "coordinator_thread");
-
 			nmsg_poller_t poller;
 			poller
-				.read(*tick_chan, [this](nmsg_ticker_chan_t& chan, timeval_t now)
+				.ticker(1000 * d_millisecond, [this](timeval_t now)
 				{
-					chan.recv(); // MUST do this, or chan will stay readable
-
 					// update accumulated rusage
-					{
-						os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
 
-						std::lock_guard<std::mutex> lk_(stats_->mtx);
-						stats_->coordinator.ru_utime = timeval_from_os_timeval(ru.ru_utime);
-						stats_->coordinator.ru_stime = timeval_from_os_timeval(ru.ru_stime);
-					}
+					std::lock_guard<std::mutex> lk_(stats_->mtx);
+					stats_->coordinator.ru_utime = timeval_from_os_timeval(ru.ru_utime);
+					stats_->coordinator.ru_stime = timeval_from_os_timeval(ru.ru_stime);
 				})
-				.read_sock(*in_sock_, [this](timeval_t now)
+				.read_nn_socket(in_sock_, [this](timeval_t now)
 				{
 					auto batch = in_sock_.recv<packet_batch_ptr>();
 
@@ -318,7 +302,7 @@ namespace { namespace aux {
 							++stats_->coordinator.batch_send_err;
 					}
 				})
-				.read_sock(*control_sock_, [this, &poller](timeval_t now)
+				.read_nn_socket(control_sock_, [this, &poller](timeval_t now)
 				{
 					auto const req = this->control_recv();
 
@@ -435,8 +419,6 @@ namespace { namespace aux {
 					}
 				})
 				.loop();
-
-			globals_->ticker()->unsubscribe(tick_chan);
 		}
 
 	private:

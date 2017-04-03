@@ -51,8 +51,8 @@ struct collector_t
 {
 	virtual ~collector_t() {}
 
-	virtual void    startup() = 0;
-	virtual str_ref nn_output() = 0;
+	virtual void startup() = 0;
+	virtual void shutdown() = 0;
 };
 
 typedef std::unique_ptr<collector_t> collector_ptr;

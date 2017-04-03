@@ -74,11 +74,21 @@ public:
 
 	void close()
 	{
-		if (fd_ >= 0)
+		if (fd_ < 0)
+			return;
+
+		while (true)
 		{
-			nn_close(fd_);
-			fd_ = -1;
+			int r = nn_close(fd_);
+			if (r < 0)
+			{
+				assert(nn_errno() == EINTR);
+				continue; // should retry
+			}
+			break;
 		}
+
+		fd_ = -1;
 	}
 
 	int release()

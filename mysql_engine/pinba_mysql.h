@@ -51,6 +51,9 @@ struct pinba_status_variables_t
 	unsigned long long  repacker_recv_total;
 	unsigned long long  repacker_recv_eagain;
 	unsigned long long  repacker_packets_processed;
+	unsigned long long  repacker_batch_send_total;
+	unsigned long long  repacker_batch_send_by_timer;
+	unsigned long long  repacker_batch_send_by_size;
 	double              repacker_ru_utime;
 	double              repacker_ru_stime;
 

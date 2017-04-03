@@ -3,10 +3,7 @@
 
 #include <boost/noncopyable.hpp>
 
-#include <sparsehash/dense_hash_map>
-
 #include "pinba/globals.h"
-#include "pinba/dictionary.h"
 #include "pinba/histogram.h"
 #include "pinba/packet.h"
 #include "pinba/report.h"

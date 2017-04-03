@@ -31,14 +31,12 @@ using pinba_report_ptr      = report_ptr;
 struct pinba_handler_t;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
+// pinba_view_t
 // this object represents a table open in each thread (i.e. this object doesn't need locking)
 // references a share (and corresponding report)
 // is basically an abstraction over table data, enabling iteration and stuff
 // useful because each select has it's own copy of table data that is iterated separately
 // also hides all table data details from pinba_handler_t
-struct pinba_view_t;
-using  pinba_view_ptr = std::unique_ptr<pinba_view_t>;
 
 struct pinba_view_kind
 {
@@ -93,6 +91,7 @@ struct pinba_view_t : private boost::noncopyable
 	virtual int  info(pinba_handler_t*, uint) const = 0;
 	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const = 0;
 };
+using pinba_view_ptr = std::unique_ptr<pinba_view_t>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
