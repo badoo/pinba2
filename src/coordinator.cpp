@@ -125,9 +125,12 @@ namespace { namespace aux {
 
 			std::thread t([this, tick_interval]()
 			{
-				{
-					pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
-				}
+				pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
+
+				MEOW_DEFER(
+					LOG_DEBUG(globals_->logger(), "{0}; exiting", conf_.thread_name);
+				);
+
 
 				report_->ticks_init(os_unix::clock_monotonic_now());
 
@@ -207,10 +210,10 @@ namespace { namespace aux {
 				in_sock_.set_option(NN_SOL_SOCKET, NN_RCVBUF, conf_->nn_input_buffer * sizeof(packet_batch_ptr), conf_->nn_input);
 
 			control_sock_ = nmsg_socket(AF_SP, NN_REP);
-			control_sock_.bind(conf_->nn_control.c_str());
+			control_sock_.bind(conf_->nn_control);
 
 			report_sock_ = nmsg_socket(AF_SP, NN_PUB);
-			report_sock_.bind(conf_->nn_report_output.c_str());
+			report_sock_.bind(conf_->nn_report_output);
 		}
 
 		virtual void startup() override
@@ -265,10 +268,12 @@ namespace { namespace aux {
 
 		void worker_thread()
 		{
-			{
-				std::string const thr_name = ff::fmt_str("coordinator");
-				pthread_setname_np(pthread_self(), thr_name.c_str());
-			}
+			std::string const thr_name = ff::fmt_str("coordinator");
+			pthread_setname_np(pthread_self(), thr_name.c_str());
+
+			MEOW_DEFER(
+				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
+			);
 
 			nmsg_poller_t poller;
 			poller

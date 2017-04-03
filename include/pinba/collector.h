@@ -40,6 +40,7 @@ struct collector_conf_t
 	std::string  port;
 
 	std::string  nn_output;      // parsed udp packets are avilable here (as raw_request_t)
+	std::string  nn_shutdown;    // used for graceful shutdown
 
 	uint32_t     n_threads;      // reader threads to start
 

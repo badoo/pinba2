@@ -48,6 +48,7 @@ try
 		.address       = "0.0.0.0",
 		.port          = "3002",
 		.nn_output     = "inproc://udp-collector",
+		.nn_shutdown   = "inproc://udp-collector/shutdown",
 		.n_threads     = 2,
 		.batch_size    = 128,
 		.batch_timeout = 10 * d_millisecond,

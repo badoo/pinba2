@@ -112,10 +112,16 @@ int main(int argc, char const *argv[])
 
 	getchar();
 
+	ff::fmt(stderr, "got shutdown request\n");
+
 	pinba->shutdown();
 	pinba.reset();
 
-	nn_term();
+	ff::fmt(stderr, "pinba shutdown done\n");
+
+	// nn_term();
+
+	// ff::fmt(stderr, "nn_term done\n");
 
 	return 0;
 }

@@ -8,6 +8,7 @@
 
 #include <boost/noncopyable.hpp>
 
+#include <meow/str_ref.hpp>
 #include <meow/intrusive_ptr.hpp>
 #include <meow/format/format.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -142,7 +143,7 @@ public:
 	// template<class T>
 	// nmsg_socket_t& set_option(int level, int option, T const& value)
 	// nn_setsockopt() just gives EINVAL if typeof(value) is size_t (i guess it's a size based check)
-	nmsg_socket_t& set_option(int level, int option, int const value, str_ref sockname = {})
+	nmsg_socket_t& set_option(int level, int option, int const value, meow::str_ref sockname = {})
 	{
 		int const r = nn_setsockopt(fd_, level, option, &value, sizeof(value));
 		if (r < 0)
@@ -155,7 +156,7 @@ public:
 		return *this;
 	}
 
-	nmsg_socket_t& set_option(int level, int option, str_ref value, str_ref sockname = {})
+	nmsg_socket_t& set_option(int level, int option, meow::str_ref value, meow::str_ref sockname = {})
 	{
 		int const r = nn_setsockopt(fd_, level, option, value.data(), value.length());
 		if (r < 0)
@@ -168,7 +169,7 @@ public:
 		return *this;
 	}
 
-	int get_option_int(int level, int option, str_ref sockname = {})
+	int get_option_int(int level, int option, meow::str_ref sockname = {})
 	{
 		int value = -1;
 		size_t sz = sizeof(value);
@@ -186,7 +187,7 @@ public:
 	}
 
 	template<class T>
-	bool recv(T *value, str_ref sockname = {}, int flags = 0)
+	bool recv(T *value, meow::str_ref sockname = {}, int flags = 0)
 	{
 		int const n = nn_recv(fd_, (void*)value, sizeof(T), flags);
 		if (n < 0) {
@@ -201,7 +202,7 @@ public:
 	}
 
 	template<class T>
-	T recv(str_ref sockname = {}, int flags = 0)
+	T recv(meow::str_ref sockname = {}, int flags = 0)
 	{
 		T value;
 

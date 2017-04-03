@@ -6,6 +6,7 @@
 
 #include <boost/noncopyable.hpp>
 
+#include <meow/str_ref.hpp>
 #include <meow/intrusive_ptr.hpp>
 #include <meow/format/format.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -36,12 +37,12 @@ public:
 		nn_close(write_sock_);
 	}
 
-	nmsg_channel_t(str_ref name = {})
+	nmsg_channel_t(meow::str_ref name = {})
 		: nmsg_channel_t(-1, name)
 	{
 	}
 
-	nmsg_channel_t(int buffer_size, str_ref name = {})
+	nmsg_channel_t(int buffer_size, meow::str_ref name = {})
 	{
 		endpoint_ = [&]()
 		{
@@ -157,13 +158,13 @@ template<class T>
 using nmsg_channel_ptr = boost::intrusive_ptr<nmsg_channel_t<T>>;
 
 template<class T>
-inline nmsg_channel_ptr<T> nmsg_channel_create(int buffer_size, str_ref name = {})
+inline nmsg_channel_ptr<T> nmsg_channel_create(int buffer_size, meow::str_ref name = {})
 {
 	return nmsg_channel_ptr<T>(new nmsg_channel_t<T>(buffer_size, name));
 }
 
 template<class T>
-inline nmsg_channel_ptr<T> nmsg_channel_create(str_ref name = {})
+inline nmsg_channel_ptr<T> nmsg_channel_create(meow::str_ref name = {})
 {
 	return nmsg_channel_ptr<T>(new nmsg_channel_t<T>(name));
 }

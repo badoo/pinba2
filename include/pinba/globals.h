@@ -119,7 +119,7 @@ struct pinba_globals_t : private boost::noncopyable
 
 	virtual pinba_logger_t*  logger() const = 0;
 	virtual pinba_options_t const* options() const = 0;
-	virtual nmsg_ticker_t* ticker() const = 0;
+	// virtual nmsg_ticker_t* ticker() const = 0;
 	virtual dictionary_t*  dictionary() const = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;

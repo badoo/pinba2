@@ -5,6 +5,8 @@
 #include <nanomsg/reqrep.h>
 
 #include <meow/intrusive_ptr.hpp>
+
+#define MEOW_FORMAT_FD_SINK_NO_WRITEV 1
 #include <meow/logging/fd_logger.hpp>
 
 #include "pinba/globals.h"
@@ -31,7 +33,7 @@ namespace { namespace aux {
 					? options->logger
 					: std::make_shared<meow::logging::fd_logger_t<meow::logging::empty_prefix_t>>(STDERR_FILENO);
 
-			ticker_     = meow::make_unique<nmsg_ticker___single_thread_t>();
+			// ticker_     = meow::make_unique<nmsg_ticker___single_thread_t>();
 			dictionary_ = meow::make_unique<dictionary_t>();
 
 			stats_.start_tv          = os_unix::clock_monotonic_now();
@@ -61,10 +63,10 @@ namespace { namespace aux {
 			return options_;
 		}
 
-		virtual nmsg_ticker_t* ticker() const override
-		{
-			return ticker_.get();
-		}
+		// virtual nmsg_ticker_t* ticker() const override
+		// {
+		// 	return ticker_.get();
+		// }
 
 		virtual dictionary_t*  dictionary() const override
 		{
@@ -76,7 +78,7 @@ namespace { namespace aux {
 
 		pinba_logger_ptr               logger_;
 		pinba_stats_t                  stats_;
-		std::unique_ptr<nmsg_ticker_t> ticker_;
+		// std::unique_ptr<nmsg_ticker_t> ticker_;
 		std::unique_ptr<dictionary_t>  dictionary_;
 	};
 
@@ -99,6 +101,7 @@ namespace { namespace aux {
 				.address       = options->net_address,
 				.port          = options->net_port,
 				.nn_output     = "inproc://udp-collector",
+				.nn_shutdown   = "inproc://udp-collector/shutdown",
 				.n_threads     = options->udp_threads,
 				.batch_size    = options->udp_batch_messages,
 				.batch_timeout = options->udp_batch_timeout,
