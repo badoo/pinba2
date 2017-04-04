@@ -379,7 +379,7 @@ public: // snapshot
 			}
 
 			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
-				rinfo.name, ticks.size(), key_lookups, hv_lookups);
+				rinfo.name, n_ticks, key_lookups, hv_lookups);
 		}
 	};
 
