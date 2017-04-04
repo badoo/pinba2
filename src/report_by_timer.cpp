@@ -25,8 +25,20 @@ using key_base_t = std::array<uint32_t, N>;
 
 struct key__hasher_t
 {
+	inline size_t operator()(key_base_t<1> const& key) const
+	{
+		static std::hash<uint32_t> hasher;
+		return hasher(*reinterpret_cast<uint32_t const*>(key.data()));
+	}
+
+	inline size_t operator()(key_base_t<2> const& key) const
+	{
+		static std::hash<uint64_t> hasher;
+		return hasher(*reinterpret_cast<uint64_t const*>(key.data()));
+	}
+
 	template<size_t N>
-	inline constexpr size_t operator()(key_base_t<N> const& key) const
+	inline size_t operator()(key_base_t<N> const& key) const
 	{
 		return t1ha0(key.data(), key.size() * sizeof(key[0]), 0);
 	}
@@ -34,6 +46,20 @@ struct key__hasher_t
 
 struct key__equal_t
 {
+	inline bool operator()(key_base_t<1> const& l, key_base_t<1> const& r) const
+	{
+		auto const lv = *reinterpret_cast<uint32_t const*>(l.data());
+		auto const rv = *reinterpret_cast<uint32_t const*>(r.data());
+		return lv == rv;
+	}
+
+	inline bool operator()(key_base_t<2> const& l, key_base_t<2> const& r) const
+	{
+		auto const lv = *reinterpret_cast<uint64_t const*>(l.data());
+		auto const rv = *reinterpret_cast<uint64_t const*>(r.data());
+		return lv == rv;
+	}
+
 	template<size_t N>
 	inline bool operator()(key_base_t<N> const& l, key_base_t<N> const& r) const
 	{

@@ -2,7 +2,6 @@
 #define PINBA__REPORT_UTIL_H_
 
 #include <string>
-#include <functional>
 #include <vector>
 #include <utility>
 
@@ -24,20 +23,6 @@
 
 struct report_key__hasher_t
 {
-	// template<>
-	inline size_t operator()(report_key_base_t<1> const& key) const
-	{
-		static std::hash<uint32_t> hasher;
-		return hasher(*reinterpret_cast<uint32_t const*>(key.data()));
-	}
-
-	// template<>
-	inline size_t operator()(report_key_base_t<2> const& key) const
-	{
-		static std::hash<uint64_t> hasher;
-		return hasher(*reinterpret_cast<uint64_t const*>(key.data()));
-	}
-
 	template<size_t N>
 	inline size_t operator()(report_key_base_t<N> const& key) const
 	{
