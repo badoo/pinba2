@@ -247,50 +247,50 @@ static struct st_mysql_sys_var* system_variables[]= {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-static SHOW_VAR pinba_status_variables_for_plugin[] = {
-#define SVAR(name, show_type) \
-	{ #name, (char*)&pinba_status_variables()->name, show_type }, \
-/**/
-
-	SVAR(uptime,                            SHOW_DOUBLE)
-	SVAR(udp_poll_total,                    SHOW_LONGLONG)
-	SVAR(udp_recv_total,                    SHOW_LONGLONG)
-	SVAR(udp_recv_eagain,                   SHOW_LONGLONG)
-	SVAR(udp_recv_bytes,                    SHOW_LONGLONG)
-	SVAR(udp_recv_packets,                  SHOW_LONGLONG)
-	SVAR(udp_packet_decode_err,             SHOW_LONGLONG)
-	SVAR(udp_batch_send_total,              SHOW_LONGLONG)
-	SVAR(udp_batch_send_err,                SHOW_LONGLONG)
-	SVAR(udp_ru_utime,                      SHOW_DOUBLE)
-	SVAR(udp_ru_stime,                      SHOW_DOUBLE)
-	SVAR(repacker_poll_total,               SHOW_LONGLONG)
-	SVAR(repacker_recv_total,               SHOW_LONGLONG)
-	SVAR(repacker_recv_eagain,              SHOW_LONGLONG)
-	SVAR(repacker_recv_packets,             SHOW_LONGLONG)
-	SVAR(repacker_packet_validate_err,      SHOW_LONGLONG)
-	SVAR(repacker_batch_send_total,         SHOW_LONGLONG)
-	SVAR(repacker_batch_send_by_timer,      SHOW_LONGLONG)
-	SVAR(repacker_batch_send_by_size,       SHOW_LONGLONG)
-	SVAR(repacker_ru_utime,                 SHOW_DOUBLE)
-	SVAR(repacker_ru_stime,                 SHOW_DOUBLE)
-	SVAR(coordinator_batches_received,      SHOW_LONGLONG)
-	SVAR(coordinator_batch_send_total,      SHOW_LONGLONG)
-	SVAR(coordinator_batch_send_err,        SHOW_LONGLONG)
-	SVAR(coordinator_control_requests,      SHOW_LONGLONG)
-	SVAR(coordinator_ru_utime,              SHOW_DOUBLE)
-	SVAR(coordinator_ru_stime,              SHOW_DOUBLE)
-	SVAR(dictionary_size,                   SHOW_LONGLONG)
-	SVAR(dictionary_mem_used,               SHOW_LONGLONG)
-
-#undef SVAR
-	{ NullS, NullS, SHOW_LONG }
-};
-
 static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 {
+	static SHOW_VAR const vars[] = {
+	#define SVAR(name, show_type) \
+		{ #name, (char*)&pinba_status_variables()->name, show_type }, \
+	/**/
+
+		SVAR(uptime,                            SHOW_DOUBLE)
+		SVAR(udp_poll_total,                    SHOW_LONGLONG)
+		SVAR(udp_recv_total,                    SHOW_LONGLONG)
+		SVAR(udp_recv_eagain,                   SHOW_LONGLONG)
+		SVAR(udp_recv_bytes,                    SHOW_LONGLONG)
+		SVAR(udp_recv_packets,                  SHOW_LONGLONG)
+		SVAR(udp_packet_decode_err,             SHOW_LONGLONG)
+		SVAR(udp_batch_send_total,              SHOW_LONGLONG)
+		SVAR(udp_batch_send_err,                SHOW_LONGLONG)
+		SVAR(udp_ru_utime,                      SHOW_DOUBLE)
+		SVAR(udp_ru_stime,                      SHOW_DOUBLE)
+		SVAR(repacker_poll_total,               SHOW_LONGLONG)
+		SVAR(repacker_recv_total,               SHOW_LONGLONG)
+		SVAR(repacker_recv_eagain,              SHOW_LONGLONG)
+		SVAR(repacker_recv_packets,             SHOW_LONGLONG)
+		SVAR(repacker_packet_validate_err,      SHOW_LONGLONG)
+		SVAR(repacker_batch_send_total,         SHOW_LONGLONG)
+		SVAR(repacker_batch_send_by_timer,      SHOW_LONGLONG)
+		SVAR(repacker_batch_send_by_size,       SHOW_LONGLONG)
+		SVAR(repacker_ru_utime,                 SHOW_DOUBLE)
+		SVAR(repacker_ru_stime,                 SHOW_DOUBLE)
+		SVAR(coordinator_batches_received,      SHOW_LONGLONG)
+		SVAR(coordinator_batch_send_total,      SHOW_LONGLONG)
+		SVAR(coordinator_batch_send_err,        SHOW_LONGLONG)
+		SVAR(coordinator_control_requests,      SHOW_LONGLONG)
+		SVAR(coordinator_ru_utime,              SHOW_DOUBLE)
+		SVAR(coordinator_ru_stime,              SHOW_DOUBLE)
+		SVAR(dictionary_size,                   SHOW_LONGLONG)
+		SVAR(dictionary_mem_used,               SHOW_LONGLONG)
+
+	#undef SVAR
+		{ NullS, NullS, SHOW_LONG }
+	};
+
 	pinba_update_status_variables();
 	var->type = SHOW_ARRAY;
-	var->value = (char*)&pinba_status_variables_for_plugin;
+	var->value = (char*)&vars;
 }
 
 static SHOW_VAR status_variables_export[]= {

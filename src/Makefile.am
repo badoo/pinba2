@@ -27,6 +27,7 @@ libpinba2_a_SOURCES = \
 	coordinator.cpp \
 	packet.cpp \
 	report_snapshot.cpp \
+	report_by_packet.cpp \
 	report_by_timer.cpp \
 	../t1ha/t1ha0.c \
 	../t1ha/t1ha1.c \

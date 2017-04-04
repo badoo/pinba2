@@ -1268,7 +1268,7 @@ static pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 		case pinba_view_kind::report_by_timer_data:
 			return create_report_by_timer(P_G_, conf.by_timer_conf);
 		case pinba_view_kind::report_by_packet_data:
-			return meow::make_unique<report___by_packet_t>(P_G_, conf.by_packet_conf);
+			return create_report_by_packet(P_G_, conf.by_packet_conf);
 
 		default:
 			assert(!"must not be reached");

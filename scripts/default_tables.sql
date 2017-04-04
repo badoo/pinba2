@@ -2,6 +2,13 @@
 
 use pinba;
 
+-- experimental
+-- create view status_variables as
+--   select
+--     (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UPTIME') as uptime,
+--     (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_POLL_TOTAL') as udp_poll_total,
+--     (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_RECV_PACKETS') as udp_recv_packets;
+
 CREATE TABLE if not exists `stats` (
   `uptime` double NOT NULL,
   `udp_poll_total` bigint(20) unsigned NOT NULL,

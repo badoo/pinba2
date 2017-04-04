@@ -1,4 +1,4 @@
-#include <wchar.h> // wmemcmp
+// #include <wchar.h> // wmemcmp
 
 #include <functional>
 #include <utility>
@@ -10,7 +10,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
-#include "pinba/multi_merge.h"
+// #include "pinba/multi_merge.h"
 #include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"

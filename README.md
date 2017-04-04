@@ -263,3 +263,62 @@ example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 	| localhost | script-8.phtml | antoxa-test | something |       803 |       803 |     12.045 |              0 |              0 |
 	| localhost | script-7.phtml | antoxa-test | something |       801 |       801 |     12.015 |              0 |              0 |
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
+
+**Status Variables**
+
+The upside for using this, instead of separate (kinda sorta built-in) table is that these are easier to immplement and support :)
+But not by much.
+The downside - it's ugly in selects (to calculate something like packets/sec).
+
+Example (var combo)
+
+	mysql> select
+		(select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_RECV_PACKETS')
+		/ (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UPTIME')
+		as packets_per_sec;
+	+-------------------+
+	| packets_per_sec   |
+	+-------------------+
+	| 54239.48988125529 |
+	+-------------------+
+	1 row in set (0.00 sec)
+
+
+Example (all vars)
+
+	mysql> show status where Variable_name like 'Pinba%';
+	+------------------------------------+-----------+
+	| Variable_name                      | Value     |
+	+------------------------------------+-----------+
+	| Pinba_uptime                       | 30.312758 |
+	| Pinba_udp_poll_total               | 99344     |
+	| Pinba_udp_recv_total               | 227735    |
+	| Pinba_udp_recv_eagain              | 99299     |
+	| Pinba_udp_recv_bytes               | 367344280 |
+	| Pinba_udp_recv_packets             | 1642299   |
+	| Pinba_udp_packet_decode_err        | 0         |
+	| Pinba_udp_batch_send_total         | 94382     |
+	| Pinba_udp_batch_send_err           | 0         |
+	| Pinba_udp_ru_utime                 | 24.052000 |
+	| Pinba_udp_ru_stime                 | 32.820000 |
+	| Pinba_repacker_poll_total          | 94711     |
+	| Pinba_repacker_recv_total          | 188709    |
+	| Pinba_repacker_recv_eagain         | 94327     |
+	| Pinba_repacker_recv_packets        | 1642299   |
+	| Pinba_repacker_packet_validate_err | 0         |
+	| Pinba_repacker_batch_send_total    | 1622      |
+	| Pinba_repacker_batch_send_by_timer | 189       |
+	| Pinba_repacker_batch_send_by_size  | 1433      |
+	| Pinba_repacker_ru_utime            | 59.148000 |
+	| Pinba_repacker_ru_stime            | 23.564000 |
+	| Pinba_coordinator_batches_received | 1622      |
+	| Pinba_coordinator_batch_send_total | 1104      |
+	| Pinba_coordinator_batch_send_err   | 0         |
+	| Pinba_coordinator_control_requests | 9         |
+	| Pinba_coordinator_ru_utime         | 0.040000  |
+	| Pinba_coordinator_ru_stime         | 0.032000  |
+	| Pinba_dictionary_size              | 364       |
+	| Pinba_dictionary_mem_used          | 6303104   |
+	+------------------------------------+-----------+
+	29 rows in set (0.00 sec)
+
