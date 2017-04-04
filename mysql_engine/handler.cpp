@@ -63,39 +63,48 @@ void pinba_update_status_variables()
 	auto       *vars  = pinba_status_variables();
 	auto const *stats = P_G_->stats();
 
-	vars->uptime                 = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
+	vars->uptime = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
 
 	// udp
 
+	vars->udp_poll_total        = stats->udp.poll_total;
 	vars->udp_recv_total        = stats->udp.recv_total;
-	vars->udp_recv_nonblocking  = stats->udp.recv_nonblocking;
 	vars->udp_recv_eagain       = stats->udp.recv_eagain;
 	vars->udp_recv_bytes        = stats->udp.recv_bytes;
-	vars->udp_packets_received  = stats->udp.packets_received;
+	vars->udp_recv_packets      = stats->udp.recv_packets;
 	vars->udp_packet_decode_err = stats->udp.packet_decode_err;
 	vars->udp_batch_send_total  = stats->udp.batch_send_total;
 	vars->udp_batch_send_err    = stats->udp.batch_send_err;
 
-	// repacker
-
-	vars->repacker_poll_total        = stats->repacker.poll_total;
-	vars->repacker_recv_total        = stats->repacker.recv_total;
-	vars->repacker_recv_eagain       = stats->repacker.recv_eagain;
-	vars->repacker_packets_processed = stats->repacker.packets_processed;
-	vars->repacker_batch_send_total  = stats->repacker.batch_send_total;
-	vars->repacker_batch_send_by_timer  = stats->repacker.batch_send_by_timer;
-	vars->repacker_batch_send_by_size  = stats->repacker.batch_send_by_size;
-
-	auto const repacker_threads_tmp = [&]()
 	{
 		std::lock_guard<std::mutex> lk_(stats->mtx);
-		return stats->repacker_threads;
-	}();
 
-	for (auto const& rst : repacker_threads_tmp)
+		for (auto const& curr : stats->collector_threads)
+		{
+			vars->udp_ru_utime += timeval_to_double(curr.ru_utime);
+			vars->udp_ru_stime += timeval_to_double(curr.ru_stime);
+		}
+	}
+
+	// repacker
+
+	vars->repacker_poll_total          = stats->repacker.poll_total;
+	vars->repacker_recv_total          = stats->repacker.recv_total;
+	vars->repacker_recv_eagain         = stats->repacker.recv_eagain;
+	vars->repacker_recv_packets        = stats->repacker.recv_packets;
+	vars->repacker_packet_validate_err = stats->repacker.packet_validate_err;
+	vars->repacker_batch_send_total    = stats->repacker.batch_send_total;
+	vars->repacker_batch_send_by_timer = stats->repacker.batch_send_by_timer;
+	vars->repacker_batch_send_by_size  = stats->repacker.batch_send_by_size;
+
 	{
-		vars->repacker_ru_utime += timeval_to_double(rst.ru_utime);
-		vars->repacker_ru_stime += timeval_to_double(rst.ru_stime);
+		std::lock_guard<std::mutex> lk_(stats->mtx);
+
+		for (auto const& curr : stats->repacker_threads)
+		{
+			vars->repacker_ru_utime += timeval_to_double(curr.ru_utime);
+			vars->repacker_ru_stime += timeval_to_double(curr.ru_stime);
+		}
 	}
 
 	// coordinator
@@ -734,12 +743,12 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 				case 1:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_total);
+					(*field)->store(stats->udp.poll_total);
 				break;
 
 				case 2:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_nonblocking);
+					(*field)->store(stats->udp.recv_total);
 				break;
 
 				case 3:
@@ -754,7 +763,7 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 				case 5:
 					(*field)->set_notnull();
-					(*field)->store(stats->udp.packets_received);
+					(*field)->store(stats->udp.recv_packets);
 				break;
 
 				case 6:

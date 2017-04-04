@@ -4,8 +4,8 @@ use pinba;
 
 CREATE TABLE if not exists `stats` (
   `uptime` double NOT NULL,
+  `udp_poll_total` bigint(20) unsigned NOT NULL,
   `udp_recv_total` bigint(20) unsigned NOT NULL,
-  `udp_recv_nonblocking` bigint(20) unsigned NOT NULL,
   `udp_recv_eagain` bigint(20) unsigned NOT NULL,
   `udp_recv_bytes` bigint(20) unsigned NOT NULL,
   `udp_packets_received` bigint(20) unsigned NOT NULL,

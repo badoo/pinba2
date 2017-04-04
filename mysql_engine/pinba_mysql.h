@@ -38,19 +38,22 @@ struct pinba_status_variables_t
 {
 	double              uptime;
 
+	unsigned long long  udp_poll_total;
 	unsigned long long  udp_recv_total;
-	unsigned long long  udp_recv_nonblocking;
 	unsigned long long  udp_recv_eagain;
 	unsigned long long  udp_recv_bytes;
-	unsigned long long  udp_packets_received;
+	unsigned long long  udp_recv_packets;
 	unsigned long long  udp_packet_decode_err;
 	unsigned long long  udp_batch_send_total;
 	unsigned long long  udp_batch_send_err;
+	double              udp_ru_utime;
+	double              udp_ru_stime;
 
 	unsigned long long  repacker_poll_total;
 	unsigned long long  repacker_recv_total;
 	unsigned long long  repacker_recv_eagain;
-	unsigned long long  repacker_packets_processed;
+	unsigned long long  repacker_recv_packets;
+	unsigned long long  repacker_packet_validate_err;
 	unsigned long long  repacker_batch_send_total;
 	unsigned long long  repacker_batch_send_by_timer;
 	unsigned long long  repacker_batch_send_by_size;

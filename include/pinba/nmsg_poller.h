@@ -246,9 +246,10 @@ public: // utility
 		shutting_down = true;
 	}
 
-	void before_poll(std::function<void(timeval_t, duration_t)> const& func)
+	nmsg_poller_t& before_poll(std::function<void(timeval_t, duration_t)> const& func)
 	{
 		before_poll_ = func;
+		return *this;
 	}
 
 	int loop()

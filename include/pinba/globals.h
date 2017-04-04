@@ -34,6 +34,12 @@ typedef meow::error_t pinba_error_t;
 struct nmsg_ticker_t;
 struct dictionary_t;
 
+struct collector_stats_t
+{
+	timeval_t ru_utime = {0,0};
+	timeval_t ru_stime = {0,0};
+};
+
 struct repacker_stats_t
 {
 	timeval_t ru_utime = {0,0};
@@ -52,21 +58,24 @@ struct pinba_stats_t
 	timeval_t start_realtime_tv   = {0,0};  // can show to user, etc.
 
 	struct {
+		std::atomic<uint64_t> poll_total        = {0};      // total poll calls
 		std::atomic<uint64_t> recv_total        = {0};      // total recv* calls
-		std::atomic<uint64_t> recv_nonblocking  = {0};      // total recv* calls with MSG_DONTWAIT
 		std::atomic<uint64_t> recv_eagain       = {0};      // EAGAIN errors from recv* calls
 		std::atomic<uint64_t> recv_bytes        = {0};      // bytes received
-		std::atomic<uint64_t> packets_received  = {0};      // total udp packets received
+		std::atomic<uint64_t> recv_packets      = {0};      // total udp packets received
 		std::atomic<uint64_t> packet_decode_err = {0};      // number of times we've failed to decode incoming message
 		std::atomic<uint64_t> batch_send_total  = {0};      // batch send attempts (to repacker)
 		std::atomic<uint64_t> batch_send_err    = {0};      // batch sends that failed
 	} udp;
 
+	std::vector<collector_stats_t> collector_threads;
+
 	struct {
 		std::atomic<uint64_t> poll_total          = {0};
 		std::atomic<uint64_t> recv_total          = {0};
 		std::atomic<uint64_t> recv_eagain         = {0};
-		std::atomic<uint64_t> packets_processed   = {0};
+		std::atomic<uint64_t> recv_packets        = {0};
+		std::atomic<uint64_t> packet_validate_err = {0};
 		std::atomic<uint64_t> batch_send_total    = {0};
 		std::atomic<uint64_t> batch_send_by_timer = {0};
 		std::atomic<uint64_t> batch_send_by_size  = {0};

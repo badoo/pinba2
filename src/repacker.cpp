@@ -212,10 +212,10 @@ namespace { namespace aux {
 				.open(AF_SP, NN_PULL)
 				.bind(conf_->nn_shutdown);
 
-			stats_->repacker_threads.resize(conf_->n_threads);
-
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
+				stats_->repacker_threads.push_back({});
+
 				// open and connect to producer in main thread, to make exceptions catch-able easily
 				nmsg_socket_t in_sock;
 				in_sock.open(AF_SP, NN_PULL);
@@ -337,16 +337,17 @@ namespace { namespace aux {
 					{
 						auto const *pb_req = req->requests[i];
 
+						++stats_->repacker.recv_packets;
+
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)
 						{
+							++stats_->repacker.packet_validate_err;
 							LOG_DEBUG(globals_->logger(), "request validation failed: {0}: {1}\n", vr, enum_as_str_ref(vr));
 							continue;
 						}
 
 						packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
-
-						++stats_->repacker.packets_processed;
 
 						// append to current batch
 						batch->packets[batch->packet_count] = packet;

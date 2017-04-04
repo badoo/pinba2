@@ -16,6 +16,7 @@
 #include <meow/unix/fd_handle.hpp>
 #include <meow/unix/socket.hpp>
 #include <meow/unix/netdb.hpp>
+#include <meow/unix/resource.hpp>
 
 #include "pinba/nmsg_socket.h"
 #include "pinba/nmsg_poller.h"
@@ -62,6 +63,8 @@ namespace { namespace aux {
 
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
+				stats_->collector_threads.push_back({});
+
 				std::thread t([this, i]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
@@ -138,6 +141,18 @@ namespace { namespace aux {
 			nmsg_poller_t poller;
 
 			poller
+				.before_poll([this](timeval_t now, duration_t wait_for)
+				{
+					++stats_->udp.poll_total;
+				})
+				.ticker(1 * d_second, [&](timeval_t now)
+				{
+					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+					std::lock_guard<std::mutex> lk_(stats_->mtx);
+					stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
+					stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
+				})
 				.read_nn_socket(shutdown_sock_, [&](timeval_t)
 				{
 					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
@@ -149,12 +164,11 @@ namespace { namespace aux {
 					while (true)
 					{
 						++stats_->udp.recv_total;
-						++stats_->udp.recv_nonblocking;
 
 						int const n = recv(fd_, buf, sizeof(buf), MSG_DONTWAIT);
 						if (n > 0)
 						{
-							++stats_->udp.packets_received;
+							++stats_->udp.recv_packets;
 
 							if (!req)
 							{
@@ -246,6 +260,18 @@ namespace { namespace aux {
 			nmsg_poller_t poller;
 
 			poller
+				.before_poll([this](timeval_t now, duration_t wait_for)
+				{
+					++stats_->udp.poll_total;
+				})
+				.ticker(1 * d_second, [&](timeval_t now)
+				{
+					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+					std::lock_guard<std::mutex> lk_(stats_->mtx);
+					stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
+					stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
+				})
 				.read_nn_socket(shutdown_sock_, [&](timeval_t)
 				{
 					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
@@ -258,12 +284,11 @@ namespace { namespace aux {
 					while (true)
 					{
 						++stats_->udp.recv_total;
-						++stats_->udp.recv_nonblocking;
 
 						int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
 						if (n > 0)
 						{
-							stats_->udp.packets_received += uint64_t(n);
+							stats_->udp.recv_packets += uint64_t(n);
 
 							for (int i = 0; i < n; i++)
 							{

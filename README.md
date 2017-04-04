@@ -86,8 +86,8 @@ example
 
 	mysql> CREATE TABLE if not exists `stats` (
 			  `uptime` double NOT NULL,
+			  `udp_poll_total` bigint(20) unsigned NOT NULL,
 			  `udp_recv_total` bigint(20) unsigned NOT NULL,
-			  `udp_recv_nonblocking` bigint(20) unsigned NOT NULL,
 			  `udp_recv_eagain` bigint(20) unsigned NOT NULL,
 			  `udp_recv_bytes` bigint(20) unsigned NOT NULL,
 			  `udp_packets_received` bigint(20) unsigned NOT NULL,
@@ -98,9 +98,9 @@ example
 
 	mysql> select uptime, udp_recv_total, udp_recv_bytes, udp_packets_received, udp_packets_decode_err, udp_recv_bytes/uptime as bytes_per_sec, udp_packets_received/uptime as packets_per_sec, udp_recv_bytes/udp_packets_received as bytes_per_packet from stats;
 	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
-	| uptime         | udp_recv_total | udp_recv_bytes | udp_packets_received | udp_packets_decode_err | bytes_per_sec     | packets_per_sec   | bytes_per_packet |
+	| uptime         | udp_recv_total | udp_recv_bytes | udp_recv_packets | udp_packets_decode_err | bytes_per_sec     | packets_per_sec   | bytes_per_packet |
 	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
-	| 2920.189254705 |        2982158 |    21280114623 |             23070611 |                      0 | 7287238.177701511 | 7900.382128599611 |         922.3906 |
+	| 2920.189254705 |        2982158 |    21280114623 |         23070611 |                      0 | 7287238.177701511 | 7900.382128599611 |         922.3906 |
 	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
 	1 row in set (0.00 sec)
 
