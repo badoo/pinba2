@@ -1,6 +1,8 @@
 #include "pinba/globals.h"
+#include "pinba/histogram.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"
+#include "pinba/report_by_packet.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 
@@ -54,20 +56,35 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 
 		switch (data_kind)
 		{
-		case REPORT_KIND__BY_REQUEST_DATA:
+		case REPORT_KIND__BY_PACKET_DATA:
 		{
 			auto const *rinfo = snapshot->report_info();
+			auto const *data  = reinterpret_cast<report_row_data___by_packet_t*>(snapshot->get_data(pos));
 
-			auto const *row   = reinterpret_cast<report_row___by_request_t*>(snapshot->get_data(pos));
-			auto const& data  = row->data;
-
-			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
-				data.req_count, data.time_total, data.ru_utime, data.ru_stime,
-				data.traffic_kb, data.mem_usage);
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5}, {6} }",
+				data->req_count, data->timer_count, data->time_total, data->ru_utime, data->ru_stime,
+				data->traffic_kb, data->mem_usage);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
 			ff::fmt(sink, " {{ rps: {0} }",
-				ff::as_printf("%.06lf", data.req_count / time_window));
+				ff::as_printf("%.06lf", data->req_count / time_window));
+
+			write_hv(pos);
+		}
+		break;
+
+		case REPORT_KIND__BY_REQUEST_DATA:
+		{
+			auto const *rinfo = snapshot->report_info();
+			auto const *data  = reinterpret_cast<report_row_data___by_request_t*>(snapshot->get_data(pos));
+
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
+				data->req_count, data->time_total, data->ru_utime, data->ru_stime,
+				data->traffic_kb, data->mem_usage);
+
+			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
+			ff::fmt(sink, " {{ rps: {0} }",
+				ff::as_printf("%.06lf", data->req_count / time_window));
 
 			write_hv(pos);
 		}
@@ -76,17 +93,15 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 		case REPORT_KIND__BY_TIMER_DATA:
 		{
 			auto const *rinfo = snapshot->report_info();
-
-			auto const *row   = reinterpret_cast<report_row___by_timer_t*>(snapshot->get_data(pos));
-			auto const& data  = row->data;
+			auto const *data  = reinterpret_cast<report_row_data___by_timer_t*>(snapshot->get_data(pos));
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4} }",
-				data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
+				data->req_count, data->hit_count, data->time_total, data->ru_utime, data->ru_stime);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
 			ff::fmt(sink, " {{ rps: {0}, tps: {1} }",
-				ff::as_printf("%.06lf", data.req_count / time_window),
-				ff::as_printf("%.06lf", data.hit_count / time_window));
+				ff::as_printf("%.06lf", data->req_count / time_window),
+				ff::as_printf("%.06lf", data->hit_count / time_window));
 
 			write_hv(pos);
 		}

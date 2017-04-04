@@ -4,6 +4,7 @@
 #include <meow/convert/number_from_string.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/histogram.h"
 #include "pinba/packet.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
@@ -1264,7 +1265,7 @@ static pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 		case pinba_view_kind::active_reports:
 			return {};
 		case pinba_view_kind::report_by_request_data:
-			return meow::make_unique<report___by_request_t>(P_G_, conf.by_request_conf);
+			return create_report_by_request(P_G_, conf.by_request_conf);
 		case pinba_view_kind::report_by_timer_data:
 			return create_report_by_timer(P_G_, conf.by_timer_conf);
 		case pinba_view_kind::report_by_packet_data:

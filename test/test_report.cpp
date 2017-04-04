@@ -17,8 +17,11 @@
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
+#include "pinba/histogram.h"
 #include "pinba/packet.h"
 #include "pinba/report.h"
+#include "pinba/report_util.h"
+#include "pinba/report_by_packet.h"
 #include "pinba/report_by_request.h"
 #include "pinba/multi_merge.h"
 
@@ -147,71 +150,6 @@ struct report_row___by_timer_t
 {
 	report_row_data___by_timer_t  data;
 	histogram_t                   hv;
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct report___by_request__test_t : public report___by_request_t
-{
-
-	report___by_request__test_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
-		: report___by_request_t(globals, conf)
-	{
-	}
-
-	static void do_serialize(FILE *f, ticks_t const& ticks, str_ref name)
-	{
-		uint32_t   req_count_total = 0;
-		duration_t req_time_total  = {0};
-		duration_t time_window     = {0};
-
-		auto const& tlist = ticks.get_internal_buffer();
-
-		ff::fmt(f, ">> {0} ----------------------->\n", name);
-		for (unsigned i = 0; i < tlist.size(); i++)
-		{
-			ff::fmt(f, "ticks[{0}]\n", i);
-
-			auto const& timeslice = tlist[i];
-
-			if (!timeslice)
-				continue;
-
-			time_window += duration_from_timeval(timeslice->end_tv - timeslice->start_tv);
-
-			for (auto const& pair : timeslice->data)
-			{
-				auto const& key  = pair.first;
-				auto const& item = pair.second;
-				auto const& data = item.data;
-
-				req_count_total += data.req_count;
-				req_time_total  += data.time_total;
-
-				ff::fmt(f, "  [{0}] ->  {{ {1}, {2}, {3}, {4} } [",
-					report_key_to_string(key), data.req_count, data.time_total, data.ru_utime, data.ru_stime);
-
-				auto const& hv_map = item.hv.map_cref();
-				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
-				{
-					ff::fmt(f, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
-				}
-				ff::fmt(f, "]\n");
-			}
-		}
-
-		duration_t const avg_req_time = (req_count_total) ? req_time_total / req_count_total : duration_t{0};
-		double const avg_rps = ((double)req_count_total / time_window.nsec) * nsec_in_sec; // gives 'weird' results for time_window < 1second
-
-		ff::fmt(f, "<< avg_req_time: {0}, tw: {1}, avg_rps (expected): {2} -------<\n",
-			avg_req_time , time_window, avg_rps);
-		ff::fmt(f, "\n");
-	}
-
-	void serialize(FILE *f, str_ref name)
-	{
-		do_serialize(f, ticks_, name);
-	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1079,20 +1017,35 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 
 		switch (data_kind)
 		{
+		case REPORT_KIND__BY_PACKET_DATA:
+		{
+			auto const *rinfo = snapshot->report_info();
+			auto const *data  = reinterpret_cast<report_row_data___by_packet_t*>(snapshot->get_data(pos));
+
+			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5}, {6} }",
+				data->req_count, data->timer_count, data->time_total, data->ru_utime, data->ru_stime,
+				data->traffic_kb, data->mem_usage);
+
+			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
+			ff::fmt(sink, " {{ rps: {0} }",
+				ff::as_printf("%.06lf", data->req_count / time_window));
+
+			write_hv(pos);
+		}
+		break;
+
 		case REPORT_KIND__BY_REQUEST_DATA:
 		{
 			auto const *rinfo = snapshot->report_info();
-
-			auto const *row   = reinterpret_cast<report_row___by_request_t*>(snapshot->get_data(pos));
-			auto const& data  = row->data;
+			auto const *data  = reinterpret_cast<report_row_data___by_request_t*>(snapshot->get_data(pos));
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
-				data.req_count, data.time_total, data.ru_utime, data.ru_stime,
-				data.traffic_kb, data.mem_usage);
+				data->req_count, data->time_total, data->ru_utime, data->ru_stime,
+				data->traffic_kb, data->mem_usage);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
-			ff::fmt(sink, " {{ rps: {0}, tps: {1} }",
-				ff::as_printf("%.06lf", data.req_count / time_window));
+			ff::fmt(sink, " {{ rps: {0} }",
+				ff::as_printf("%.06lf", data->req_count / time_window));
 
 			write_hv(pos);
 		}
@@ -1101,31 +1054,17 @@ SinkT& serialize_report_snapshot(SinkT& sink, report_snapshot_t *snapshot, str_r
 		case REPORT_KIND__BY_TIMER_DATA:
 		{
 			auto const *rinfo = snapshot->report_info();
-
-			auto const *row   = reinterpret_cast<report_row___by_timer_t*>(snapshot->get_data(pos));
-			auto const& data  = row->data;
+			auto const *data  = reinterpret_cast<report_row_data___by_timer_t*>(snapshot->get_data(pos));
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4} }",
-				data.req_count, data.hit_count, data.time_total, data.ru_utime, data.ru_stime);
+				data->req_count, data->hit_count, data->time_total, data->ru_utime, data->ru_stime);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
 			ff::fmt(sink, " {{ rps: {0}, tps: {1} }",
-				ff::as_printf("%.06lf", data.req_count / time_window),
-				ff::as_printf("%.06lf", data.hit_count / time_window));
+				ff::as_printf("%.06lf", data->req_count / time_window),
+				ff::as_printf("%.06lf", data->hit_count / time_window));
 
-			ff::fmt(sink, " [");
-			auto const *hv = (flat_histogram_t*)snapshot->get_histogram(pos);
-			if (NULL != hv)
-			{
-				auto const& hvalues = hv->values;
-				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
-				{
-					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
-				}
-			}
-
-			ff::fmt(sink, "]");
-
+			write_hv(pos);
 		}
 		break;
 

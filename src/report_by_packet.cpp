@@ -11,6 +11,15 @@
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+	// this is the data we return from report___by_packet_t snapshot
+	struct report_row___by_packet_t
+	{
+		report_row_data___by_packet_t  data;
+		histogram_t                    hv;
+	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 	struct report___by_packet_t : public report_t
 	{
 		// typedef report_key_t                   key_t;

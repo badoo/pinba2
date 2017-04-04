@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <string>
 
-#include "pinba/globals.h"
 #include "pinba/report.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,13 +23,6 @@ struct report_row_data___by_packet_t
 		// FIXME: add a failsafe for memset
 		memset(this, 0, sizeof(*this));
 	}
-};
-
-// this is the data we return from report___by_packet_t snapshot
-struct report_row___by_packet_t
-{
-	report_row_data___by_packet_t  data;
-	histogram_t                    hv;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

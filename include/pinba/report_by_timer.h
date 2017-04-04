@@ -25,12 +25,6 @@ struct report_row_data___by_timer_t
 	}
 };
 
-struct report_row___by_timer_t
-{
-	report_row_data___by_timer_t  data;
-	histogram_t                   hv;
-};
-
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // RKD = Report Key Descriptor

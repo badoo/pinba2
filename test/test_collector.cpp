@@ -97,7 +97,7 @@ try
 		};
 
 		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-		req->report = meow::make_unique<report___by_request_t>(globals.get(), conf);
+		req->report = create_report_by_request(globals.get(), conf);
 
 		auto const result = coordinator->request(req);
 

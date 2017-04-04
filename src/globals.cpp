@@ -184,7 +184,7 @@ namespace { namespace aux {
 
 		virtual pinba_error_t start_report_with_config(report_conf___by_request_t const& conf) override
 		{
-			return this->add_report(meow::make_unique<report___by_request_t>(this->globals(), conf));
+			return this->add_report(create_report_by_request(this->globals(), conf));
 		}
 
 		virtual pinba_error_t start_report_with_config(report_conf___by_timer_t const& conf) override
