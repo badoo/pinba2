@@ -399,7 +399,7 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 
 					// no support for timer tags, this is request based report
 
-					throw std::runtime_error(ff::fmt_str("key_spec/{0} not known (a timer tag in 'request' report?)", key_s));
+					throw std::runtime_error(ff::fmt_str("key_spec: unknown key '{0}', key_format: ~request_field, +request_tag, timer tags not allowed", key_s));
 				}();
 
 				conf->keys.push_back(kd);
@@ -551,15 +551,17 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 						return report_conf___by_timer_t::key_descriptor_by_request_tag(tag_name, tag_id);
 					}
 
-					// timer_tag
+					// timer_tag, allow with and without leading '@'
+
+					auto const tag_name = [&key_s]()
 					{
-						auto const tag_name = key_s;
-						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+						return (key_s[0] == '@')
+								? meow::sub_str_ref(key_s, 1, key_s.size())
+								: key_s;
+					}();
 
-						return report_conf___by_timer_t::key_descriptor_by_timer_tag(tag_name, tag_id);
-					}
-
-					throw std::runtime_error(ff::fmt_str("key_spec/{0} not known", key_s));
+					auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+					return report_conf___by_timer_t::key_descriptor_by_timer_tag(tag_name, tag_id);
 				}();
 
 				conf->keys.push_back(kd);
