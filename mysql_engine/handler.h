@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include <meow/intrusive_ptr.hpp>
+#include <meow/smart_enum.hpp>
 #include <meow/logging/logger.hpp>
 #include <meow/logging/log_write.hpp>
 
@@ -38,6 +39,14 @@ struct pinba_handler_t;
 // useful because each select has it's own copy of table data that is iterated separately
 // also hides all table data details from pinba_handler_t
 
+MEOW_DEFINE_SMART_ENUM_STRUCT(pinba_view_kind,
+								((stats,                   "stats"))
+								((active_reports,          "active_reports"))
+								((report_by_request_data,  "report_by_request_data"))
+								((report_by_timer_data,    "report_by_timer_data"))
+								((report_by_packet_data,   "report_by_packet_data"))
+								);
+#if 0
 struct pinba_view_kind
 {
 	enum type : uint32_t
@@ -50,6 +59,7 @@ struct pinba_view_kind
 	};
 };
 typedef pinba_view_kind::type pinba_view_kind_t;
+#endif
 #if 0
 struct pinba_view_conf_t
 {

@@ -112,7 +112,7 @@ This table lists all reports/tables known to the engine with additional informat
 |:------ |:----------- |
 | table_name | mysql fully qualified table name (including database) |
 | internal_name | the name known to the engine (it never changes with table renames, but you shouldn't really care about that). |
-| kind | internal report type (this will become a string at some point :) ) |
+| kind | internal report kind (one of the kinds described in this doc, like stats, active, etc.) |
 | needs_engine | if 0 - this table is just known to mysql, and has no underlying report inside pinba engine |
 | is_active | has this report been activated (i.e. are we gathering/aggregating data) |
 | time_window | (not implemented yet) time window this reports aggregates data for (that you specify when creating a table) |

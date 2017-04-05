@@ -26,9 +26,9 @@ CREATE TABLE if not exists `stats` (
 CREATE TABLE if not exists `active_reports` (
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
-  `kind` int(10) unsigned NOT NULL,
+  `kind` varchar(64) NOT NULL,
   `needs_engine` tinyint(1) NOT NULL,
-  `is_active` tinyint(1) NOT NULL,
+  `is_active` tinyint(1) NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
 CREATE TABLE if not exists `packet_info` (

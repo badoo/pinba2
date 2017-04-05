@@ -876,8 +876,11 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				break;
 
 				case 2:
+				{
+					str_ref const kind_name = pinba_view_kind::enum_as_str_ref(share->view_conf->kind);
 					(*field)->set_notnull();
-					(*field)->store(share->view_conf->kind);
+					(*field)->store(kind_name.data(), kind_name.c_length(), &my_charset_bin);
+				}
 				break;
 
 				case 3:
