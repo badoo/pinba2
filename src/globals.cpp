@@ -153,7 +153,7 @@ namespace { namespace aux {
 		virtual pinba_error_t add_report(report_ptr report)
 		{
 			auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-			req->report = move(report);
+			req->report = report;
 
 			auto const result = coordinator_->request(req);
 

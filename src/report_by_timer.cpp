@@ -807,7 +807,7 @@ report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_tim
 			throw std::logic_error(ff::fmt_str("report_by_timer supports up to {0} keys, {1} given", max_keys, n_keys));
 
 	#define CASE(N) \
-		case N: return meow::make_unique<aux::report___by_timer_t<N>>(globals, conf);
+		case N: return meow::make_intrusive<aux::report___by_timer_t<N>>(globals, conf);
 
 		CASE(1);
 		CASE(2);
@@ -820,5 +820,4 @@ report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_tim
 
 	#undef CASE
 	}
-	// return meow::make_unique<aux::report___by_timer_t>(globals, conf);
 }

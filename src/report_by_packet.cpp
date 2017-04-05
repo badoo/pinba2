@@ -225,5 +225,5 @@ namespace { namespace aux {
 
 report_ptr create_report_by_packet(pinba_globals_t *globals, report_conf___by_packet_t const& conf)
 {
-	return meow::make_unique<aux::report___by_packet_t>(globals, conf);
+	return meow::make_intrusive<aux::report___by_packet_t>(globals, conf);
 }

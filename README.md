@@ -54,8 +54,8 @@ general syntax for comment is as follows (not all reports use all the fields).
 	- &lt;key_spec&gt;[,&lt;key_spec&gt;[,...]]
 		- ~field_name: any of 'host', 'script', 'server', 'schema'
 		- +request_tag_name: use this request tag's value as key
-		- timer_tag_name: use this timer tag's value as key (timer reports only)
-	- example: '~host,~script,~server,group,server'
+		- @timer_tag_name: use this timer tag's value as key (timer reports only)
+	- example: '~host,~script,+application,@group,@server'
 		- will aggregate on 5 keys
 		- 'hostname', 'scriptname', 'servername' global fields, plus 'group' and 'server' timer tag values
 - &lt;histogram+percentiles&gt;: histogram time and percentiles definition
@@ -236,7 +236,7 @@ example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 			  `ru_utime_per_sec` float NOT NULL,
 			  `ru_stime_total` float NOT NULL,
 			  `ru_stime_per_sec` float NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,tag10/no_percentiles/no_filters';
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
 
 	mysql> select * from report_host_script_server_tag10; -- skipped some fields for brevity
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+

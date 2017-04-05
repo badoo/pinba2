@@ -116,7 +116,7 @@ namespace { namespace aux {
 			if (report_)
 				throw std::logic_error(ff::fmt_str("report handler {0} is already started", conf_.name));
 
-			report_ = move(incoming_report);
+			report_ = incoming_report;
 
 			//
 
@@ -358,7 +358,7 @@ namespace { namespace aux {
 								};
 
 								auto rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
-								rh->startup(move(r->report));
+								rh->startup(r->report);
 
 								report_hosts_.emplace(report_name, move(rh));
 

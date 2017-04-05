@@ -1,6 +1,8 @@
 #ifndef PINBA__REPORT_H_
 #define PINBA__REPORT_H_
 
+#include <meow/intrusive_ptr.hpp>
+
 #include "pinba/globals.h"
 #include "pinba/report_key.h"
 
@@ -95,7 +97,9 @@ void debug_dump_report_snapshot(FILE*, report_snapshot_t*);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct report_t : private boost::noncopyable
+struct report_t
+	: public boost::intrusive_ref_counter<report_t>
+	, private boost::noncopyable
 {
 	virtual ~report_t() {}
 
@@ -117,7 +121,7 @@ struct report_t : private boost::noncopyable
 
 	virtual report_snapshot_ptr get_snapshot() = 0;
 };
-typedef std::unique_ptr<report_t> report_ptr;
+typedef boost::intrusive_ptr<report_t> report_ptr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
