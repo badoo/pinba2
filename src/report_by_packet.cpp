@@ -1,3 +1,6 @@
+#include <array>
+#include <utility>
+
 #include <boost/noncopyable.hpp>
 
 #include "pinba/globals.h"
@@ -194,6 +197,15 @@ namespace { namespace aux {
 
 		virtual void add(packet_t *packet) override
 		{
+			// run all filters and check if packet is 'interesting to us'
+			for (size_t i = 0, i_end = conf_.filters.size(); i < i_end; ++i)
+			{
+				auto const& filter = conf_.filters[i];
+				if (!filter.func(packet))
+					return;
+			}
+
+			// apply packet data
 			item_t& item = ticks_.current().data;
 			item.data_increment(packet);
 

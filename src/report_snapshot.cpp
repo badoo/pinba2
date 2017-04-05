@@ -1,4 +1,5 @@
 #include "pinba/globals.h"
+#include "pinba/packet.h"
 #include "pinba/histogram.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"

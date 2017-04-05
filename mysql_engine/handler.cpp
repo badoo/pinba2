@@ -321,6 +321,45 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
 		}();
 
+		// TODO: key filters
+		if (!filters_spec.empty() && filters_spec != "no_filters")
+		{
+			auto const items = meow::split_ex(filters_spec, ",");
+			for (auto const& item_s : items)
+			{
+				auto const kv_s = meow::split_ex(item_s, "=");
+				if (2 != kv_s.size())
+					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
+
+				str_ref const key_s   = kv_s[0];
+				str_ref const value_s = kv_s[1];
+
+				if (key_s == "min_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_min_time(time_value_d));
+
+					continue;
+				}
+
+				if (key_s == "max_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_max_time(time_value_d));
+
+					continue;
+				}
+			}
+		}
+
 		return move(result);
 	}
 
@@ -473,7 +512,44 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
 		}();
 
-		// TODO: filters
+		// TODO: key filters
+		if (!filters_spec.empty() && filters_spec != "no_filters")
+		{
+			auto const items = meow::split_ex(filters_spec, ",");
+			for (auto const& item_s : items)
+			{
+				auto const kv_s = meow::split_ex(item_s, "=");
+				if (2 != kv_s.size())
+					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
+
+				str_ref const key_s   = kv_s[0];
+				str_ref const value_s = kv_s[1];
+
+				if (key_s == "min_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_request_t::make_filter___by_min_time(time_value_d));
+
+					continue;
+				}
+
+				if (key_s == "max_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_request_t::make_filter___by_max_time(time_value_d));
+
+					continue;
+				}
+			}
+		}
 
 		return move(result);
 	} // request options parsing
@@ -635,7 +711,44 @@ static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref 
 				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
 		}();
 
-		// TODO: filters
+		// TODO: key filters
+		if (!filters_spec.empty() && filters_spec != "no_filters")
+		{
+			auto const items = meow::split_ex(filters_spec, ",");
+			for (auto const& item_s : items)
+			{
+				auto const kv_s = meow::split_ex(item_s, "=");
+				if (2 != kv_s.size())
+					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
+
+				str_ref const key_s   = kv_s[0];
+				str_ref const value_s = kv_s[1];
+
+				if (key_s == "min_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_min_time(time_value_d));
+
+					continue;
+				}
+
+				if (key_s == "max_time")
+				{
+					double time_value = 0.;
+					if (!meow::number_from_string(&time_value, value_s))
+						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
+
+					duration_t const time_value_d = duration_from_double(time_value);
+					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_max_time(time_value_d));
+
+					continue;
+				}
+			}
+		}
 
 		return move(result);
 	} // timer options parsing
