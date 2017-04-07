@@ -1,19 +1,19 @@
-#include "mysql_engine/pinba_mysql.h" // should be first mysql-related include
+#include "mysql_engine/plugin.h"
 #include "mysql_engine/handler.h"
 
-#ifdef PINBA_USE_MYSQL_SOURCE
-#include <mysql_version.h>
-#include <mysql/plugin.h>
-#else
-#include <mysql/mysql_version.h>
-#include <mysql/plugin.h>
-#endif // PINBA_USE_MYSQL_SOURCE
+#include "pinba/dictionary.h"
 
-#include <meow/format/format.hpp>
-#include <meow/format/format_to_string.hpp>
+#define MEOW_FORMAT_FD_SINK_NO_WRITEV 1
 #include <meow/logging/fd_logger.hpp>
 
-namespace ff = meow::format;
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+static std::unique_ptr<pinba_mysql_ctx_t> pinba_MYSQL__instance;
+
+pinba_mysql_ctx_t* pinba_MYSQL()
+{
+	return pinba_MYSQL__instance.get();
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -33,13 +33,77 @@ pinba_status_variables_t* pinba_status_variables()
 	return &pinba_status_variables_;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-static std::unique_ptr<pinba_mysql_ctx_t> pinba_MYSQL__instance;
-
-pinba_mysql_ctx_t* pinba_MYSQL()
+void pinba_update_status_variables()
 {
-	return pinba_MYSQL__instance.get();
+	auto       *vars  = pinba_status_variables();
+	auto const *stats = P_G_->stats();
+
+	vars->uptime = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
+
+	// udp
+
+	vars->udp_poll_total        = stats->udp.poll_total;
+	vars->udp_recv_total        = stats->udp.recv_total;
+	vars->udp_recv_eagain       = stats->udp.recv_eagain;
+	vars->udp_recv_bytes        = stats->udp.recv_bytes;
+	vars->udp_recv_packets      = stats->udp.recv_packets;
+	vars->udp_packet_decode_err = stats->udp.packet_decode_err;
+	vars->udp_batch_send_total  = stats->udp.batch_send_total;
+	vars->udp_batch_send_err    = stats->udp.batch_send_err;
+
+	{
+		std::lock_guard<std::mutex> lk_(stats->mtx);
+
+		for (auto const& curr : stats->collector_threads)
+		{
+			vars->udp_ru_utime += timeval_to_double(curr.ru_utime);
+			vars->udp_ru_stime += timeval_to_double(curr.ru_stime);
+		}
+	}
+
+	// repacker
+
+	vars->repacker_poll_total          = stats->repacker.poll_total;
+	vars->repacker_recv_total          = stats->repacker.recv_total;
+	vars->repacker_recv_eagain         = stats->repacker.recv_eagain;
+	vars->repacker_recv_packets        = stats->repacker.recv_packets;
+	vars->repacker_packet_validate_err = stats->repacker.packet_validate_err;
+	vars->repacker_batch_send_total    = stats->repacker.batch_send_total;
+	vars->repacker_batch_send_by_timer = stats->repacker.batch_send_by_timer;
+	vars->repacker_batch_send_by_size  = stats->repacker.batch_send_by_size;
+
+	{
+		std::lock_guard<std::mutex> lk_(stats->mtx);
+
+		for (auto const& curr : stats->repacker_threads)
+		{
+			vars->repacker_ru_utime += timeval_to_double(curr.ru_utime);
+			vars->repacker_ru_stime += timeval_to_double(curr.ru_stime);
+		}
+	}
+
+	// coordinator
+
+	vars->coordinator_batches_received = stats->coordinator.batches_received;
+	vars->coordinator_batch_send_total = stats->coordinator.batch_send_total;
+	vars->coordinator_batch_send_err   = stats->coordinator.batch_send_err;
+	vars->coordinator_control_requests = stats->coordinator.control_requests;
+
+	{
+		std::lock_guard<std::mutex> lk_(stats->mtx);
+
+		vars->coordinator_ru_utime = timeval_to_double(stats->coordinator.ru_utime);
+		vars->coordinator_ru_stime = timeval_to_double(stats->coordinator.ru_stime);
+	}
+
+	// dictionary
+
+	{
+		dictionary_t *dictionary = P_G_->dictionary();
+
+		vars->dictionary_size     = dictionary->size();
+		vars->dictionary_mem_used = dictionary->memory_used();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

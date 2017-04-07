@@ -1,17 +1,15 @@
-#include <meow/defer.hpp>
-#include <meow/stopwatch.hpp>
-#include <meow/str_ref_algo.hpp>
-#include <meow/convert/number_from_string.hpp>
+#include "mysql_engine/handler.h"
+#include "mysql_engine/plugin.h"
 
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
-#include "pinba/packet.h"
+// #include "pinba/packet.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 #include "pinba/report_by_packet.h"
 
-#include "mysql_engine/handler.h" // make sure - that this is the first mysql-related include
-
+// FIXME: some of these headers were moved to pinba_view, reassess,
+//        or maybe move vews back here! since they're sql related anyway
 #ifdef PINBA_USE_MYSQL_SOURCE
 #include <sql/field.h> // <mysql/private/field.h>
 #include <sql/handler.h> // <mysql/private/handler.h>
@@ -22,739 +20,10 @@
 #include <mysql/mysqld_error.h>
 #endif // PINBA_USE_MYSQL_SOURCE
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-pinba_share_t::pinba_share_t(std::string const& table_name)
-	: mysql_name(table_name)
-	, report_active(false)
-	, report_needs_engine(false)
-{
-	thr_lock_init(&this->lock);
-}
-
-pinba_share_t::~pinba_share_t()
-{
-	thr_lock_delete(&this->lock);
-}
-
-static pinba_share_ptr pinba_share_get_or_create(char const *table_name)
-{
-	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
-
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-	auto& open_shares = P_CTX_->open_shares;
-
-	auto const it = open_shares.find(table_name);
-	if (it != open_shares.end())
-		return it->second;
-
-	// share not found, create new one
-
-	auto share = meow::make_intrusive<pinba_share_t>(table_name);
-	open_shares.emplace(share->mysql_name, share);
-
-	return share;
-}
+#include <meow/defer.hpp>
+#include <meow/stopwatch.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
-void pinba_update_status_variables()
-{
-	auto       *vars  = pinba_status_variables();
-	auto const *stats = P_G_->stats();
-
-	vars->uptime = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
-
-	// udp
-
-	vars->udp_poll_total        = stats->udp.poll_total;
-	vars->udp_recv_total        = stats->udp.recv_total;
-	vars->udp_recv_eagain       = stats->udp.recv_eagain;
-	vars->udp_recv_bytes        = stats->udp.recv_bytes;
-	vars->udp_recv_packets      = stats->udp.recv_packets;
-	vars->udp_packet_decode_err = stats->udp.packet_decode_err;
-	vars->udp_batch_send_total  = stats->udp.batch_send_total;
-	vars->udp_batch_send_err    = stats->udp.batch_send_err;
-
-	{
-		std::lock_guard<std::mutex> lk_(stats->mtx);
-
-		for (auto const& curr : stats->collector_threads)
-		{
-			vars->udp_ru_utime += timeval_to_double(curr.ru_utime);
-			vars->udp_ru_stime += timeval_to_double(curr.ru_stime);
-		}
-	}
-
-	// repacker
-
-	vars->repacker_poll_total          = stats->repacker.poll_total;
-	vars->repacker_recv_total          = stats->repacker.recv_total;
-	vars->repacker_recv_eagain         = stats->repacker.recv_eagain;
-	vars->repacker_recv_packets        = stats->repacker.recv_packets;
-	vars->repacker_packet_validate_err = stats->repacker.packet_validate_err;
-	vars->repacker_batch_send_total    = stats->repacker.batch_send_total;
-	vars->repacker_batch_send_by_timer = stats->repacker.batch_send_by_timer;
-	vars->repacker_batch_send_by_size  = stats->repacker.batch_send_by_size;
-
-	{
-		std::lock_guard<std::mutex> lk_(stats->mtx);
-
-		for (auto const& curr : stats->repacker_threads)
-		{
-			vars->repacker_ru_utime += timeval_to_double(curr.ru_utime);
-			vars->repacker_ru_stime += timeval_to_double(curr.ru_stime);
-		}
-	}
-
-	// coordinator
-
-	vars->coordinator_batches_received = stats->coordinator.batches_received;
-	vars->coordinator_batch_send_total = stats->coordinator.batch_send_total;
-	vars->coordinator_batch_send_err   = stats->coordinator.batch_send_err;
-	vars->coordinator_control_requests = stats->coordinator.control_requests;
-
-	{
-		std::lock_guard<std::mutex> lk_(stats->mtx);
-
-		vars->coordinator_ru_utime = timeval_to_double(stats->coordinator.ru_utime);
-		vars->coordinator_ru_stime = timeval_to_double(stats->coordinator.ru_stime);
-	}
-
-	// dictionary
-
-	{
-		dictionary_t *dictionary = P_G_->dictionary();
-
-		vars->dictionary_size     = dictionary->size();
-		vars->dictionary_mem_used = dictionary->memory_used();
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct pinba_view_conf_t
-{
-	pinba_view_kind_t kind;
-	report_conf___by_request_t by_request_conf;
-	report_conf___by_timer_t   by_timer_conf;
-	report_conf___by_packet_t  by_packet_conf;
-
-	std::vector<double>        percentiles;
-};
-
-static pinba_view_conf_ptr do_pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
-{
-	// table comment describes the report we're going to create
-	// comment structure is as follows (this should look like EBNF, but i cba being strict about this):
-	//  v2/<report_type>[/<agg_window>/<key_spec>/<histogram_spec>/<filters>]
-	//  report_type = [ request, timer, active, stats ]
-	//
-	//  -- examples --
-	//  request/60,60/~host,~script,~status,+app_type/hv_range=0.0-1.5,p99,p100/min_time=0.0,max_time=1.5,~server=www1.mlan
-	//  timer/60,60/~script,+app_type,group,server/hv_range=0.0-5.0,p99,p100/min_time=0.0,max_time=10.0
-	//  timer/60,120/~script,group,server/p99,p100/min_time=0.0,max_time=10.0
-	//
-	//  -- basic stuff --
-	//  key_name = <request_field> | <request_tag> | <timer_tag>
-	//  request_field = '~' ( host | script | server | schema | status )
-	//  request_tag   = '+' [a-zA-Z_-]{1,64}
-	//  timer_tag     =     [a-zA-Z_-]{1,64}
-	//  seconds_spec  = [0-9]{1,5} ( '.' [0-9]{1,6})?
-	//
-	//  -- histogram/percentiles --
-	//  hv_spec          = 'hv_range=' <hv_min_time> '-' <hv_max_time> [ <hv_res_spec> ]
-	//  hv_res_spec      = 'hv_resolution=' <hv_res_time>
-	//  hv_res_time      = <seconds_spec>     // histogram resolution (aka percentile calculation precision)
-	//  hv_min_time      = <seconds_spec>     // min time to record in time histogram
-	//  hv_max_time      = <seconds_spec>     // max time to record in time histogram
-	//  percentile_spec  = 'p' [0-9]{1,3}     // percentile to calculate for this report
-	//  percentile_multi = <percentile_spec>[,<percentile_spec>[...]]
-	//  histogram_spec   = 'no_percentiles' | [<hv_spec>,]<percentile_multi>
-	//
-	//  key_spec = <key_name>[,<key_name>[...]]
-	//
-
-	logger_t *log_ = P_L_;
-	auto result = meow::make_unique<pinba_view_conf_t>();
-	// memset(result.get(), 0, sizeof(*result)); // FIXME: uh-oh
-
-	auto const parts = meow::split_ex(conf_string, "/");
-
-	LOG_DEBUG(log_, "{0}; got comment: {1}", __func__, conf_string);
-
-	for (unsigned i = 0; i < parts.size(); i++)
-		LOG_DEBUG(log_, "{0}; parts[{1}] = '{2}'", __func__, i, parts[i]);
-
-	if (parts.size() < 2 || parts[0] != "v2")
-		throw std::runtime_error("comment should have at least 'v2/<report_type>");
-
-	auto const report_type = parts[1];
-
-	if (report_type == "stats")
-	{
-		result->kind = pinba_view_kind::stats;
-		return move(result);
-	}
-
-	if (report_type == "active")
-	{
-		result->kind = pinba_view_kind::active_reports;
-		return move(result);
-	}
-
-	if (report_type == "packet" || report_type == "info") // support 'info' here for compatibility with pinba_engine
-	{
-		result->kind = pinba_view_kind::report_by_packet_data;
-
-		if (parts.size() != 6)
-			throw std::runtime_error("'packet/info' report options are: <aggregation_spec>/<key_spec>/<histogram_spec>/<filters>");
-
-		auto const aggregation_spec = parts[2];
-		auto const key_spec         = parts[3];
-		auto const histogram_spec   = parts[4];
-		auto const filters_spec     = parts[5];
-
-		result->kind = pinba_view_kind::report_by_packet_data;
-
-		auto *conf = &result->by_packet_conf;
-		conf->name = table_name.str();
-
-		// aggregation window
-		{
-			auto const time_window_v = meow::split_ex(aggregation_spec, ",");
-			if (time_window_v.size() == 0)
-				throw std::runtime_error("aggregation_spec/time_window must be set");
-
-			auto const time_window_s = time_window_v[0];
-
-			if (time_window_s == "default_history_time")
-			{
-				conf->time_window = P_CTX_->settings.time_window;
-				conf->tick_count  = P_CTX_->settings.tick_count;
-			}
-			else
-			{
-				uint32_t time_window;
-				if (!meow::number_from_string(&time_window, time_window_s))
-				{
-					throw std::runtime_error(ff::fmt_str(
-						"bad seconds_spec for aggregation_spec/time_window '{0}', expected int number of seconds",
-						time_window_s));
-				}
-
-				conf->time_window = time_window * d_second;
-				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
-			}
-
-			LOG_DEBUG(P_L_, "tw: {0}, count: {1}", conf->time_window, conf->tick_count);
-		}
-
-		// keys
-		{
-			if (key_spec != "no_keys")
-				throw std::runtime_error("key_spec must be 'no_keys' for packet data reports");
-		}
-
-		// percentiles
-		[&]()
-		{
-			if (histogram_spec == "no_percentiles")
-				return;
-
-			auto const pct_v = meow::split_ex(histogram_spec, ",");
-
-			for (auto const& pct_s : pct_v)
-			{
-				if (meow::prefix_compare(pct_s, "hv=")) // 3 chars
-				{
-					auto const hv_range_s = meow::sub_str_ref(pct_s, 3, pct_s.size());
-					auto const hv_values_v = meow::split_ex(hv_range_s, ":");
-
-					if (hv_values_v.size() != 3)
-						break; // break the loop, will immediately stumble on error
-
-					LOG_DEBUG(P_L_, "hv_values_v = {{ {0}, {1}, {2} }", hv_values_v[0], hv_values_v[1], hv_values_v[2]);
-
-					// hv=<hv_lower_time_ms>:<hv_upper_time_ms>:<hv_bucket_count>
-					uint32_t hv_lower_ms;
-					if (!meow::number_from_string(&hv_lower_ms, hv_values_v[0]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_lower_ms from '{0}'", pct_s));
-
-					uint32_t hv_upper_ms;
-					if (!meow::number_from_string(&hv_upper_ms, hv_values_v[1]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_upper_ms from '{0}'", pct_s));
-
-					uint32_t hv_bucket_count;
-					if (!meow::number_from_string(&hv_bucket_count, hv_values_v[2]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_bucket_count from '{0}'", pct_s));
-
-					if (hv_upper_ms <= hv_lower_ms)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_upper_ms must be >= hv_lower_ms, in '{0}'", pct_s));
-
-					if (hv_bucket_count == 0)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_bucket_count must be >= 0, in '{0}'", pct_s));
-
-					conf->hv_bucket_count = hv_bucket_count;
-					conf->hv_bucket_d     = (hv_upper_ms - hv_lower_ms) * d_millisecond / hv_bucket_count;
-				}
-				else if (meow::prefix_compare(pct_s, "p"))
-				{
-					auto const percentile_s = meow::sub_str_ref(pct_s, 1, pct_s.size());
-
-					uint32_t pv;
-					if (!meow::number_from_string(&pv, percentile_s))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse integer from '{0}'", pct_s));
-
-					result->percentiles.push_back(pv);
-
-					LOG_DEBUG(P_L_, "percentile added: {0}, total: {1}", pv, result->percentiles.size());
-				}
-				else
-				{
-					throw std::runtime_error(ff::fmt_str("histogram_spec: unknown part '{0}'", pct_s));
-				}
-			}
-
-			if (!conf->hv_bucket_count || !conf->hv_bucket_d.nsec)
-				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
-		}();
-
-		// TODO: key filters
-		if (!filters_spec.empty() && filters_spec != "no_filters")
-		{
-			auto const items = meow::split_ex(filters_spec, ",");
-			for (auto const& item_s : items)
-			{
-				auto const kv_s = meow::split_ex(item_s, "=");
-				if (2 != kv_s.size())
-					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
-
-				str_ref const key_s   = kv_s[0];
-				str_ref const value_s = kv_s[1];
-
-				if (key_s == "min_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_min_time(time_value_d));
-
-					continue;
-				}
-
-				if (key_s == "max_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_max_time(time_value_d));
-
-					continue;
-				}
-			}
-		}
-
-		return move(result);
-	}
-
-	if (report_type == "request")
-	{
-		if (parts.size() != 6)
-			throw std::runtime_error("'request' report options are: <aggregation_spec>/<key_spec>/<histogram_spec>/<filters>");
-
-		auto const aggregation_spec = parts[2];
-		auto const key_spec         = parts[3];
-		auto const histogram_spec   = parts[4];
-		auto const filters_spec     = parts[5];
-
-		result->kind = pinba_view_kind::report_by_request_data;
-
-		auto *conf = &result->by_request_conf;
-		conf->name = table_name.str();
-
-		// aggregation window
-		{
-			auto const time_window_v = meow::split_ex(aggregation_spec, ",");
-			if (time_window_v.size() == 0)
-				throw std::runtime_error("aggregation_spec/time_window must be set");
-
-			auto const time_window_s = time_window_v[0];
-
-			if (time_window_s == "default_history_time")
-			{
-				conf->time_window = P_CTX_->settings.time_window;
-				conf->tick_count  = P_CTX_->settings.tick_count;
-			}
-			else
-			{
-				uint32_t time_window;
-				if (!meow::number_from_string(&time_window, time_window_s))
-				{
-					throw std::runtime_error(ff::fmt_str(
-						"bad seconds_spec for aggregation_spec/time_window '{0}', expected int number of seconds",
-						time_window_s));
-				}
-
-				conf->time_window = time_window * d_second;
-				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
-			}
-		}
-
-		// keys
-		{
-			auto const keys_v = meow::split_ex(key_spec, ",");
-
-			for (auto const& key_s : keys_v)
-			{
-				if (key_s.size() == 0)
-					continue; // skip empty key
-
-				auto const kd = [&]()
-				{
-					if (key_s == "~host")
-						return report_conf___by_request_t::key_descriptor_by_request_field("host", &packet_t::host_id);
-					if (key_s == "~script")
-						return report_conf___by_request_t::key_descriptor_by_request_field("script", &packet_t::script_id);
-					if (key_s == "~server")
-						return report_conf___by_request_t::key_descriptor_by_request_field("server", &packet_t::server_id);
-					if (key_s == "~schema")
-						return report_conf___by_request_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
-					if (key_s == "~status")
-						return report_conf___by_request_t::key_descriptor_by_request_field("status", &packet_t::status);
-
-					if (key_s[0] == '+') // request_tag
-					{
-						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size());
-						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-
-						return report_conf___by_request_t::key_descriptor_by_request_tag(tag_name, tag_id);
-					}
-
-					// no support for timer tags, this is request based report
-
-					throw std::runtime_error(ff::fmt_str("key_spec: unknown key '{0}', key_format: ~request_field, +request_tag, timer tags not allowed", key_s));
-				}();
-
-				conf->keys.push_back(kd);
-			}
-
-			if (conf->keys.size() == 0)
-				throw std::runtime_error("key_spec must be non-empty");
-		}
-
-		// percentiles
-		[&]()
-		{
-			if (histogram_spec == "no_percentiles")
-				return;
-
-			auto const pct_v = meow::split_ex(histogram_spec, ",");
-
-			for (auto const& pct_s : pct_v)
-			{
-				if (meow::prefix_compare(pct_s, "hv=")) // 3 chars
-				{
-					auto const hv_range_s = meow::sub_str_ref(pct_s, 3, pct_s.size());
-					auto const hv_values_v = meow::split_ex(hv_range_s, ":");
-
-					if (hv_values_v.size() != 3)
-						break; // break the loop, will immediately stumble on error
-
-					LOG_DEBUG(P_L_, "hv_values_v = {{ {0}, {1}, {2} }", hv_values_v[0], hv_values_v[1], hv_values_v[2]);
-
-					// hv=<hv_lower_time_ms>:<hv_upper_time_ms>:<hv_bucket_count>
-					uint32_t hv_lower_ms;
-					if (!meow::number_from_string(&hv_lower_ms, hv_values_v[0]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_lower_ms from '{0}'", pct_s));
-
-					uint32_t hv_upper_ms;
-					if (!meow::number_from_string(&hv_upper_ms, hv_values_v[1]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_upper_ms from '{0}'", pct_s));
-
-					uint32_t hv_bucket_count;
-					if (!meow::number_from_string(&hv_bucket_count, hv_values_v[2]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_bucket_count from '{0}'", pct_s));
-
-					if (hv_upper_ms <= hv_lower_ms)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_upper_ms must be >= hv_lower_ms, in '{0}'", pct_s));
-
-					if (hv_bucket_count == 0)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_bucket_count must be >= 0, in '{0}'", pct_s));
-
-					conf->hv_bucket_count = hv_bucket_count;
-					conf->hv_bucket_d     = (hv_upper_ms - hv_lower_ms) * d_millisecond / hv_bucket_count;
-				}
-				else if (meow::prefix_compare(pct_s, "p"))
-				{
-					auto const percentile_s = meow::sub_str_ref(pct_s, 1, pct_s.size());
-
-					uint32_t pv;
-					if (!meow::number_from_string(&pv, percentile_s))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse integer from '{0}'", pct_s));
-
-					result->percentiles.push_back(pv);
-
-					LOG_DEBUG(P_L_, "percentile added: {0}, total: {1}", pv, result->percentiles.size());
-				}
-				else
-				{
-					throw std::runtime_error(ff::fmt_str("histogram_spec: unknown part '{0}'", pct_s));
-				}
-			}
-
-			if (!conf->hv_bucket_count || !conf->hv_bucket_d.nsec)
-				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
-		}();
-
-		// TODO: key filters
-		if (!filters_spec.empty() && filters_spec != "no_filters")
-		{
-			auto const items = meow::split_ex(filters_spec, ",");
-			for (auto const& item_s : items)
-			{
-				auto const kv_s = meow::split_ex(item_s, "=");
-				if (2 != kv_s.size())
-					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
-
-				str_ref const key_s   = kv_s[0];
-				str_ref const value_s = kv_s[1];
-
-				if (key_s == "min_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_request_t::make_filter___by_min_time(time_value_d));
-
-					continue;
-				}
-
-				if (key_s == "max_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_request_t::make_filter___by_max_time(time_value_d));
-
-					continue;
-				}
-			}
-		}
-
-		return move(result);
-	} // request options parsing
-
-	if (report_type == "timer")
-	{
-		if (parts.size() != 6)
-			throw std::runtime_error("'timer' report options are: <aggregation_spec>/<key_spec>/<histogram_spec>/<filters>");
-
-		auto const aggregation_spec = parts[2];
-		auto const key_spec         = parts[3];
-		auto const histogram_spec   = parts[4];
-		auto const filters_spec     = parts[5];
-
-		result->kind = pinba_view_kind::report_by_timer_data;
-
-		auto *conf = &result->by_timer_conf;
-		conf->name = table_name.str();
-
-		// aggregation window
-		{
-			auto const time_window_v = meow::split_ex(aggregation_spec, ",");
-			if (time_window_v.size() == 0)
-				throw std::runtime_error("aggregation_spec/time_window must be set");
-
-			auto const time_window_s = time_window_v[0];
-
-			if (time_window_s == "default_history_time")
-			{
-				conf->time_window = P_CTX_->settings.time_window;
-				conf->tick_count  = P_CTX_->settings.tick_count;
-			}
-			else
-			{
-				uint32_t time_window;
-				if (!meow::number_from_string(&time_window, time_window_s))
-				{
-					throw std::runtime_error(ff::fmt_str(
-						"bad seconds_spec for aggregation_spec/time_window '{0}', expected int number of seconds",
-						time_window_s));
-				}
-
-				conf->time_window = time_window * d_second;
-				conf->tick_count  = time_window; // i.e. ticks are always 1 second wide
-			}
-		}
-
-		// keys
-		{
-			auto const keys_v = meow::split_ex(key_spec, ",");
-
-			for (auto const& key_s : keys_v)
-			{
-				if (key_s.size() == 0)
-					continue; // skip empty key
-
-				auto const kd = [&]()
-				{
-					if (key_s == "~host")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("host", &packet_t::host_id);
-					if (key_s == "~script")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("script", &packet_t::script_id);
-					if (key_s == "~server")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("server", &packet_t::server_id);
-					if (key_s == "~schema")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
-					if (key_s == "~status")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("status", &packet_t::status);
-
-					if (key_s[0] == '+') // request_tag
-					{
-						auto const tag_name = meow::sub_str_ref(key_s, 1, key_s.size());
-						auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-
-						return report_conf___by_timer_t::key_descriptor_by_request_tag(tag_name, tag_id);
-					}
-
-					// timer_tag, allow with and without leading '@'
-
-					auto const tag_name = [&key_s]()
-					{
-						return (key_s[0] == '@')
-								? meow::sub_str_ref(key_s, 1, key_s.size())
-								: key_s;
-					}();
-
-					auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-					return report_conf___by_timer_t::key_descriptor_by_timer_tag(tag_name, tag_id);
-				}();
-
-				conf->keys.push_back(kd);
-			}
-
-			if (conf->keys.size() == 0)
-				throw std::runtime_error("key_spec must be non-empty");
-		}
-
-		// percentiles
-		[&]()
-		{
-			if (histogram_spec == "no_percentiles")
-				return;
-
-			auto const pct_v = meow::split_ex(histogram_spec, ",");
-
-			for (auto const& pct_s : pct_v)
-			{
-				if (meow::prefix_compare(pct_s, "hv=")) // 3 chars
-				{
-					auto const hv_range_s = meow::sub_str_ref(pct_s, 3, pct_s.size());
-					auto const hv_values_v = meow::split_ex(hv_range_s, ":");
-
-					if (hv_values_v.size() != 3)
-						break; // break the loop, will immediately stumble on error
-
-					LOG_DEBUG(P_L_, "hv_values_v = {{ {0}, {1}, {2} }", hv_values_v[0], hv_values_v[1], hv_values_v[2]);
-
-					// hv=<hv_lower_time_ms>:<hv_upper_time_ms>:<hv_bucket_count>
-					uint32_t hv_lower_ms;
-					if (!meow::number_from_string(&hv_lower_ms, hv_values_v[0]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_lower_ms from '{0}'", pct_s));
-
-					uint32_t hv_upper_ms;
-					if (!meow::number_from_string(&hv_upper_ms, hv_values_v[1]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_upper_ms from '{0}'", pct_s));
-
-					uint32_t hv_bucket_count;
-					if (!meow::number_from_string(&hv_bucket_count, hv_values_v[2]))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse hv_bucket_count from '{0}'", pct_s));
-
-					if (hv_upper_ms <= hv_lower_ms)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_upper_ms must be >= hv_lower_ms, in '{0}'", pct_s));
-
-					if (hv_bucket_count == 0)
-						throw std::runtime_error(ff::fmt_str("histogram_spec: hv_bucket_count must be >= 0, in '{0}'", pct_s));
-
-					conf->hv_bucket_count = hv_bucket_count;
-					conf->hv_bucket_d     = (hv_upper_ms - hv_lower_ms) * d_millisecond / hv_bucket_count;
-				}
-				else if (meow::prefix_compare(pct_s, "p"))
-				{
-					auto const percentile_s = meow::sub_str_ref(pct_s, 1, pct_s.size());
-
-					uint32_t pv;
-					if (!meow::number_from_string(&pv, percentile_s))
-						throw std::runtime_error(ff::fmt_str("histogram_spec: can't parse integer from '{0}'", pct_s));
-
-					result->percentiles.push_back(pv);
-
-					LOG_DEBUG(P_L_, "percentile added: {0}, total: {1}", pv, result->percentiles.size());
-				}
-				else
-				{
-					throw std::runtime_error(ff::fmt_str("histogram_spec: unknown part '{0}'", pct_s));
-				}
-			}
-
-			if (!conf->hv_bucket_count || !conf->hv_bucket_d.nsec)
-				throw std::runtime_error(ff::fmt_str("histogram_spec: needs to have hv=<time_lower>:<time_upper>:<n_buckets>, got '{0}'", histogram_spec));
-		}();
-
-		// TODO: key filters
-		if (!filters_spec.empty() && filters_spec != "no_filters")
-		{
-			auto const items = meow::split_ex(filters_spec, ",");
-			for (auto const& item_s : items)
-			{
-				auto const kv_s = meow::split_ex(item_s, "=");
-				if (2 != kv_s.size())
-					throw std::runtime_error(ff::fmt_str("filters_spec: bad key=value pair '{0}'", item_s));
-
-				str_ref const key_s   = kv_s[0];
-				str_ref const value_s = kv_s[1];
-
-				if (key_s == "min_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_min_time(time_value_d));
-
-					continue;
-				}
-
-				if (key_s == "max_time")
-				{
-					double time_value = 0.;
-					if (!meow::number_from_string(&time_value, value_s))
-						throw std::runtime_error(ff::fmt_str("filters_spec: can't parse time from '{0}'", item_s));
-
-					duration_t const time_value_d = duration_from_double(time_value);
-					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_max_time(time_value_d));
-
-					continue;
-				}
-			}
-		}
-
-		return move(result);
-	} // timer options parsing
-
-	throw std::runtime_error(ff::fmt_str("{0}; unknown v2/<table_type> {1}", __func__, report_type));
-}
 
 struct pinba_view___base_t : public pinba_view_t
 {
@@ -793,6 +62,8 @@ struct pinba_view___base_t : public pinba_view_t
 		return 0;
 	}
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct pinba_view___stats_t : public pinba_view___base_t
 {
@@ -917,6 +188,7 @@ struct pinba_view___stats_t : public pinba_view___base_t
 	}
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct pinba_view___active_reports_t : public pinba_view___base_t
 {
@@ -1015,6 +287,8 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		return 0;
 	}
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct pinba_view___report_snapshot_t : public pinba_view___base_t
 {
@@ -1344,27 +618,18 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 	}
 };
 
-
-static pinba_view_conf_ptr pinba_parse_view_conf(str_ref table_name, str_ref conf_string)
+pinba_view_ptr pinba_view_create(pinba_view_conf_t const& vcf)
 {
-	auto result = do_pinba_parse_view_conf(table_name, conf_string);
-	LOG_DEBUG(P_L_, "{0}; result: {{ kind: {1} }", __func__, result->kind);
-	return move(result);
-}
-
-
-static pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
-{
-	switch (conf.kind)
+	switch (vcf.kind)
 	{
 		case pinba_view_kind::stats:
 			return meow::make_unique<pinba_view___stats_t>();
+
 		case pinba_view_kind::active_reports:
 			return meow::make_unique<pinba_view___active_reports_t>();
+
 		case pinba_view_kind::report_by_request_data:
-			return meow::make_unique<pinba_view___report_snapshot_t>();
 		case pinba_view_kind::report_by_timer_data:
-			return meow::make_unique<pinba_view___report_snapshot_t>();
 		case pinba_view_kind::report_by_packet_data:
 			return meow::make_unique<pinba_view___report_snapshot_t>();
 
@@ -1374,20 +639,23 @@ static pinba_view_ptr pinba_view_create(pinba_view_conf_t const& conf)
 	}
 }
 
-static pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
+
+pinba_report_ptr pinba_view_report_create(pinba_view_conf_t const& vcf)
 {
-	switch (conf.kind)
+	switch (vcf.kind)
 	{
 		case pinba_view_kind::stats:
-			return {};
 		case pinba_view_kind::active_reports:
 			return {};
-		case pinba_view_kind::report_by_request_data:
-			return create_report_by_request(P_G_, conf.by_request_conf);
-		case pinba_view_kind::report_by_timer_data:
-			return create_report_by_timer(P_G_, conf.by_timer_conf);
+
 		case pinba_view_kind::report_by_packet_data:
-			return create_report_by_packet(P_G_, conf.by_packet_conf);
+			return create_report_by_packet(P_G_, *pinba_view_conf_get___by_packet(vcf));
+
+		case pinba_view_kind::report_by_request_data:
+			return create_report_by_request(P_G_, *pinba_view_conf_get___by_request(vcf));
+
+		case pinba_view_kind::report_by_timer_data:
+			return create_report_by_timer(P_G_, *pinba_view_conf_get___by_timer(vcf));
 
 		default:
 			assert(!"must not be reached");
@@ -1395,14 +663,50 @@ static pinba_report_ptr pinba_report_create(pinba_view_conf_t const& conf)
 	}
 }
 
-static void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref table_comment)
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+pinba_share_t::pinba_share_t(std::string const& table_name)
+	: mysql_name(table_name)
+	, report_active(false)
+	, report_needs_engine(false)
+{
+	thr_lock_init(&this->lock);
+}
+
+pinba_share_t::~pinba_share_t()
+{
+	thr_lock_delete(&this->lock);
+}
+
+static pinba_share_ptr pinba_share_get_or_create(char const *table_name)
+{
+	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
+
+	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
+	auto& open_shares = P_CTX_->open_shares;
+
+	auto const it = open_shares.find(table_name);
+	if (it != open_shares.end())
+		return it->second;
+
+	// share not found, create new one
+
+	auto share = meow::make_intrusive<pinba_share_t>(table_name);
+	open_shares.emplace(share->mysql_name, share);
+
+	return share;
+}
+
+
+static void share_init_with_table_comment_locked(pinba_share_ptr& share, str_ref table_comment)
 {
 	assert(!share->view_conf);
 	assert(!share->report);
 	assert(!share->report_active);
 
-	share->view_conf   = pinba_parse_view_conf(share->mysql_name, table_comment); // throws
-	share->report      = pinba_report_create(*share->view_conf);
+	share->view_conf   = pinba_view_conf_parse(share->mysql_name, table_comment);
+	share->report      = pinba_view_report_create(*share->view_conf);
 
 	if (share->report)
 	{
@@ -1412,7 +716,6 @@ static void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref 
 	}
 	else
 	{
-		// log display purposes only
 		share->report_name = ff::fmt_str("<virtual table: {0}>", share->view_conf->kind);
 		share->report_needs_engine = false;
 	}
@@ -1423,8 +726,8 @@ static void share_init_with_view_comment_locked(pinba_share_ptr& share, str_ref 
 pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
 	, share_(nullptr)
-	, log_(P_L_)
 {
+	ff::fmt(stderr, "");
 }
 
 pinba_handler_t::~pinba_handler_t()
@@ -1455,7 +758,7 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
 
 		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
-		share_init_with_view_comment_locked(share, comment);
+		share_init_with_table_comment_locked(share, comment);
 	}
 	catch (std::exception const& e)
 	{
@@ -1490,6 +793,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 	//  - table just created and not yet active, i.e. got parsed config and created report
 	//    but pinba engine is not aware of that report yet
 
+	// FIXME: need to get A share here, and assign to this->share_ after init completion (but still need to lock!)
 	this->share_ = pinba_share_get_or_create(table_name);
 
 	// lock to use share, too coarse, but whatever
@@ -1504,7 +808,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 				throw std::runtime_error("pinba table must have a comment, please see docs");
 
 			str_ref const comment = { current_table()->s->comment.str, size_t(current_table()->s->comment.length) };
-			share_init_with_view_comment_locked(share_, comment);
+			share_init_with_table_comment_locked(share_, comment);
 		}
 
 		pinba_view_ = pinba_view_create(*share_->view_conf);
@@ -1515,7 +819,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 		// and we do parse comments on create()
 		// might happen when pinba versions are upgraded or something, i guess?
 
-		LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
+		LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
 
 		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
 		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
@@ -1589,7 +893,7 @@ int pinba_handler_t::rnd_init(bool scan)
 		}
 		catch (std::exception const& e)
 		{
-			LOG_ERROR(log_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
+			LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
 
 			my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
 			DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
@@ -1773,7 +1077,7 @@ int pinba_handler_t::rename_table(const char *from, const char *to)
 	if (it == open_shares.end())
 	{
 		// no idea why this might happen, just try and be nice
-		LOG_ERROR(log_, "{0}; can't find table to rename from: '{1}' (weird mysql shenanigans?)", __func__, from);
+		LOG_ERROR(P_L_, "{0}; can't find table to rename from: '{1}' (weird mysql shenanigans?)", __func__, from);
 		DBUG_RETURN(0);
 	}
 
@@ -1783,7 +1087,7 @@ int pinba_handler_t::rename_table(const char *from, const char *to)
 	share->mysql_name = to;
 	open_shares.emplace(share->mysql_name, share);
 
-	LOG_DEBUG(log_, "{0}; renamed mysql table '{1}' -> '{2}', internal report_name: '{3}'",
+	LOG_DEBUG(P_L_, "{0}; renamed mysql table '{1}' -> '{2}', internal report_name: '{3}'",
 		__func__, from, to, share->report_name);
 
 	DBUG_RETURN(0);
@@ -1801,7 +1105,7 @@ int pinba_handler_t::delete_table(const char *table_name)
 	if (it == open_shares.end())
 	{
 		// no idea why this might happen, just try and be nice
-		LOG_ERROR(log_, "{0}; can't find table to delete: '{1}' (weird mysql shenanigans?)", __func__, table_name);
+		LOG_ERROR(P_L_, "{0}; can't find table to delete: '{1}' (weird mysql shenanigans?)", __func__, table_name);
 		DBUG_RETURN(0);
 	}
 
@@ -1814,14 +1118,14 @@ int pinba_handler_t::delete_table(const char *table_name)
 		auto const err = P_E_->delete_report(share->report_name);
 		if (err)
 		{
-			LOG_ERROR(log_, "{0}; table: '{1}', report: '{2}'; error: {3}",
+			LOG_ERROR(P_L_, "{0}; table: '{1}', report: '{2}'; error: {3}",
 				__func__, share->mysql_name, share->report_name, err.what());
 
 			DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 		}
 	}
 
-	LOG_DEBUG(log_, "{0}; dropped table '{1}', report '{2}'", __func__, share->mysql_name, share->report_name);
+	LOG_DEBUG(P_L_, "{0}; dropped table '{1}', report '{2}'", __func__, share->mysql_name, share->report_name);
 
 	DBUG_RETURN(0);
 }

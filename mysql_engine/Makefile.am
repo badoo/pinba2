@@ -22,6 +22,7 @@ AM_CPPFLAGS = \
 lib_LTLIBRARIES = libpinba_engine2.la
 
 libpinba_engine2_la_SOURCES = \
+	view_conf.cpp \
 	plugin.cpp \
 	handler.cpp \
 	#

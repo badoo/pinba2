@@ -343,6 +343,8 @@ namespace { namespace aux {
 							{
 								auto *r = static_cast<coordinator_request___add_report_t*>(req.get());
 
+								LOG_DEBUG(globals_->logger(), "creating report {0}", r->report->name());
+
 								auto const report_name = r->report->name().str();
 								auto const thread_id   = report_hosts_.size();
 								auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);

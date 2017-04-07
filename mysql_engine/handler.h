@@ -1,35 +1,14 @@
-#ifndef PINBA__HANDLER_H_
-#define PINBA__HANDLER_H_
+#ifndef PINBA__MYSQL_ENGINE__HANDLER_H_
+#define PINBA__MYSQL_ENGINE__HANDLER_H_
 
-#include "pinba_mysql.h" // should be first mysql-related include
+#include "mysql_engine/pinba_mysql.h"
+#include "mysql_engine/view_conf.h"
 
 #ifdef PINBA_USE_MYSQL_SOURCE
-#include <mysql/plugin.h>
 #include <sql/handler.h>
 #else
-#include <mysql/plugin.h>
 #include <mysql/private/handler.h>
 #endif // PINBA_USE_MYSQL_SOURCE
-
-#include <string>
-#include <memory>
-#include <thread>
-#include <mutex>
-#include <unordered_map>
-
-#include <meow/intrusive_ptr.hpp>
-#include <meow/smart_enum.hpp>
-#include <meow/logging/logger.hpp>
-#include <meow/logging/log_write.hpp>
-
-#include "pinba/engine.h"
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-using logger_t              = meow::logging::logger_t;
-using pinba_report_ptr      = report_ptr;
-
-struct pinba_handler_t;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // pinba_view_t
@@ -38,56 +17,6 @@ struct pinba_handler_t;
 // is basically an abstraction over table data, enabling iteration and stuff
 // useful because each select has it's own copy of table data that is iterated separately
 // also hides all table data details from pinba_handler_t
-
-MEOW_DEFINE_SMART_ENUM_STRUCT(pinba_view_kind,
-								((stats,                   "stats"))
-								((active_reports,          "active_reports"))
-								((report_by_request_data,  "report_by_request_data"))
-								((report_by_timer_data,    "report_by_timer_data"))
-								((report_by_packet_data,   "report_by_packet_data"))
-								);
-#if 0
-struct pinba_view_kind
-{
-	enum type : uint32_t
-	{
-		stats                  = 0,
-		active_reports         = 1,
-		report_by_request_data = 2,
-		report_by_timer_data   = 3,
-		report_by_packet_data  = 4,
-	};
-};
-typedef pinba_view_kind::type pinba_view_kind_t;
-#endif
-#if 0
-struct pinba_view_conf_t
-{
-	std::string                 orig_comment;
-
-	pinba_view_kind_t           kind;
-	duration_t                  time_window;
-	uint32_t                    tick_count;
-
-	std::vector<str_ref>        keys;
-
-	struct filter_spec_t
-	{
-		str_ref key;
-		str_ref value;
-	};
-	std::vector<filter_spec_t>  key_filters;
-
-	uint32_t                    hv_bucket_count;
-	duration_t                  hv_bucket_d;
-	std::vector<double>         percentiles;
-
-	duration_t                  min_time;    // 0 if unset
-	duration_t                  max_time;    // 0 if unset
-};
-#endif
-struct pinba_view_conf_t;
-using pinba_view_conf_ptr = std::unique_ptr<pinba_view_conf_t>; // incomplete type here, code using will see the complete type
 
 struct pinba_view_t : private boost::noncopyable
 {
@@ -102,6 +31,9 @@ struct pinba_view_t : private boost::noncopyable
 	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const = 0;
 };
 using pinba_view_ptr = std::unique_ptr<pinba_view_t>;
+
+pinba_view_ptr      pinba_view_create(pinba_view_conf_t const& conf);
+pinba_report_ptr    pinba_view_report_create(pinba_view_conf_t const& conf);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -128,49 +60,17 @@ struct pinba_share_t
 	pinba_share_t(std::string const& table_name);
 	~pinba_share_t();
 };
-typedef boost::intrusive_ptr<pinba_share_t> pinba_share_ptr;
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-using pinba_open_shares_t = std::unordered_map<std::string, pinba_share_ptr>;
-
-struct pinba_mysql_ctx_t : private boost::noncopyable
-{
-	std::mutex          lock;
-	pinba_engine_ptr    engine;
-	pinba_logger_ptr    logger;
-
-	pinba_open_shares_t open_shares;
-
-	struct {
-		duration_t  time_window;
-		uint32_t    tick_count;
-	} settings;
-};
-
-// a global singleton for this plugin
-// instantiated and managed in plugin.cpp
-pinba_mysql_ctx_t* pinba_MYSQL();
-
-#define P_CTX_  pinba_MYSQL()
-#define P_E_    (P_CTX_->engine)
-#define P_G_    (P_E_->globals())
-#define P_L_    (P_CTX_->logger.get())
-
-// #define PG_(...) pinba_MYSQL()->##__VA_ARGS__
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 class pinba_handler_t : public handler
 {
-	THR_LOCK_DATA lock_data;   ///< MySQL lock
+	THR_LOCK_DATA lock_data;     // MySQL lock
 
-	pinba_share_ptr share_;     ///< current-table shared info
-	pinba_view_ptr pinba_view_; // currently open pinba table wrapper
+	pinba_share_ptr share_;      // current-table shared info
+	pinba_view_ptr  pinba_view_; // currently open pinba table wrapper
 
 public:
-	logger_t      *log_;
-
 	pinba_share_ptr current_share() const;
 	TABLE*          current_table() const;
 
@@ -335,4 +235,4 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-#endif // PINBA__HANDLER_H_
+#endif // PINBA__MYSQL_ENGINE__HANDLER_H_

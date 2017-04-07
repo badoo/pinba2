@@ -17,7 +17,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct rw_mutex_t
+struct rw_mutex_t : private boost::noncopyable
 {
 	rw_mutex_t()
 	{
@@ -48,7 +48,7 @@ private:
 	pthread_rwlock_t mtx_;
 };
 
-struct scoped_read_lock_t
+struct scoped_read_lock_t : private boost::noncopyable
 {
 	rw_mutex_t *mtx_;
 

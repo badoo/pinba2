@@ -1,5 +1,5 @@
-#ifndef PINBA__PINBA_MYSQL_H_
-#define PINBA__PINBA_MYSQL_H_
+#ifndef PINBA__MYSQL_ENGINE__PINBA_MYSQL_H_
+#define PINBA__MYSQL_ENGINE__PINBA_MYSQL_H_
 
 #if defined(PINBA_ENGINE_DEBUG_ON) && !defined(DBUG_ON)
 # undef DBUG_OFF
@@ -11,69 +11,58 @@
 # undef DBUG_ON
 #endif
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-// variables configured through mysql config file
 
-struct pinba_variables_t
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+
+#include <boost/noncopyable.hpp>
+
+#include <meow/intrusive_ptr.hpp>
+#include <meow/logging/logger.hpp>
+#include <meow/logging/log_write.hpp>
+
+#include "pinba/globals.h"
+#include "pinba/engine.h"
+#include "pinba/report.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+using pinba_report_ptr = report_ptr;
+
+struct pinba_mysql_ctx_t;
+struct pinba_handler_t;
+
+struct pinba_share_t;
+using pinba_share_ptr = boost::intrusive_ptr<pinba_share_t>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+using pinba_open_shares_t = std::unordered_map<std::string, pinba_share_ptr>;
+
+struct pinba_mysql_ctx_t : private boost::noncopyable
 {
-	char      *address                  = nullptr;
-	int       port                      = 0;
-	unsigned  default_history_time_sec  = 0;
-	unsigned  udp_reader_threads        = 0;
-	unsigned  repacker_threads          = 0;
-	unsigned  repacker_input_buffer     = 0;
-	unsigned  repacker_batch_messages   = 0;
-	unsigned  repacker_batch_timeout_ms = 0;
-	unsigned  report_input_buffer       = 0;
+	std::mutex          lock;
+	pinba_engine_ptr    engine;
+	pinba_logger_ptr    logger;
+
+	pinba_open_shares_t open_shares;
+
+	struct {
+		duration_t  time_window;
+		uint32_t    tick_count;
+	} settings;
 };
 
-pinba_variables_t* pinba_variables();
+// a global singleton for this plugin
+// instantiated and managed in plugin.cpp
+pinba_mysql_ctx_t* pinba_MYSQL();
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-// status variables reported through show global status and the likes of it
-
-// use only standard c99 types here, like long, etc. to be compatible with mysql internals
-
-struct pinba_status_variables_t
-{
-	double              uptime;
-
-	unsigned long long  udp_poll_total;
-	unsigned long long  udp_recv_total;
-	unsigned long long  udp_recv_eagain;
-	unsigned long long  udp_recv_bytes;
-	unsigned long long  udp_recv_packets;
-	unsigned long long  udp_packet_decode_err;
-	unsigned long long  udp_batch_send_total;
-	unsigned long long  udp_batch_send_err;
-	double              udp_ru_utime;
-	double              udp_ru_stime;
-
-	unsigned long long  repacker_poll_total;
-	unsigned long long  repacker_recv_total;
-	unsigned long long  repacker_recv_eagain;
-	unsigned long long  repacker_recv_packets;
-	unsigned long long  repacker_packet_validate_err;
-	unsigned long long  repacker_batch_send_total;
-	unsigned long long  repacker_batch_send_by_timer;
-	unsigned long long  repacker_batch_send_by_size;
-	double              repacker_ru_utime;
-	double              repacker_ru_stime;
-
-	unsigned long long  coordinator_batches_received;
-	unsigned long long  coordinator_batch_send_total;
-	unsigned long long  coordinator_batch_send_err;
-	unsigned long long  coordinator_control_requests;
-	double              coordinator_ru_utime;
-	double              coordinator_ru_stime;
-
-	unsigned long long  dictionary_size;
-	unsigned long long  dictionary_mem_used;
-};
-
-void                      pinba_update_status_variables(); // plugin.cpp
-pinba_status_variables_t* pinba_status_variables();        // handler.cpp
+#define P_CTX_  pinba_MYSQL()
+#define P_E_    (P_CTX_->engine)
+#define P_G_    (P_E_->globals())
+#define P_L_    (P_CTX_->logger.get())
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-#endif // PINBA__PINBA_MYSQL_H_
+#endif // PINBA__MYSQL_ENGINE__PINBA_MYSQL_H_
