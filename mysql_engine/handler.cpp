@@ -224,6 +224,10 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		if (pos_ == shares_.end())
 			return HA_ERR_END_OF_FILE;
 
+		MEOW_DEFER(
+			pos_ = std::next(pos_);
+		);
+
 		auto const *share = pos_->second.get();
 		auto       *table = handler->current_table();
 
@@ -262,7 +266,13 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 				case 2:
 				{
-					str_ref const kind_name = pinba_view_kind::enum_as_str_ref(share->view_conf->kind);
+					str_ref const kind_name = [&share]()
+					{
+						return (share->view_conf)
+								? pinba_view_kind::enum_as_str_ref(share->view_conf->kind)
+								: meow::ref_lit("!! <table comment parse error (select from it, to see the error)>");
+					}();
+
 					(*field)->set_notnull();
 					(*field)->store(kind_name.data(), kind_name.c_length(), &my_charset_bin);
 				}
@@ -281,8 +291,6 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				// TODO, packet rate, stats, etc.
 			}
 		} // field for
-
-		pos_ = std::next(pos_);
 
 		return 0;
 	}
