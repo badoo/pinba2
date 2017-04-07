@@ -131,9 +131,11 @@ namespace { namespace aux {
 			}
 			else if (meow::prefix_compare(pct_s, "p")) // p<number>
 			{
+				auto const pct_spec = meow::sub_str_ref(pct_s, 1, pct_s.size());
+
 				uint32_t pv;
-				if (!meow::number_from_string(&pv, pct_s))
-					return ff::fmt_err("bad percentile_spec: expected integers split by ':', got '{0}'", pct_s);
+				if (!meow::number_from_string(&pv, pct_spec))
+					return ff::fmt_err("bad percentile_spec: expected 'p<integer>', got '{0}'", pct_s);
 
 				vcf->percentiles.push_back(pv);
 			}
