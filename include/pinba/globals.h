@@ -115,6 +115,7 @@ struct pinba_options_t
 	duration_t  repacker_batch_timeout;
 
 	uint32_t    coordinator_input_buffer;
+	uint32_t    report_input_buffer;
 
 	pinba_logger_ptr logger;
 };

@@ -125,8 +125,7 @@ struct coordinator_conf_t
 	size_t       nn_input_buffer;         // NN_RCVBUF for nn_input (can leav this small, due to low-ish traffic)
 
 	std::string  nn_control;              // control messages received here (binds, REP)
-	std::string  nn_report_output;        // broadcasts packet_batch_ptr-s for reports here (binds, PUB)
-	size_t       nn_report_output_buffer; // report_handler uses this as NN_RCVBUF
+	size_t       nn_report_input_buffer;  // report_handler uses this as NN_RCVBUF
 };
 
 struct coordinator_t : private boost::noncopyable

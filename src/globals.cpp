@@ -120,11 +120,10 @@ namespace { namespace aux {
 			repacker_ = create_repacker(this->globals(), &repacker_conf);
 
 			static coordinator_conf_t coordinator_conf = {
-				.nn_input                = repacker_conf.nn_output,
-				.nn_input_buffer         = options->coordinator_input_buffer,
-				.nn_control              = "inproc://coordinator/control",
-				.nn_report_output        = "inproc://coordinator/report-data",
-				.nn_report_output_buffer = 16,
+				.nn_input               = repacker_conf.nn_output,
+				.nn_input_buffer        = options->coordinator_input_buffer,
+				.nn_control             = "inproc://coordinator/control",
+				.nn_report_input_buffer = options->report_input_buffer,
 			};
 			coordinator_ = create_coordinator(this->globals(), &coordinator_conf);
 

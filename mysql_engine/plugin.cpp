@@ -150,7 +150,8 @@ static int pinba_engine_init(void *p)
 		.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
 		.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
 
-		.coordinator_input_buffer = pinba_variables()->report_input_buffer,
+		.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
+		.report_input_buffer      = pinba_variables()->report_input_buffer,
 
 		.logger                   = logger,
 	};
@@ -291,6 +292,17 @@ static MYSQL_SYSVAR_UINT(repacker_batch_timeout_ms,
 	1000,
 	0);
 
+static MYSQL_SYSVAR_UINT(coordinator_input_buffer,
+	pinba_variables()->coordinator_input_buffer,
+	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+	"coordinator thread input buffer (packet batches coming from packet-repack threads)",
+	NULL,
+	NULL,
+	128, // def: 128 batches, 1024 packets each
+	16,
+	1 * 1024,
+	0);
+
 static MYSQL_SYSVAR_UINT(report_input_buffer,
 	pinba_variables()->report_input_buffer,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -311,6 +323,7 @@ static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(repacker_input_buffer),
 	MYSQL_SYSVAR(repacker_batch_messages),
 	MYSQL_SYSVAR(repacker_batch_timeout_ms),
+	MYSQL_SYSVAR(coordinator_input_buffer),
 	MYSQL_SYSVAR(report_input_buffer),
 	NULL
 };

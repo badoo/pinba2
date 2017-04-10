@@ -70,8 +70,7 @@ try
 		.nn_input                = repacker_conf.nn_output,
 		.nn_input_buffer         = 16,
 		.nn_control              = "inproc://coordinator/control",
-		.nn_report_output        = "inproc://coordinator/report-data",
-		.nn_report_output_buffer = 16,
+		.nn_report_input_buffer  = 16,
 	};
 	auto coordinator = create_coordinator(globals.get(), &coordinator_conf);
 

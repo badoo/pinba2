@@ -205,9 +205,6 @@ namespace { namespace aux {
 
 			control_sock_ = nmsg_socket(AF_SP, NN_REP);
 			control_sock_.bind(conf_->nn_control);
-
-			report_sock_ = nmsg_socket(AF_SP, NN_PUB);
-			report_sock_.bind(conf_->nn_report_output);
 		}
 
 		virtual void startup() override
@@ -350,7 +347,7 @@ namespace { namespace aux {
 									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
 									.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
 									.nn_packets        = ff::fmt_str("inproc://{0}/packets", rh_name),
-									.nn_packets_buffer = conf_->nn_report_output_buffer,
+									.nn_packets_buffer = conf_->nn_report_input_buffer,
 								};
 
 								auto rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
@@ -433,7 +430,6 @@ namespace { namespace aux {
 
 		nmsg_socket_t    in_sock_;
 		nmsg_socket_t    control_sock_;
-		nmsg_socket_t    report_sock_;
 
 		std::thread      t_;
 	};
