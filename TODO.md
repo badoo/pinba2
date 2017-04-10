@@ -7,15 +7,20 @@
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] docs
 	- [ ] guidelines - how to run mysql with jemalloc
-- [x] decent logging (i mean writing to stderr from a 'library' is not something you'd call nice)
+	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
+- [ ] decent logging
+	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
+	- [ ] log levels support (with runtime change?)
 - [ ] timer tag based filtering (i.e. take only timers with tag:browser=chrome)
 - per-report
 	- [ ] rusage
 	- [ ] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
-- [ ] per-report nanomsg queues instead of pubsub
+- [x] per-report nanomsg queues instead of pubsub
 	- to track packets dropps, slow reports, etc.
 	- we actually leak memory if any batches get dropped (due to incrementing ref counts for all present reports)
 - [x] global stats + mysql table for them
+	- [x] status variables
+	- [ ] make stats table the same as status variables, or remove it in favor of the former
 - [ ] calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
 
@@ -24,9 +29,10 @@
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
 	- [ ] configure support
-- [ ] {easy} sorted arrays for histograms
+- [ ] {easy} sorted arrays for histograms (almost there)
 - [ ] {easy} thread affinity
-- [ ] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
+- [ ] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (SSE mon!)
+- [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
 	- kernel udp memory is usually tuned very low
 	- so beneficial to increase it to be able to handle high packet+data rates
@@ -49,3 +55,4 @@
 - [x] split pinba_globals_t into 'informational' and 'runtime engine' parts (to simplify testing/experiments)
 	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
 	- runtime: udp readers, coorinator, the features meat
+- [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)

@@ -54,6 +54,9 @@ void pinba_update_status_variables()
 	{
 		std::lock_guard<std::mutex> lk_(stats->mtx);
 
+		vars->udp_ru_utime = 0;
+		vars->udp_ru_stime = 0;
+
 		for (auto const& curr : stats->collector_threads)
 		{
 			vars->udp_ru_utime += timeval_to_double(curr.ru_utime);
@@ -74,6 +77,9 @@ void pinba_update_status_variables()
 
 	{
 		std::lock_guard<std::mutex> lk_(stats->mtx);
+
+		vars->repacker_ru_utime = 0;
+		vars->repacker_ru_stime = 0;
 
 		for (auto const& curr : stats->repacker_threads)
 		{

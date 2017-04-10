@@ -85,12 +85,6 @@ namespace { namespace aux {
 			, conf_(conf)
 			, packets_received(0)
 		{
-			// packets_sock_
-			// 	.open(AF_SP, NN_SUB)
-			// 	.set_option(NN_SUB, NN_SUB_SUBSCRIBE, "")
-			// 	.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, "report_handler_t::in_sock")
-			// 	.connect(conf_.nn_packets);
-
 			packets_send_sock_
 				.open(AF_SP, NN_PUSH)
 				.bind(conf_.nn_packets);

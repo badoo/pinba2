@@ -724,7 +724,7 @@ static void share_init_with_table_comment_locked(pinba_share_ptr& share, str_ref
 	}
 	else
 	{
-		share->report_name = ff::fmt_str("<virtual table: {0}>", share->view_conf->kind);
+		share->report_name = ff::fmt_str("<virtual table: {0}>", pinba_view_kind::enum_as_str_ref(share->view_conf->kind));
 		share->report_needs_engine = false;
 	}
 }
