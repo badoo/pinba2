@@ -344,18 +344,17 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				}
 				break;
 
-				case 3:  (*field)->set_notnull(); (*field)->store(share->report_active); break;
-				case 4:  (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rinfo->time_window)); break;
-				case 5:  (*field)->set_notnull(); (*field)->store(rinfo->tick_count); break;
-				case 6:  (*field)->set_notnull(); (*field)->store(restimates->row_count); break;
-				case 7:  (*field)->set_notnull(); (*field)->store(restimates->mem_used); break;
-				case 8:  (*field)->set_notnull(); (*field)->store(rstats->packets_recv_total); break;
-				case 9:  (*field)->set_notnull(); (*field)->store(rstats->packets_send_err); break;
-				case 10: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_utime)); break;
-				case 11: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_stime)); break;
-				case 12: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->last_tick_tv)); break;
-				case 13: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_tick_prepare_d)); break;
-				case 14: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_snapshot_merge_d)); break;
+				case 3:  (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rinfo->time_window)); break;
+				case 4:  (*field)->set_notnull(); (*field)->store(rinfo->tick_count); break;
+				case 5:  (*field)->set_notnull(); (*field)->store(restimates->row_count); break;
+				case 6:  (*field)->set_notnull(); (*field)->store(restimates->mem_used); break;
+				case 7:  (*field)->set_notnull(); (*field)->store(rstats->packets_recv_total); break;
+				case 8:  (*field)->set_notnull(); (*field)->store(rstats->packets_send_err); break;
+				case 9:  (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_utime)); break;
+				case 10: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_stime)); break;
+				case 11: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->last_tick_tv)); break;
+				case 12: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_tick_prepare_d)); break;
+				case 13: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_snapshot_merge_d)); break;
 			}
 		} // field for
 

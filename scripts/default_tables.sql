@@ -27,7 +27,6 @@ CREATE TABLE if not exists `active_reports` (
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
   `kind` varchar(64) NOT NULL,
-  `is_active` tinyint(1) NOT NULL,
   `time_window_sec` int(10) unsigned NOT NULL,
   `tick_count` int(10) NOT NULL,
   `approx_row_count` int(10) unsigned NOT NULL,

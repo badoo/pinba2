@@ -198,6 +198,9 @@ namespace { namespace aux {
 
 			for (auto const& tick : ticks_.get_internal_buffer())
 			{
+				if (!tick)
+					continue;
+
 				item_t *item = &tick->data;
 				result.mem_used += sizeof(*item);
 				result.mem_used += item->hv.map_cref().bucket_count() * sizeof(*item->hv.map_cref().begin());
