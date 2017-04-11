@@ -191,6 +191,28 @@ namespace { namespace aux {
 			return this->add_report(create_report_by_timer(this->globals(), conf));
 		}
 
+		virtual report_state_ptr get_report_state(str_ref name) override
+		{
+			auto req = meow::make_intrusive<coordinator_request___get_report_state_t>();
+			req->report_name = name.str();
+
+			auto const result = coordinator_->request(req);
+
+			if (COORDINATOR_RES__REPORT_STATE == result->type)
+			{
+				auto *r = static_cast<coordinator_response___report_state_t*>(result.get());
+				return move(r->state);
+			}
+			else
+			{
+				assert(COORDINATOR_RES__GENERIC == result->type);
+				auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+				throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
+			}
+
+			assert(!"unreachable");
+		}
+
 		virtual report_snapshot_ptr get_report_snapshot(str_ref name) override
 		{
 			auto req = meow::make_intrusive<coordinator_request___get_report_snapshot_t>();

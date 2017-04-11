@@ -19,6 +19,7 @@ struct coordinator_t;
 #define COORDINATOR_REQ__ADD_REPORT          2
 #define COORDINATOR_REQ__DELETE_REPORT       3
 #define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 4
+#define COORDINATOR_REQ__GET_REPORT_STATE    5
 
 struct coordinator_request_t : public nmsg_message_t
 {
@@ -66,11 +67,18 @@ struct coordinator_request___get_report_snapshot_t
 	std::string report_name;
 };
 
+struct coordinator_request___get_report_state_t
+	: public coordinator_request__with_id_t<COORDINATOR_REQ__GET_REPORT_STATE>
+{
+	std::string report_name;
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // responses
 
 #define COORDINATOR_RES__GENERIC         0
 #define COORDINATOR_RES__REPORT_SNAPSHOT 1
+#define COORDINATOR_RES__REPORT_STATE    2
 
 #define COORDINATOR_STATUS__OK     0
 #define COORDINATOR_STATUS__ERROR -1
@@ -115,6 +123,12 @@ struct coordinator_response___report_snapshot_t
 	: public coordinator_response__with_id_t<COORDINATOR_RES__REPORT_SNAPSHOT>
 {
 	report_snapshot_ptr snapshot;
+};
+
+struct coordinator_response___report_state_t
+	: public coordinator_response__with_id_t<COORDINATOR_RES__REPORT_STATE>
+{
+	report_state_ptr state;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

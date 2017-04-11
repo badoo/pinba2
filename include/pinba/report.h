@@ -1,6 +1,9 @@
 #ifndef PINBA__REPORT_H_
 #define PINBA__REPORT_H_
 
+#include <atomic>
+#include <mutex>
+
 #include <meow/intrusive_ptr.hpp>
 
 #include "pinba/globals.h"
@@ -30,9 +33,42 @@ struct report_info_t
 	int         hv_kind;      // HISTOGRAM_KIND__*
 	uint32_t    hv_bucket_count;
 	duration_t  hv_bucket_d;
-
-	// uint32_t    row_count; // as max of all timeslice's row count
 };
+
+struct report_stats_t
+{
+	mutable std::mutex lock;
+
+	std::atomic<uint64_t> batches_send_total = {0};
+	std::atomic<uint64_t> batches_send_err   = {0};
+	std::atomic<uint64_t> batches_recv_total = {0};
+
+	std::atomic<uint64_t> packets_send_total = {0};
+	std::atomic<uint64_t> packets_send_err   = {0};
+	std::atomic<uint64_t> packets_recv_total = {0};
+
+	timeval_t  last_tick_tv          = {0,0};       // last tick happened at this time
+	duration_t last_tick_prepare_d   = {0};         // how long did last tick processing take
+	duration_t last_snapshot_merge_d = {0};         // how long did last snapshot merge take
+
+	timeval_t ru_utime = {0,0};
+	timeval_t ru_stime = {0,0};
+};
+
+struct report_estimates_t
+{
+	uint32_t  row_count = 0;
+	// uint32_t  padding__;
+	uint64_t  mem_used  = 0;
+};
+
+struct report_state_t
+{
+	report_info_t const  *info;
+	report_stats_t       *stats;
+	report_estimates_t   estimates;
+};
+using report_state_ptr = std::unique_ptr<report_state_t>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -119,6 +155,7 @@ struct report_t
 	virtual void add(packet_t*) = 0;
 	virtual void add_multi(packet_t**, uint32_t packet_count) = 0;
 
+	virtual report_estimates_t  get_estimates() = 0;
 	virtual report_snapshot_ptr get_snapshot() = 0;
 };
 typedef boost::intrusive_ptr<report_t> report_ptr;

@@ -244,14 +244,14 @@ private:
 template<class T>
 struct ticks_ringbuffer_t : private boost::noncopyable
 {
-	using data_t = T;
+	using value_type = T;
 
 	struct tick_t
 		: boost::intrusive_ref_counter<tick_t>
 	{
-		timeval_t  start_tv;
-		timeval_t  end_tv;
-		data_t     data;
+		timeval_t   start_tv;
+		timeval_t   end_tv;
+		value_type  data;
 
 		tick_t(timeval_t curr_tv)
 			: start_tv(curr_tv)
@@ -296,6 +296,11 @@ public:
 	ringbuffer_t const& get_internal_buffer() const
 	{
 		return ticks_;
+	}
+
+	tick_t* last()
+	{
+		return ticks_.back().get();
 	}
 
 	tick_t& current()

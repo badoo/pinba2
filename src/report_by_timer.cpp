@@ -654,6 +654,45 @@ public:
 		ticks_.tick(curr_tv);
 	}
 
+	virtual report_estimates_t get_estimates() override
+	{
+		report_estimates_t result = {};
+
+		if (tick_t *tick = ticks_.last())
+			result.row_count = tick->data.keys.size();
+		else
+			result.row_count = raw_data_.size();
+
+
+		result.mem_used += sizeof(raw_data_);
+		result.mem_used += raw_data_.bucket_count() * sizeof(*raw_data_.begin());
+
+		for (auto const& raw_pair : raw_data_)
+		{
+			auto const& hv_map = raw_pair.second.hv.map_cref();
+			result.mem_used += hv_map.bucket_count() * sizeof(*hv_map.begin());
+		}
+
+		for (auto const& tick : ticks_.get_internal_buffer())
+		{
+			if (!tick)
+				continue;
+
+			tick_data_t *td = &tick->data;
+
+			result.mem_used += td->keys.size() * sizeof(td->keys[0]);
+			result.mem_used += td->datas.size() * sizeof(td->datas[0]);
+			result.mem_used += td->hvs.size() * sizeof(td->hvs[0]);
+
+			for (auto const& hvs : td->hvs)
+			{
+				result.mem_used += hvs.values.size() * sizeof(*hvs.values.begin());
+			}
+		}
+
+		return result;
+	}
+
 	virtual report_snapshot_ptr get_snapshot() override
 	{
 		return meow::make_unique<snapshot_t>(globals_, ticks_.get_internal_buffer(), info_);

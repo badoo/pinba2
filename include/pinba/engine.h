@@ -23,12 +23,11 @@ struct pinba_engine_t : private boost::noncopyable
 
 	virtual pinba_error_t add_report(report_ptr) = 0;
 	virtual pinba_error_t delete_report(str_ref name) = 0;
-	// virtual maybe_t<report_ptr> create_report(report_conf___by_request_t*) = 0;
-	// virtual maybe_t<report_ptr> create_report(report_conf___by_timer_t*) = 0;
 
 	virtual pinba_error_t start_report_with_config(report_conf___by_request_t const&) = 0;
 	virtual pinba_error_t start_report_with_config(report_conf___by_timer_t const&) = 0;
 
+	virtual report_state_ptr    get_report_state(str_ref name) = 0;
 	virtual report_snapshot_ptr get_report_snapshot(str_ref name) = 0;
 };
 typedef std::unique_ptr<pinba_engine_t> pinba_engine_ptr;

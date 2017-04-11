@@ -759,6 +759,11 @@ public:
 		ticks_.tick(curr_tv);
 	}
 
+	virtual report_estimates_t get_estimates() override
+	{
+		return {};
+	}
+
 	virtual report_snapshot_ptr get_snapshot() override
 	{
 		return meow::make_unique<snapshot_t>(ticks_.get_internal_buffer(), info_, globals_->dictionary());

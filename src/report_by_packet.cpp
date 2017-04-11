@@ -188,6 +188,24 @@ namespace { namespace aux {
 			ticks_.tick(curr_tv);
 		}
 
+		virtual report_estimates_t get_estimates() override
+		{
+			report_estimates_t result = {};
+
+			result.row_count = 1; // always a single row (no aggregation)
+
+			result.mem_used += sizeof(ticks_.current().data);
+
+			for (auto const& tick : ticks_.get_internal_buffer())
+			{
+				item_t *item = &tick->data;
+				result.mem_used += sizeof(*item);
+				result.mem_used += item->hv.map_cref().bucket_count() * sizeof(*item->hv.map_cref().begin());
+			}
+
+			return result;
+		}
+
 		virtual report_snapshot_ptr get_snapshot() override
 		{
 			return meow::make_unique<snapshot_t>(globals_, ticks_.get_internal_buffer(), info_);

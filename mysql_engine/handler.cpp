@@ -192,8 +192,20 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 struct pinba_view___active_reports_t : public pinba_view___base_t
 {
-	pinba_open_shares_t           shares_;
-	pinba_open_shares_t::iterator pos_;
+	struct view_row_t
+	{
+		pinba_share_ptr   share;
+		std::string       report_name; // copied from share, to reduce locking
+		report_state_ptr  report_state;
+	};
+	// using view_row_ptr = std::unique_ptr<view_row_t>;
+	using view_t       = std::vector<view_row_t>;
+
+	view_t            data_;
+	view_t::iterator  pos_;
+
+	// pinba_open_shares_t           shares_;
+	// pinba_open_shares_t::iterator pos_;
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
@@ -201,37 +213,91 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		// mysql code comments say that this fuction might get called twice in a row
 		// i have no idea why or when
 		// so just hack around the fact for now
-		if (!shares_.empty())
+		if (!data_.empty())
 			return 0;
 
-		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+		// copy whatever we need from share and release the lock
+		view_t tmp_data = []()
+		{
+			view_t tmp_data;
 
-		// take hashtable copy (but individual shares can still change! and need locking)
-		shares_ = P_CTX_->open_shares;
-		pos_    = shares_.begin();
+			std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+			for (auto const& share_pair : P_CTX_->open_shares)
+			{
+				auto const share = share_pair.second;
+
+				// use only shares that are actually supposed to be backed by pinba report
+				if (!share->report_needs_engine)
+					continue;
+
+				// and shares that have a report active
+				if (!share->report_active)
+					continue;
+
+				tmp_data.emplace_back();
+				auto& row = tmp_data.back();
+
+				row.share       = share;
+				row.report_name = share->report_name;
+			}
+
+			return tmp_data;
+		}();
+
+		// get reports state, no lock needed here, might be slow
+		// but report that we've taken share for might have been deleted meanwhile
+		for (auto& row : tmp_data)
+		{
+			try
+			{
+				auto rstate = P_E_->get_report_state(row.report_name);
+
+				assert(rstate); // the above function should throw if rstate is to be returned empty
+
+				row.report_state = move(rstate);
+				data_.emplace_back(std::move(row));
+			}
+			catch (std::exception const& e)
+			{
+				LOG_DEBUG(P_L_, "get_report_state for {0} failed (skipping), err: {1}", row.report_name, e.what());
+				continue;
+			}
+		}
+
+		pos_ = data_.begin();
 
 		return 0;
 	}
 
 	virtual int rnd_end(pinba_handler_t*) override
 	{
-		shares_.clear();
+		data_.clear();
 		return 0;
 	}
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
-		if (pos_ == shares_.end())
+		if (pos_ == data_.end())
 			return HA_ERR_END_OF_FILE;
 
 		MEOW_DEFER(
 			pos_ = std::next(pos_);
 		);
 
-		auto const *share = pos_->second.get();
+		auto const *row   = &(*pos_);
+		auto const *share = row->share.get();
 		auto       *table = handler->current_table();
 
-		// remember to lock, might be too coarse, but whatever
+		report_info_t const      *rinfo      = row->report_state->info;
+		report_stats_t const     *rstats     = row->report_state->stats;
+		report_estimates_t const *restimates = &row->report_state->estimates;
+
+		// remember to lock this row stats data, since it might be changed by report host thread
+		// FIXME: this probably IS too coarse!
+		std::lock_guard<std::mutex> stats_lk_(rstats->lock);
+
+		// remember to lock share to read, might be too coarse, but whatever
 		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
@@ -278,17 +344,18 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				}
 				break;
 
-				case 3:
-					(*field)->set_notnull();
-					(*field)->store(share->report_needs_engine);
-				break;
-
-				case 4:
-					(*field)->set_notnull();
-					(*field)->store(share->report_active);
-				break;
-
-				// TODO, packet rate, stats, etc.
+				case 3:  (*field)->set_notnull(); (*field)->store(share->report_active); break;
+				case 4:  (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rinfo->time_window)); break;
+				case 5:  (*field)->set_notnull(); (*field)->store(rinfo->tick_count); break;
+				case 6:  (*field)->set_notnull(); (*field)->store(restimates->row_count); break;
+				case 7:  (*field)->set_notnull(); (*field)->store(restimates->mem_used); break;
+				case 8:  (*field)->set_notnull(); (*field)->store(rstats->packets_recv_total); break;
+				case 9:  (*field)->set_notnull(); (*field)->store(rstats->packets_send_err); break;
+				case 10: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_utime)); break;
+				case 11: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_stime)); break;
+				case 12: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->last_tick_tv)); break;
+				case 13: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_tick_prepare_d)); break;
+				case 14: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_snapshot_merge_d)); break;
 			}
 		} // field for
 
@@ -303,15 +370,46 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 	report_snapshot_ptr            snapshot_;
 	report_snapshot_t::position_t  pos_;
 
+	// copied from share
+	std::string          mysql_name_;
+	std::string          report_name_;
+	std::vector<double>  percentiles_;
+
+public:
+
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		auto share = handler->current_share();
+		{
+			// FIXME: this share can be changed by other threads, need to lock!
+			//        currently no fields this view uses are changed ever, but fuck it, let's be safe!
+			auto share = handler->current_share();
 
-		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share->mysql_name, share->report_name);
+			std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+			mysql_name_  = share->mysql_name;
+			report_name_ = share->report_name;
+			percentiles_ = share->view_conf->percentiles;
+		}
+
+		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, mysql_name_, report_name_);
+
+		// auto const err = [&]() -> pinba_error_t
+		// {
+		// 	std::weak_ptr rhost_weak_p;
+		// 	auto const err = P_E_->get_report_host(&rhost_weak_p, share->report_name);
+		// 	if (err)
+		// 		return err;
+
+		// 	auto rhost = rhost_weak_p.lock()
+		// 	if (!rhost)
+		// 		return ff::fmt_err("report '{0}' deleted during query", mysql_name_);
+
+		// 	snapshot_ = rhost->get_report_snapshot();
+		// 	return {};
+		// }();
 
 		try
 		{
-			snapshot_ = P_E_->get_report_snapshot(share->report_name);
+			snapshot_ = P_E_->get_report_snapshot(report_name_);
 		}
 		catch (std::exception const& e)
 		{
@@ -328,7 +426,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 			snapshot_->prepare();
 
 			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds ({3} rows)",
-				__func__, share->mysql_name, sw.stamp(), snapshot_->row_count());
+				__func__, mysql_name_, sw.stamp(), snapshot_->row_count());
 		}
 
 		pos_ = snapshot_->pos_first();
@@ -344,13 +442,16 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
-		auto share  = handler->current_share();
 		auto *table = handler->current_table();
 
 		assert(snapshot_);
 
 		if (snapshot_->pos_equal(pos_, snapshot_->pos_last()))
 			return HA_ERR_END_OF_FILE;
+
+		MEOW_DEFER(
+			pos_ = snapshot_->pos_next(pos_);
+		);
 
 		auto const *rinfo = snapshot_->report_info();
 		auto const key = snapshot_->get_key_str(pos_);
@@ -585,9 +686,9 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 				// XXX: should we assert here or something?
 			}
 
-			// TODO:
-			auto const& pct = share->view_conf->percentiles;
-			unsigned const n_percentile_fields = pct.size();
+			// percentiles
+			// TODO: calculate all required percentiles in one go
+			unsigned const n_percentile_fields = percentiles_.size();
 			if (findex < n_percentile_fields)
 			{
 				auto const *histogram = snapshot_->get_histogram(pos_);
@@ -598,12 +699,12 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 					if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
 					{
 						auto const *hv = static_cast<histogram_t const*>(histogram);
-						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles_[findex]);
 					}
 					else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 					{
 						auto const *hv = static_cast<flat_histogram_t const*>(histogram);
-						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, pct[findex]);
+						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles_[findex]);
 					}
 
 					assert(!"must not be reached");
@@ -619,9 +720,6 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 
 		} // loop over all fields
 
-		// FIXME: this should be the only return in this function (for now)
-		//        should rebuild this with defer-like construct
-		pos_ = snapshot_->pos_next(pos_);
 		return 0;
 	}
 };
@@ -725,6 +823,7 @@ static void share_init_with_table_comment_locked(pinba_share_ptr& share, str_ref
 	else
 	{
 		share->report_name = ff::fmt_str("<virtual table: {0}>", pinba_view_kind::enum_as_str_ref(share->view_conf->kind));
+		share->report_active       = true;
 		share->report_needs_engine = false;
 	}
 }

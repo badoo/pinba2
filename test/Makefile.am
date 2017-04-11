@@ -30,6 +30,7 @@ noinst_PROGRAMS = \
 	test_packet_repack \
 	test_report \
 	test_nanomsg_broadcast \
+	test_nanomsg_connect \
 	test_nanomsg_ticker \
 	test_nanomsg_poller \
 	test_percentiles \
@@ -50,6 +51,10 @@ test_report_SOURCES = \
 
 test_nanomsg_broadcast_SOURCES = \
 	test_nanomsg_broadcast.cpp \
+	#
+
+test_nanomsg_connect_SOURCES = \
+	test_nanomsg_connect.cpp \
 	#
 
 test_nanomsg_ticker_SOURCES = \

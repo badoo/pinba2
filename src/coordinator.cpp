@@ -33,7 +33,8 @@ namespace { namespace aux {
 		size_t      nn_packets_buffer;  // NN_RCVBUF on nn_packets
 	};
 
-	using report_host_call_func_t = std::function<void(report_t*)>;
+	struct report_host_t;
+	using  report_host_call_func_t = std::function<void(report_host_t*)>;
 
 	struct report_host_t
 	{
@@ -41,8 +42,11 @@ namespace { namespace aux {
 		virtual void startup(report_ptr) = 0;
 		virtual void shutdown() = 0;
 
+		virtual report_t* report() const = 0;
+		virtual report_stats_t* stats() = 0;
+
 		virtual bool process_batch(packet_batch_ptr) = 0;
-		virtual void call_with_report(report_host_call_func_t const&) = 0;
+		virtual void execute_in_thread(report_host_call_func_t const&) = 0;
 	};
 	typedef std::unique_ptr<report_host_t> report_host_ptr;
 
@@ -76,14 +80,13 @@ namespace { namespace aux {
 		nmsg_socket_t          shutdown_sock_;
 
 		report_ptr             report_;
-		uint64_t               packets_received;
+		report_stats_t         stats_;
 
 	public:
 
 		report_host___new_thread_t(pinba_globals_t *globals, report_host_conf_t const& conf)
 			: globals_(globals)
 			, conf_(conf)
-			, packets_received(0)
 		{
 			packets_send_sock_
 				.open(AF_SP, NN_PUSH)
@@ -133,18 +136,35 @@ namespace { namespace aux {
 					.ticker(tick_interval, [this](timeval_t now)
 					{
 						report_->tick_now(now);
+
+						timeval_t const curr_tv         = os_unix::clock_monotonic_now();
+						timeval_t const curr_rt_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
+
+						std::unique_lock<std::mutex> lk_(stats_.lock);
+						stats_.last_tick_tv        = curr_rt_tv;
+						stats_.last_tick_prepare_d = duration_from_timeval(curr_tv - now);
+					})
+					.ticker(1 * d_second, [this](timeval_t now)
+					{
+						os_rusage_t ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+						std::unique_lock<std::mutex> lk_(stats_.lock);
+						stats_.ru_utime = timeval_from_os_timeval(ru.ru_utime);
+						stats_.ru_stime = timeval_from_os_timeval(ru.ru_stime);
 					})
 					.read_nn_socket(packets_recv_sock_, [this](timeval_t now)
 					{
 						auto const batch = packets_recv_sock_.recv<packet_batch_ptr>();
-						packets_received += batch->packet_count;
+
+						stats_.batches_recv_total += 1;
+						stats_.packets_recv_total += batch->packet_count;
 
 						report_->add_multi(batch->packets, batch->packet_count);
 					})
 					.read_nn_socket(reqrep_sock_, [this](timeval_t now)
 					{
 						auto const req = reqrep_sock_.recv<report_host_req_ptr>();
-						req->func(report_.get());
+						req->func(this);
 						reqrep_sock_.send(meow::make_intrusive<report_host_result_t>());
 					})
 					.read_nn_socket(shutdown_sock_, [this, &poller](timeval_t)
@@ -161,15 +181,29 @@ namespace { namespace aux {
 
 		virtual bool process_batch(packet_batch_ptr batch) override
 		{
+			stats_.batches_send_total += 1;
+			stats_.packets_send_total += batch->packet_count;
+
 			bool const success = packets_send_sock_.send_message(batch, NN_DONTWAIT);
 			if (!success)
 			{
-				// TODO: increment stats, etc.
+				stats_.batches_send_err += 1;
+				stats_.packets_send_err += batch->packet_count;
 			}
 			return success;
 		}
 
-		virtual void call_with_report(std::function<void(report_t*)> const& func) override
+		virtual report_t* report() const override
+		{
+			return report_.get();
+		}
+
+		virtual report_stats_t* stats()
+		{
+			return &stats_;
+		}
+
+		virtual void execute_in_thread(report_host_call_func_t const& func) override
 		{
 			nmsg_socket_t sock;
 			sock.open(AF_SP, NN_REQ).connect(conf_.nn_reqrep);
@@ -386,21 +420,43 @@ namespace { namespace aux {
 
 								auto const it = report_hosts_.find(r->report_name);
 								if (it == report_hosts_.end())
-								{
-									this->control_send_generic(COORDINATOR_STATUS__ERROR, ff::fmt_str("unknown report: {0}", r->report_name));
-									return;
-								}
+									throw std::runtime_error(ff::fmt_str("unknown report: {0}", r->report_name));
 
 								report_host_t *host = it->second.get();
 
 								report_snapshot_ptr snapshot;
-								host->call_with_report([&](report_t *report)
+								host->execute_in_thread([&](report_host_t *rhost)
 								{
-									snapshot = report->get_snapshot();
+									snapshot = rhost->report()->get_snapshot();
 								});
 
 								auto response = meow::make_intrusive<coordinator_response___report_snapshot_t>();
 								response->snapshot = move(snapshot);
+
+								this->control_send(response);
+							}
+							break;
+
+							case COORDINATOR_REQ__GET_REPORT_STATE:
+							{
+								auto *r = static_cast<coordinator_request___get_report_state_t*>(req.get());
+
+								auto const it = report_hosts_.find(r->report_name);
+								if (it == report_hosts_.end())
+									throw std::runtime_error(ff::fmt_str("unknown report: {0}", r->report_name));
+
+								report_host_t *host = it->second.get();
+
+								auto state = meow::make_unique<report_state_t>();
+								host->execute_in_thread([&](report_host_t *rhost)
+								{
+									state->stats     = rhost->stats();
+									state->info      = rhost->report()->info();
+									state->estimates = rhost->report()->get_estimates();
+								});
+
+								auto response = meow::make_intrusive<coordinator_response___report_state_t>();
+								response->state = move(state);
 
 								this->control_send(response);
 							}

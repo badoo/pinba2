@@ -94,17 +94,15 @@ namespace { namespace aux {
 
 	public: // ticks
 
-		using raw_hashtable_t = google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>;
-
-		struct hashtable_t : public raw_hashtable_t
+		struct raw_hashtable_t : public google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>
 		{
-			hashtable_t()
+			raw_hashtable_t()
 			{
 				this->set_empty_key(key_t{});
 			}
 		};
 
-		using ticks_t       = ticks_ringbuffer_t<hashtable_t>;
+		using ticks_t       = ticks_ringbuffer_t<raw_hashtable_t>;
 		using tick_t        = ticks_t::tick_t;
 		using ticks_list_t  = ticks_t::ringbuffer_t;
 
@@ -230,6 +228,36 @@ namespace { namespace aux {
 		virtual void tick_now(timeval_t curr_tv) override
 		{
 			ticks_.tick(curr_tv);
+		}
+
+		virtual report_estimates_t get_estimates() override
+		{
+			report_estimates_t result = {};
+
+			if (tick_t *tick = ticks_.last())
+				result.row_count = tick->data.size();
+			else
+				result.row_count = ticks_.current().data.size();
+
+
+			result.mem_used += ticks_.current().data.bucket_count() * sizeof(*ticks_.current().data.begin());
+
+			for (auto const& tick : ticks_.get_internal_buffer())
+			{
+				if (!tick)
+					continue;
+
+				raw_hashtable_t const& ht = tick->data;
+				result.mem_used += ht.bucket_count() * sizeof(*ht.begin());
+
+				for (auto const& key_item_pair : ht)
+				{
+					auto const& hv_map = key_item_pair.second.hv.map_cref();
+					result.mem_used += hv_map.bucket_count() * sizeof(*hv_map.begin());
+				}
+			}
+
+			return result;
 		}
 
 		virtual report_snapshot_ptr get_snapshot() override

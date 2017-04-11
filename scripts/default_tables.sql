@@ -27,8 +27,18 @@ CREATE TABLE if not exists `active_reports` (
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
   `kind` varchar(64) NOT NULL,
-  `needs_engine` tinyint(1) NOT NULL,
-  `is_active` tinyint(1) NOT NULL
+  `is_active` tinyint(1) NOT NULL,
+  `time_window_sec` int(10) unsigned NOT NULL,
+  `tick_count` int(10) NOT NULL,
+  `approx_row_count` int(10) unsigned NOT NULL,
+  `approx_mem_used` bigint(20) unsigned NOT NULL,
+  `packets_received` bigint(20) unsigned NOT NULL,
+  `packets_lost` bigint(20) unsigned NOT NULL,
+  `ru_utime` double NOT NULL,
+  `ru_stime` double NOT NULL,
+  `last_tick_time` double NOT NULL,
+  `last_tick_prepare_duration` double NOT NULL,
+  `last_snapshot_merge_duration` double NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
 CREATE TABLE if not exists `packet_info` (
