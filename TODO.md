@@ -2,23 +2,24 @@
 - mysql
 	- [x] engine
 	- [x] report configs (in comments)
-	- [ ] tables with list of all reports and their data (almost there)
+	- [x] tables with list of all reports and their data
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
-	- [ ] docs
+	- [ ] docs (well, readme should suffice for now?)
 	- [ ] guidelines - how to run mysql with jemalloc
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
-- [ ] decent logging
+- decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
 	- [ ] log levels support (with runtime change?)
 - [ ] timer tag based filtering (i.e. take only timers with tag:browser=chrome)
 - per-report
-	- [ ] rusage
-	- [ ] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
+	- [x] rusage
+	- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
 - [x] per-report nanomsg queues instead of pubsub
 	- to track packets dropps, slow reports, etc.
 	- we actually leak memory if any batches get dropped (due to incrementing ref counts for all present reports)
-- [x] global stats + mysql table for them
+- global stats
+	- [x] mysql table
 	- [x] status variables
 	- [ ] make stats table the same as status variables, or remove it in favor of the former
 - [ ] calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
@@ -56,3 +57,6 @@
 	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
 	- runtime: udp readers, coorinator, the features meat
 - [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
+- percentiles
+	- [ ] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
+	- [ ] calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)

@@ -1,6 +1,8 @@
 # Pinba2
 An attempt to rethink internal implementation and some features of excellent https://github.com/tony2001/pinba_engine by @tony2001.
 
+See also: [TODO](TODO.md)
+
 # Docker
 - [Fedora 25](docker/fedora-25/) (kinda works)
 - [Mariadb/debian](docker/debian-mariadb/) (unfinished)
@@ -113,11 +115,18 @@ This table lists all reports/tables known to the engine with additional informat
 | table_name | mysql fully qualified table name (including database) |
 | internal_name | the name known to the engine (it never changes with table renames, but you shouldn't really care about that). |
 | kind | internal report kind (one of the kinds described in this doc, like stats, active, etc.) |
-| needs_engine | if 0 - this table is just known to mysql, and has no underlying report inside pinba engine |
-| is_active | has this report been activated (i.e. are we gathering/aggregating data) |
-| time_window | (not implemented yet) time window this reports aggregates data for (that you specify when creating a table) |
-| tick_count | (not implemented yet) number of ticks, time_window is split into |
-| row_count | (not implemented yet) approximate row count (counting this requires is roughly equivalent to select count(*) from 'some_report_table' ) |
+| uptime | time since report creation (seconds) |
+| time_window | time window this reports aggregates data for (that you specify when creating a table) |
+| tick_count | number of ticks, time_window is split into |
+| approx_row_count | approximate row count |
+| approx_mem_used | approximate memory usage |
+| packets_received | packets received and processed |
+| packets_lost | packets that could not be processed and had to be dropped (aka, report couldn't cope with such packet rate) |
+| ru_utime | rusage: user time |
+| ru_stime | rusage: system time |
+| last_tick_time | time we last merged temporary data to selectable data |
+| last_tick_prepare_duration | time it took to prepare to merge temp data to selectable data |
+| last_snapshot_merge_duration | time it took to prepare last select |
 
 Table comment syntax
 
@@ -125,24 +134,43 @@ Table comment syntax
 
 example
 
-	mysql> CREATE TABLE `active_reports` (
+	mysql> CREATE TABLE if not exists `active` (
 			  `table_name` varchar(128) NOT NULL,
 			  `internal_name` varchar(128) NOT NULL,
-			  `kind` int(10) unsigned NOT NULL,
-			  `needs_engine` tinyint(1) NOT NULL,
-			  `is_active` tinyint(1) NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active'
+			  `kind` varchar(64) NOT NULL,
+			  `uptime` double unsigned NOT NULL,
+			  `time_window_sec` int(10) unsigned NOT NULL,
+			  `tick_count` int(10) NOT NULL,
+			  `approx_row_count` int(10) unsigned NOT NULL,
+			  `approx_mem_used` bigint(20) unsigned NOT NULL,
+			  `packets_received` bigint(20) unsigned NOT NULL,
+			  `packets_lost` bigint(20) unsigned NOT NULL,
+			  `ru_utime` double NOT NULL,
+			  `ru_stime` double NOT NULL,
+			  `last_tick_time` double NOT NULL,
+			  `last_tick_prepare_duration` double NOT NULL,
+			  `last_snapshot_merge_duration` double NOT NULL
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
-	mysql> select * from active_reports;
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	| table_name                              | internal_name                           | kind | needs_engine | is_active |
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	| ./pinba/stats                           | <virtual table: 0>                      |    0 |            0 |         0 |
-	| ./pinba/report_host_script_server_tag10 | ./pinba/report_host_script_server_tag10 |    3 |            1 |         0 |
-	| ./pinba/report_by_script_name           | ./pinba/report_by_script_name           |    2 |            1 |         1 |
-	| ./pinba/active_reports                  | <virtual table: 1>                      |    1 |            0 |         0 |
-	+-----------------------------------------+-----------------------------------------+------+--------------+-----------+
-	4 rows in set (0.00 sec)
+	mysql> select *, packets_received/uptime as packets_per_sec from active\G
+	*************************** 1. row ***************************
+	                  table_name: ./pinba/tag_info_pinger_no_pct
+	               internal_name: ./pinba/tag_info_pinger_no_pct
+	                        kind: report_by_timer_data
+	                      uptime: 394.261528572
+	             time_window_sec: 60
+	                  tick_count: 60
+	            approx_row_count: 26942
+	             approx_mem_used: 81387464
+	            packets_received: 21387077
+	                packets_lost: 0
+	                    ru_utime: 16.592
+	                    ru_stime: 5.068
+	              last_tick_time: 1491925145.0092635
+	  last_tick_prepare_duration: 0.006426645000000001
+	last_snapshot_merge_duration: 0
+	             packets_per_sec: 54245.91406994024
+
 
 **Packet reports (like info in tony2001/pinba_engine)**
 
