@@ -23,10 +23,11 @@ CREATE TABLE if not exists `stats` (
   `repacker_ru_stime` double NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
-CREATE TABLE if not exists `active_reports` (
+CREATE TABLE if not exists `active` (
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
   `kind` varchar(64) NOT NULL,
+  `uptime` double unsigned NOT NULL,
   `time_window_sec` int(10) unsigned NOT NULL,
   `tick_count` int(10) NOT NULL,
   `approx_row_count` int(10) unsigned NOT NULL,
@@ -40,7 +41,7 @@ CREATE TABLE if not exists `active_reports` (
   `last_snapshot_merge_duration` double NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
-CREATE TABLE if not exists `packet_info` (
+CREATE TABLE if not exists `info` (
   `req_count` bigint(20) unsigned NOT NULL,
   `timer_count` bigint(20) unsigned NOT NULL,
   `time_total` double NOT NULL,

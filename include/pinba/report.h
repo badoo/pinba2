@@ -39,6 +39,9 @@ struct report_stats_t
 {
 	mutable std::mutex lock;
 
+	timeval_t created_tv;
+	timeval_t created_realtime_tv;
+
 	std::atomic<uint64_t> batches_send_total = {0};
 	std::atomic<uint64_t> batches_send_err   = {0};
 	std::atomic<uint64_t> batches_recv_total = {0};

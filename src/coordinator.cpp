@@ -104,6 +104,9 @@ namespace { namespace aux {
 			shutdown_sock_
 				.open(AF_SP, NN_REP)
 				.bind(conf_.nn_shutdown);
+
+			stats_.created_tv          = os_unix::clock_gettime_ex(CLOCK_MONOTONIC);
+			stats_.created_realtime_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
 		}
 
 	public:
