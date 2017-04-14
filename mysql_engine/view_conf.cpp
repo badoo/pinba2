@@ -192,6 +192,9 @@ namespace { namespace aux {
 				vcf->max_time = duration_from_double(time_value);
 				continue;
 			}
+
+			// key=value pair for field/rtag/timertag filtering
+			vcf->filters.push_back({ key_s, value_s});
 		}
 
 		return {};
@@ -329,19 +332,89 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-	pinba_error_t pinba_view_conf___validate(pinba_view_conf_t const& vcf)
+	struct key_descriptor_t
 	{
-		if (vcf.min_time.nsec < 0)
-			return ff::fmt_err("min_time must be >= 0");
+		std::string name; // name, without leading ~,+,@
+		int kind;         // report_by_timer.h RKD_*
 
-		if (vcf.max_time.nsec < 0)
-			return ff::fmt_err("max_time must be >= 0");
+		union {   // expecting the binary layout for this union to be the same
+			      // as in report_by_timer/request/packet counterparts
+			uint64_t                 flat_value;
+			struct {
+				uint32_t             timer_tag;
+				uint32_t             request_tag;
+				uint32_t packet_t::* request_field;
+			};
+		};
+	};
 
-		if (vcf.min_time.nsec != 0 && vcf.min_time > vcf.max_time)
-			return ff::fmt_err("min_time should be < max_time");
-
-		return {};
+	key_descriptor_t key_descriptor_init___request_field(str_ref name, uint32_t packet_t::* field_ptr)
+	{
+		key_descriptor_t d;
+		d.name          = name.str();
+		d.kind          = RKD_REQUEST_FIELD;
+		d.request_field = field_ptr;
+		return d;
 	}
+
+	key_descriptor_t key_descriptor_init___request_tag(str_ref name, uint32_t name_id)
+	{
+		key_descriptor_t d;
+		d.name        = name.str();
+		d.kind        = RKD_REQUEST_TAG;
+		d.request_tag = name_id;
+		return d;
+	}
+
+	key_descriptor_t key_descriptor_init___timer_tag(str_ref name, uint32_t name_id)
+	{
+		key_descriptor_t d;
+		d.name      = name.str();
+		d.kind      = RKD_TIMER_TAG;
+		d.timer_tag = name_id;
+		return d;
+	}
+
+	pinba_error_t key_descriptor_by_name(key_descriptor_t *out_kd, str_ref key_name)
+	{
+		if (key_name[0] == '~') // builtin
+		{
+			auto const field_name = meow::sub_str_ref(key_name, 1, key_name.size());
+
+			if (field_name == "host")   { *out_kd = key_descriptor_init___request_field(field_name, &packet_t::host_id); return {}; }
+			if (field_name == "script") { *out_kd = key_descriptor_init___request_field(field_name, &packet_t::script_id); return {}; }
+			if (field_name == "server") { *out_kd = key_descriptor_init___request_field(field_name, &packet_t::server_id); return {}; }
+			if (field_name == "schema") { *out_kd = key_descriptor_init___request_field(field_name, &packet_t::schema_id); return {}; }
+			if (field_name == "status") { *out_kd = key_descriptor_init___request_field(field_name, &packet_t::status); return {}; }
+
+			return ff::fmt_err("key_spec: request_field '{0}' not known "
+								"(should be one of host, script, server, schema, status)", key_name);
+		}
+
+		if (key_name[0] == '+') // request_tag
+		{
+			auto const tag_name = meow::sub_str_ref(key_name, 1, key_name.size());
+			auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+
+			*out_kd = key_descriptor_init___request_tag(tag_name, tag_id);
+			return {};
+		}
+
+		// timer_tag
+		{
+			auto const tag_name = (key_name[0] == '@')
+									? meow::sub_str_ref(key_name, 1, key_name.size())
+									: key_name;
+
+			// XXX: try to avoid modifying global state here
+			auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+
+			*out_kd = key_descriptor_init___timer_tag(tag_name, tag_id);
+			return {};
+		}
+	}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 	pinba_error_t pinba_view_conf___translate(report_conf___by_packet_t *conf, pinba_view_conf_t const& vcf)
 	{
@@ -374,38 +447,33 @@ namespace { namespace aux {
 
 		for (auto const& key_name : vcf.keys)
 		{
-			pinba_error_t err = {};
+			key_descriptor_t kd;
 
-			auto const kd = [&err, &key_name]() -> report_conf___by_request_t::key_descriptor_t
-			{
-				if (key_name == "~host")
-					return report_conf___by_request_t::key_descriptor_by_request_field("host", &packet_t::host_id);
-				if (key_name == "~script")
-					return report_conf___by_request_t::key_descriptor_by_request_field("script", &packet_t::script_id);
-				if (key_name == "~server")
-					return report_conf___by_request_t::key_descriptor_by_request_field("server", &packet_t::server_id);
-				if (key_name == "~schema")
-					return report_conf___by_request_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
-				if (key_name == "~status")
-					return report_conf___by_request_t::key_descriptor_by_request_field("status", &packet_t::status);
-
-				if (key_name[0] == '+') // request_tag
-				{
-					auto const tag_name = meow::sub_str_ref(key_name, 1, key_name.size());
-					auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-
-					return report_conf___by_request_t::key_descriptor_by_request_tag(tag_name, tag_id);
-				}
-
-				// no support for timer tags, this is request based report
-				err = ff::fmt_err("key_spec: timer_tag are not allowed in 'request' reports, got '{0}'", key_name);
-				return {};
-			}();
-
+			pinba_error_t const err = key_descriptor_by_name(&kd, key_name);
 			if (err)
 				return err;
 
-			conf->keys.push_back(kd);
+			report_conf___by_request_t::key_descriptor_t real_kd;
+
+			switch (kd.kind)
+			{
+				case RKD_REQUEST_FIELD:
+					real_kd = report_conf___by_request_t::key_descriptor_by_request_field(kd.name, kd.request_field);
+					break;
+
+				case RKD_REQUEST_TAG:
+					real_kd = report_conf___by_request_t::key_descriptor_by_request_tag(kd.name, kd.request_tag);
+					break;
+
+				case RKD_TIMER_TAG:
+					return ff::fmt_err("key_spec: timer_tag are not allowed in 'request' reports, got '{0}'", key_name);
+
+				default:
+					assert(!"can't be reached");
+					break;
+			}
+
+			conf->keys.push_back(real_kd);
 		}
 
 		if (vcf.min_time.nsec)
@@ -419,6 +487,7 @@ namespace { namespace aux {
 		return {};
 	}
 
+
 	pinba_error_t pinba_view_conf___translate(report_conf___by_timer_t *conf, pinba_view_conf_t const& vcf)
 	{
 		assert(vcf.kind == pinba_view_kind::report_by_timer_data);
@@ -431,53 +500,34 @@ namespace { namespace aux {
 
 		for (auto const& key_name : vcf.keys)
 		{
-			pinba_error_t err = {};
+			key_descriptor_t kd;
 
-			auto const kd = [&err, &key_name]() -> report_conf___by_timer_t::key_descriptor_t
-			{
-				if (key_name[0] == '~') // builtin
-				{
-					auto const field_name = meow::sub_str_ref(key_name, 1, key_name.size());
-
-					if (field_name == "host")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("host", &packet_t::host_id);
-					if (field_name == "script")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("script", &packet_t::script_id);
-					if (field_name == "server")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("server", &packet_t::server_id);
-					if (field_name == "schema")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("schema", &packet_t::schema_id);
-					if (field_name == "status")
-						return report_conf___by_timer_t::key_descriptor_by_request_field("status", &packet_t::status);
-
-					err = ff::fmt_err(	"key_spec: request_field '{0}' not known "
-										"(should be one of host, script, server, schema, status)", key_name);
-					return {};
-				}
-
-				if (key_name[0] == '+') // request_tag
-				{
-					auto const tag_name = meow::sub_str_ref(key_name, 1, key_name.size());
-					auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-
-					return report_conf___by_timer_t::key_descriptor_by_request_tag(tag_name, tag_id);
-				}
-
-				// timer_tag
-				{
-					auto const tag_name = (key_name[0] == '@')
-											? meow::sub_str_ref(key_name, 1, key_name.size())
-											: key_name;
-					auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
-
-					return report_conf___by_timer_t::key_descriptor_by_timer_tag(tag_name, tag_id);
-				}
-			}();
-
+			pinba_error_t const err = key_descriptor_by_name(&kd, key_name);
 			if (err)
 				return err;
 
-			conf->keys.push_back(kd);
+			report_conf___by_timer_t::key_descriptor_t real_kd;
+
+			switch (kd.kind)
+			{
+				case RKD_REQUEST_FIELD:
+					real_kd = report_conf___by_timer_t::key_descriptor_by_request_field(kd.name, kd.request_field);
+					break;
+
+				case RKD_REQUEST_TAG:
+					real_kd = report_conf___by_timer_t::key_descriptor_by_request_tag(kd.name, kd.request_tag);
+					break;
+
+				case RKD_TIMER_TAG:
+					real_kd = report_conf___by_timer_t::key_descriptor_by_timer_tag(kd.name, kd.timer_tag);
+					break;
+
+				default:
+					assert(!"can't be reached");
+					break;
+			}
+
+			conf->keys.push_back(real_kd);
 		}
 
 		if (vcf.min_time.nsec)
@@ -486,7 +536,54 @@ namespace { namespace aux {
 		if (vcf.max_time.nsec)
 			conf->filters.push_back(report_conf___by_timer_t::make_filter___by_max_time(vcf.max_time));
 
-		// TODO: key filters
+		for (auto const& filter : vcf.filters)
+		{
+			key_descriptor_t kd;
+
+			pinba_error_t const err = key_descriptor_by_name(&kd, filter.key);
+			if (err)
+				return err;
+
+			switch (kd.kind)
+			{
+				case RKD_REQUEST_FIELD:
+				case RKD_REQUEST_TAG:
+					// TODO: implementation
+					break;
+
+				case RKD_TIMER_TAG:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+
+					LOG_DEBUG(P_L_, "{0}; report: {1}, adding timertag_filter: {2}:{3} -> {4}:{5}",
+						__func__, conf->name, filter.key, kd.timer_tag, filter.value, value_id);
+
+					conf->timertag_filters.push_back(report_conf___by_timer_t::make_timertag_filter(kd.timer_tag, value_id));
+				}
+				break;
+
+				default:
+					assert(!"can't be reached");
+					break;
+			}
+		}
+
+		return {};
+	}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	pinba_error_t pinba_view_conf___validate(pinba_view_conf_t const& vcf)
+	{
+		if (vcf.min_time.nsec < 0)
+			return ff::fmt_err("min_time must be >= 0");
+
+		if (vcf.max_time.nsec < 0)
+			return ff::fmt_err("max_time must be >= 0");
+
+		if (vcf.min_time.nsec != 0 && vcf.min_time > vcf.max_time)
+			return ff::fmt_err("min_time should be < max_time");
 
 		return {};
 	}

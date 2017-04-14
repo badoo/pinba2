@@ -99,6 +99,9 @@ int main(int argc, char const *argv[])
 				report_conf___by_timer_t::make_filter___by_max_time(1 * d_second),
 			},
 
+			.timertag_filters = {
+			},
+
 			.keys = {
 				report_conf___by_timer_t::key_descriptor_by_request_field("hostname", &packet_t::host_id),
 				report_conf___by_timer_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),

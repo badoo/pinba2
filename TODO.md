@@ -6,7 +6,7 @@
 	- [ ] table listing all open tables and their state
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
-	- [ ] docs (well, readme should suffice for now?)
+	- [x] docs (well, readme should suffice for now)
 	- [ ] guidelines - how to run mysql with jemalloc
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 - decent logging
@@ -58,6 +58,8 @@
 	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
 	- runtime: udp readers, coorinator, the features meat
 - [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
+- [ ] split report raw data aggregation and tick repack (i.e. have a few threads doing repack and providing snapshots)
 - percentiles
-	- [ ] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
+	- [x] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
 	- [ ] calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)
+- [ ] refactor switches by view type in handler.cpp / view_conf.cpp

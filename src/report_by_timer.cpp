@@ -726,7 +726,7 @@ public:
 			}
 		}
 
-		LOG_DEBUG(globals_->logger(), "{0}/{1} tick finished, {2} entries, copy elapsed: {3}", name(), curr_tv, td.keys.size(), sw.stamp());
+		// LOG_DEBUG(globals_->logger(), "{0}/{1} tick finished, {2} entries, copy elapsed: {3}", name(), curr_tv, td.keys.size(), sw.stamp());
 
 		raw_data_.clear();
 
@@ -788,6 +788,30 @@ public:
 			if (!filter.func(packet))
 				return;
 		}
+
+		// check if timer is interesting (aka satisfies filters)
+		auto const filter_by_timer_tags = [&](packed_timer_t const *t) -> bool
+		{
+			for (auto const& tfd : conf_.timertag_filters)
+			{
+				bool tag_exists = false;
+
+				for (uint32_t tag_i = 0; tag_i < t->tag_count; ++tag_i)
+				{
+					if (t->tags[tag_i].name_id != tfd.name_id)
+						continue;
+
+					tag_exists = true;
+
+					if (t->tags[tag_i].value_id != tfd.value_id)
+						return false;
+				}
+
+				if (!tag_exists)
+					return false;
+			}
+			return true;
+		};
 
 		// finds timer with required tags
 		auto const fetch_by_timer_tags = [&](key_info_t const& ki, key_subrange_t out_range, packed_timer_t const *t) -> bool
@@ -875,6 +899,10 @@ public:
 			for (uint16_t i = 0; i < packet->timer_count; ++i)
 			{
 				packed_timer_t const *timer = &packet->timers[i];
+
+				bool const timer_ok = filter_by_timer_tags(timer);
+				if (!timer_ok)
+					continue;
 
 				bool const timer_found = fetch_by_timer_tags(ki_, timer_key_range, timer);
 				if (!timer_found)

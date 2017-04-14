@@ -77,6 +77,27 @@ public: // packet filters
 		};
 	}
 
+public: // timertag filters
+
+	struct timertag_filter_descriptor_t
+	{
+		std::string name;
+		uint32_t    name_id;
+		uint32_t    value_id;
+	};
+
+	std::vector<timertag_filter_descriptor_t> timertag_filters;
+
+	// some builtins
+	static inline timertag_filter_descriptor_t make_timertag_filter(uint32_t name_id, uint32_t value_id)
+	{
+		return timertag_filter_descriptor_t {
+			.name     = ff::fmt_str("timer_tag/{0}={1}", name_id, value_id),
+			.name_id  = name_id,
+			.value_id = value_id,
+		};
+	}
+
 public: // key fetchers
 
 	struct key_descriptor_t
@@ -84,9 +105,12 @@ public: // key fetchers
 		std::string name;
 		int         kind;  // see defines above
 		union {
-			uint32_t             timer_tag;
-			uint32_t             request_tag;
-			uint32_t packet_t::* request_field;
+			uintptr_t                flat_value;
+			struct {
+				uint32_t             timer_tag;
+				uint32_t             request_tag;
+				uint32_t packet_t::* request_field;
+			};
 		};
 	};
 
