@@ -2,7 +2,8 @@
 - mysql
 	- [x] engine
 	- [x] report configs (in comments)
-	- [x] tables with list of all reports and their data
+	- [x] table with list of all reports and their data
+	- [ ] table listing all open tables and their state
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] docs (well, readme should suffice for now?)
@@ -29,9 +30,9 @@
 # Performance
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
-	- [ ] configure support
-- [ ] {easy} sorted arrays for histograms (almost there)
-- [ ] {easy} thread affinity
+	- [ ] configure support (or maybe runtime detection with dlsym?)
+- [ ] {medium} sorted arrays for histograms (almost there)
+- [ ] {medium} thread affinity
 - [ ] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (SSE mon!)
 - [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup

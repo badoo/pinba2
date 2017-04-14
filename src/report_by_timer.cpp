@@ -10,7 +10,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
-// #include "pinba/multi_merge.h"
+#include "pinba/multi_merge.h"
 #include "pinba/packet.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"
@@ -227,7 +227,13 @@ public: // snapshot
 		struct row_t
 		{
 			data_t       data;
-			histogram_t  hv;
+
+			// list of saved hvs, we merge only when requested (i.e. in hv_at_position)
+			// please not that we're also saving pointers to flat_histogram_t::values
+			// and will restore full structs on merge
+			// this a 'limitation' of multi_merge() function
+			std::vector<histogram_values_t const*> saved_hv;
+			flat_histogram_t merged_hv;
 		};
 
 		struct hashtable_t : public google::dense_hash_map<key_t, row_t, key__hasher_t, key__equal_t>
@@ -254,7 +260,69 @@ public: // snapshot
 
 		static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			return &it->second.hv;
+			row_t *row                  = &it->second;
+
+			if (row->saved_hv.empty()) // already merged
+				return &row->merged_hv;
+
+			struct merger_t
+			{
+				flat_histogram_t *to;
+
+				inline bool compare(histogram_value_t const& l, histogram_value_t const& r) const
+				{
+					return l.bucket_id < r.bucket_id;
+				}
+
+				inline bool equal(histogram_value_t const& l, histogram_value_t const& r) const
+				{
+					return l.bucket_id == r.bucket_id;
+				}
+
+				inline void reserve(size_t const sz)
+				{
+					to->values.reserve(sz);
+				}
+
+				inline void push_back(histogram_values_t const *seq, histogram_value_t const& v)
+				{
+					flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, seq);
+
+					bool const should_insert = [&]()
+					{
+						if (to->values.empty())
+							return true;
+
+						return !equal(to->values.back(), v);
+					}();
+
+					if (should_insert)
+					{
+						to->values.emplace_back(v);
+					}
+					else
+					{
+						to->values.back().value += v.value;
+					}
+				}
+			};
+
+			// merge histogram values
+			merger_t merger = { .to = &row->merged_hv };
+			pinba::multi_merge(&merger, row->saved_hv.begin(), row->saved_hv.end());
+
+			// merge histogram totals
+			for (auto const *src_hv_values : row->saved_hv)
+			{
+				flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, src_hv_values);
+				row->merged_hv.total_value += src->total_value;
+				row->merged_hv.inf_value   += src->inf_value;
+			}
+
+			// clear source
+			row->saved_hv.clear();
+
+			return &row->merged_hv;
 		}
 
 		// merge from src ringbuffer to snapshot data
@@ -371,9 +439,16 @@ public: // snapshot
 				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
 #endif
 
+			// do NOT clear ticks, as we take pointers to histograms inside
+			// so ticks need to be alive while this report is alive
+
+			// MEOW_DEFER(
+			// 	ticks.clear();
+			// );
+
 			uint64_t n_ticks = 0;
 			uint64_t key_lookups = 0;
-			uint64_t hv_lookups = 0;
+			uint64_t hv_appends = 0;
 
 			for (auto const& tick : ticks)
 			{
@@ -395,25 +470,22 @@ public: // snapshot
 
 					if (rinfo.hv_enabled)
 					{
-						// dst.hv.merge_other(tick->data.hvs[i]);
-
 						flat_histogram_t const& src_hv = tick->data.hvs[i];
 
-						dst.hv.increment_inf(src_hv.inf_value);
+						// try preallocate
+						if (dst.saved_hv.empty())
+							dst.saved_hv.reserve(ticks.size());
 
-						for (auto const& hv_value : src_hv.values)
-						{
-							dst.hv.increment_bucket(hv_value.bucket_id, hv_value.value);
-						}
-						hv_lookups += src_hv.values.size();
+						hv_appends++;
+						dst.saved_hv.push_back(&src_hv.values);
 					}
 				}
 
 				key_lookups += tick->data.keys.size();
 			}
 
-			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
-				rinfo.name, n_ticks, key_lookups, hv_lookups);
+			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
+				rinfo.name, n_ticks, key_lookups, hv_appends);
 		}
 	};
 
@@ -536,7 +608,8 @@ public:
 			.tick_count      = conf_.tick_count,
 			.n_key_parts     = (uint32_t)conf_.keys.size(),
 			.hv_enabled      = (conf_.hv_bucket_count > 0),
-			.hv_kind         = HISTOGRAM_KIND__HASHTABLE, // HISTOGRAM_KIND__FLAT,
+			// .hv_kind         = HISTOGRAM_KIND__HASHTABLE,
+			.hv_kind         = HISTOGRAM_KIND__FLAT,
 			.hv_bucket_count = conf_.hv_bucket_count,
 			.hv_bucket_d     = conf_.hv_bucket_d,
 		};

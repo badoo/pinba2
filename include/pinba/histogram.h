@@ -58,7 +58,7 @@ struct histogram_t
 
 private:
 	map_t     map_;
-	uint32_t  items_total_;
+	uint32_t  items_total_; // total number of measurements, includes inf
 	uint32_t  inf_value_;
 
 public:
@@ -123,10 +123,18 @@ public:
 
 	void increment(histogram_conf_t const& conf, duration_t d, uint32_t increment_by = 1)
 	{
-		uint32_t const bucket_id = d.nsec / conf.bucket_d.nsec;
+		uint32_t bucket_id = d.nsec / conf.bucket_d.nsec;
 
 		if (bucket_id < conf.bucket_count)
+		{
+			if (bucket_id > 0) // try fit exact upper-bound match to previous bucket
+			{
+				if (d == bucket_id * conf.bucket_d)
+					bucket_id -= 1;
+			}
+
 			map_[bucket_id] += increment_by;
+		}
 		else
 			inf_value_ += increment_by;
 
@@ -141,6 +149,7 @@ public:
 
 	void increment_inf(uint32_t increment_by)
 	{
+		items_total_ += increment_by;
 		inf_value_ += increment_by;
 	}
 };
@@ -173,21 +182,8 @@ struct flat_histogram_t
 	histogram_values_t  values;
 	uint32_t            total_value;
 	uint32_t            inf_value;
-
-	// flat_histogram_t(flat_histogram_t&& other)
-	// {
-	// 	(*this) = std::move(other);
-	// }
-
-	// flat_histogram_t& operator=(flat_histogram_t&& other)
-	// {
-	// 	using std::swap;
-	// 	swap(values, other.values);
-	// 	swap(total_value, other.total_value);
-	// 	swap(inf_value, other.inf_value);
-	// 	return *this;
-	// }
 };
+static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+2*sizeof(uint32_t)), "flat_histogram_t must have no padding");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -269,6 +265,9 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 	if (percentile == 0.) // 0'th percentile is always 0
 		return {0};
 
+	if (hv.total_value == 0) // no values in histogram, nothing to do
+		return {0};
+
 	uint32_t const required_sum = [&]()
 	{
 		uint32_t const res = std::ceil(hv.total_value * percentile / 100.0);
@@ -280,6 +279,10 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 
 	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.total_value, required_sum);
 
+	// fastpath - very low percentile, nothing to do
+	if (required_sum == 0)
+		return {0};
+
 	// fastpath - are we going to hit infinity bucket?
 	if (required_sum > (hv.total_value - hv.inf_value))
 	{
@@ -288,13 +291,19 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 		return conf.bucket_d * conf.bucket_count;
 	}
 
+	// fastpath - we need everything, except inf (aka p100 or very-very close to it)
+	// get upper-bound for max nonzero bucket
+	if (required_sum == (hv.total_value - hv.inf_value))
+	{
+		// ff::fmt(stdout, "  >> p100 fastpath; taking upper-bound for bucket {0}\n", hv.values.back().key());
+		return (hv.values.back().bucket_id + 1) * conf.bucket_d;
+	}
+
 	uint32_t current_sum = 0;
-	uint32_t bucket_id   = 0;
 
 	for (auto const& item : hv.values)
 	{
-		bucket_id = item.bucket_id;
-
+		uint32_t const bucket_id       = item.bucket_id;
 		uint32_t const next_has_values = item.value;
 		uint32_t const need_values     = required_sum - current_sum;
 

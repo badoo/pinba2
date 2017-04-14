@@ -399,21 +399,6 @@ public:
 
 		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, mysql_name_, report_name_);
 
-		// auto const err = [&]() -> pinba_error_t
-		// {
-		// 	std::weak_ptr rhost_weak_p;
-		// 	auto const err = P_E_->get_report_host(&rhost_weak_p, share->report_name);
-		// 	if (err)
-		// 		return err;
-
-		// 	auto rhost = rhost_weak_p.lock()
-		// 	if (!rhost)
-		// 		return ff::fmt_err("report '{0}' deleted during query", mysql_name_);
-
-		// 	snapshot_ = rhost->get_report_snapshot();
-		// 	return {};
-		// }();
-
 		try
 		{
 			snapshot_ = P_E_->get_report_snapshot(report_name_);

@@ -126,7 +126,8 @@ private:
 
 		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_);
 
-		ticks_.clear();
+		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
+		// ticks_.clear();
 	}
 
 	virtual bool is_prepared() const override

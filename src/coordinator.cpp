@@ -320,9 +320,10 @@ namespace { namespace aux {
 
 					++stats_->coordinator.batches_received;
 
+					// FIXME
 					// special counter for batches that were dropped, because no recepients were active
-					if (report_hosts_.empty())
-						++stats_->coordinator.batches_send_dropped;
+					// if (report_hosts_.empty())
+					// 	++stats_->coordinator.batches_send_dropped;
 
 					// relay the batch to all reports,
 					// TODO(antoxa): maybe move this to a separate thread?

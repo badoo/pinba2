@@ -1,3 +1,4 @@
+#include <meow/defer.hpp>
 #include <boost/noncopyable.hpp>
 
 #include <sparsehash/dense_hash_map>
@@ -137,8 +138,12 @@ namespace { namespace aux {
 			}
 
 			// merge from src ringbuffer to snapshot data
-			static void merge_ticks_into_data(pinba_globals_t *globals, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
+			static void merge_ticks_into_data(pinba_globals_t *globals, report_info_t& rinfo, src_ticks_t& ticks, hashtable_t& to)
 			{
+				MEOW_DEFER(
+					ticks.clear();
+				);
+
 				uint64_t key_lookups = 0;
 				uint64_t hv_lookups = 0;
 

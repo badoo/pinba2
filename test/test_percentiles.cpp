@@ -39,23 +39,29 @@ inline duration_t get_percentile_flat(hv_items_t const& hv, histogram_conf_t con
 				: res;
 	}();
 
-	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total, required_sum);
+	ff::fmt(stdout, " > {0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total, required_sum);
 
 	// fastpath - are we going to hit infinity bucket?
 	if (required_sum > (hv.items_total - hv.inf_value))
 	{
-		// ff::fmt(stdout, "inf fastpath; need {0}, got histogram for {1} values\n",
-		// 	required_sum, (hv.items_total - hv.inf_value));
+		ff::fmt(stdout, "  >> inf fastpath; need {0}, got histogram for {1} values\n",
+			required_sum, (hv.items_total - hv.inf_value));
 		return conf.bucket_d * conf.bucket_count;
 	}
 
-	uint32_t current_sum = 0;
-	uint32_t bucket_id   = 0;
+	// fastpath - we need everything, except inf (aka p100 or very-very close to it)
+	// get upper-bound for max nonzero bucket
+	if (required_sum == (hv.items_total - hv.inf_value))
+	{
+		ff::fmt(stdout, "  >> p100 fastpath; taking upper-bound for bucket {0}\n", hv.items.back().key());
+		return (hv.items.back().key() + 1) * conf.bucket_d;
+	}
 
-	// for (; current_sum < required_sum; bucket_id++)
+	uint32_t current_sum = 0;
+
 	for (auto const& item : hv.items)
 	{
-		bucket_id = item.key();
+		uint32_t const bucket_id = item.key();
 
 		uint32_t const next_has_values = item.value();
 		uint32_t const need_values     = required_sum - current_sum;
@@ -63,13 +69,13 @@ inline duration_t get_percentile_flat(hv_items_t const& hv, histogram_conf_t con
 		if (next_has_values < need_values) // take bucket and move on
 		{
 			current_sum += next_has_values;
-			// ff::fmt(stdout, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			ff::fmt(stdout, "  >> [{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
 			continue;
 		}
 
 		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
 		{
-			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			ff::fmt(stdout, "  >> [{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
 			return conf.bucket_d * (bucket_id + 1);
 		}
 
@@ -77,7 +83,7 @@ inline duration_t get_percentile_flat(hv_items_t const& hv, histogram_conf_t con
 		{
 			duration_t const d = conf.bucket_d * need_values / next_has_values;
 
-			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
+			ff::fmt(stdout, "  >> [{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
 			return conf.bucket_d * bucket_id + d;
 		}
 	}
@@ -246,13 +252,13 @@ int main(int argc, char const *argv[])
 		.bucket_d     = 1 * d_millisecond,
 	};
 
-	hv.increment(hv_conf, 2 * d_millisecond, 1);
-	hv.increment(hv_conf, 3 * d_millisecond, 4);
-	hv.increment(hv_conf, 4 * d_millisecond, 10);
-	hv.increment(hv_conf, 5 * d_millisecond, 50);
-	hv.increment(hv_conf, 6 * d_millisecond, 25);
-	hv.increment(hv_conf, 7 * d_millisecond, 11);
-	hv.increment(hv_conf, 8 * d_millisecond, 1);
+	// hv.increment(hv_conf, 2 * d_millisecond, 1);
+	// hv.increment(hv_conf, 3 * d_millisecond, 4);
+	// hv.increment(hv_conf, 4 * d_millisecond, 10);
+	// hv.increment(hv_conf, 5 * d_millisecond, 50);
+	hv.increment(hv_conf, 6 * d_millisecond, 25000);
+	hv.increment(hv_conf, 7 * d_millisecond, 1000);
+	hv.increment(hv_conf, 8 * d_millisecond, 30);
 	hv.increment(hv_conf, 1000 * d_millisecond, 1);
 
 	auto const print_percentile = [&](double percentile)
@@ -266,15 +272,18 @@ int main(int argc, char const *argv[])
 			hvi.items.push_back(histogram_item_t{uint64_t(pair.first) << 32 | pair.second});
 		std::sort(hvi.items.begin(), hvi.items.end());
 
-		ff::fmt(stdout, "percentile_flat {0} = {1}, {2}\n",
+		ff::fmt(stdout, "percentile_flat {0} = {1}, {2}\n\n",
 			percentile, get_percentile(hv, hv_conf, percentile), get_percentile_flat(hvi, hv_conf, percentile));
 	};
 
-	print_percentile(0);
+	// print_percentile(0);
 	print_percentile(50);
 	print_percentile(75);
+	print_percentile(95);
 	print_percentile(99);
 	print_percentile(99.9);
+	print_percentile(99.99);
+	print_percentile(99.999);
 	print_percentile(100);
 
 	{
