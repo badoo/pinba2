@@ -382,6 +382,10 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 	std::string          report_name_;
 	std::vector<double>  percentiles_;
 
+	static constexpr unsigned const n_data_fields___by_request = 11;
+	static constexpr unsigned const n_data_fields___by_timer   = 10;
+	static constexpr unsigned const n_data_fields___by_packet  = 7;
+
 public:
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
@@ -413,12 +417,68 @@ public:
 		// TODO: check if percentile fields are being requested
 		//       and do not merge histograms if not
 
+		// XXX: reading from share without a lock
+		bool const need_percentiles = [&]()
+		{
+			unsigned percentile_field_min = 0;
+			unsigned percentile_field_max = 0;
+
+			auto const *view_conf = handler->current_share()->view_conf.get();
+
+			switch (view_conf->kind)
+			{
+				case pinba_view_kind::stats:
+				case pinba_view_kind::active_reports:
+					assert(!"must not happen");
+				break;
+
+				case pinba_view_kind::report_by_request_data:
+					percentile_field_min = view_conf->keys.size() + n_data_fields___by_request;
+					percentile_field_max = percentile_field_min + view_conf->percentiles.size();
+				break;
+
+				case pinba_view_kind::report_by_timer_data:
+					percentile_field_min = view_conf->keys.size() + n_data_fields___by_timer;
+					percentile_field_max = percentile_field_min + view_conf->percentiles.size();
+				break;
+
+				case pinba_view_kind::report_by_packet_data:
+					percentile_field_min = view_conf->keys.size() + n_data_fields___by_packet;
+					percentile_field_max = percentile_field_min + view_conf->percentiles.size();
+				break;
+
+				default:
+					assert(!"must not be reached");
+				break;
+			}
+
+			// check that a percentile field is set for reading
+			auto *table = handler->current_table();
+			for (Field **field = table->field; *field; field++)
+			{
+				unsigned const field_index = (*field)->field_index;
+
+				if (!bitmap_is_set(table->read_set, field_index))
+					continue;
+
+				if ((field_index >= percentile_field_min) && (field_index < percentile_field_max))
+					return true;
+			}
+			return false;
+		}();
+
 		{
 			meow::stopwatch_t sw;
-			snapshot_->prepare();
 
-			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare took {2} seconds ({3} rows)",
-				__func__, mysql_name_, sw.stamp(), snapshot_->row_count());
+			auto const ptype = (need_percentiles)
+								? report_snapshot_t::prepare_type::full
+								: report_snapshot_t::prepare_type::no_histograms;
+			snapshot_->prepare(ptype);
+
+			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
+				__func__, mysql_name_,
+				report_snapshot_t::prepare_type::enum_as_str_ref(ptype),
+				sw.stamp(), snapshot_->row_count());
 		}
 
 		pos_ = snapshot_->pos_first();
@@ -483,7 +543,7 @@ public:
 			// row data comes next
 			if (REPORT_KIND__BY_REQUEST_DATA == rinfo->kind)
 			{
-				static unsigned const n_data_fields = 11;
+				constexpr unsigned const n_data_fields = n_data_fields___by_request;
 				if (findex < n_data_fields)
 				{
 					auto const *row = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(pos_));
@@ -555,7 +615,7 @@ public:
 			}
 			else if (REPORT_KIND__BY_TIMER_DATA == rinfo->kind)
 			{
-				static unsigned const n_data_fields = 10;
+				static unsigned const n_data_fields = n_data_fields___by_timer;
 				if (findex < n_data_fields)
 				{
 					auto const *row = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(pos_));
@@ -622,7 +682,7 @@ public:
 			}
 			else if (REPORT_KIND__BY_PACKET_DATA == rinfo->kind)
 			{
-				static unsigned const n_data_fields = 7;
+				static unsigned const n_data_fields = n_data_fields___by_packet;
 				if (findex < n_data_fields)
 				{
 					auto const *row = reinterpret_cast<report_row_data___by_packet_t*>(snapshot_->get_data(pos_));

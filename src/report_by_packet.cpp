@@ -114,7 +114,12 @@ namespace { namespace aux {
 			static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
 
 			// merge from src ringbuffer to snapshot data
-			static void merge_ticks_into_data(pinba_globals_t*, report_info_t& rinfo, src_ticks_t& ticks, hashtable_t& to)
+			static void merge_ticks_into_data(
+				  pinba_globals_t *globals
+				, report_info_t& rinfo
+				, src_ticks_t& ticks
+				, hashtable_t& to
+				, report_snapshot_t::prepare_type_t ptype)
 			{
 				MEOW_DEFER(
 					ticks.clear();

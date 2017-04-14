@@ -77,10 +77,12 @@ using report_state_ptr = std::unique_ptr<report_state_t>;
 
 struct packet_t;
 struct dictionary_t;
-struct histogram_t;
 
 struct report_snapshot_t
 {
+	MEOW_DEFINE_SMART_ENUM_STRUCT(prepare_type,	((full,          "full"))
+												((no_histograms, "no_histograms")));
+
 	// this struct is just a placeholder, same size as real hashtable iterator
 	// FIXME: what about alignment here?
 	// TODO: maybe make iteration completely internal
@@ -105,7 +107,7 @@ struct report_snapshot_t
 	// MUST be called before any of the functions below
 	// this exists primarily to allow preparation to take place in a thread
 	// different from the one handling report data (more parallelism, yey)
-	virtual void prepare() = 0;
+	virtual void prepare(prepare_type_t = prepare_type::full) = 0;
 	virtual bool is_prepared() const = 0;
 
 	// will return 0 if !is_prepared()

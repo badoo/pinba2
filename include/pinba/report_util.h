@@ -79,9 +79,13 @@ struct report_snapshot_traits___example
 	using src_ticks_t = ; // source ticks_ringbuffer_t
 	using hashtable_t = ; // result hashtable (that we're going to iterate over)
 
-	// merge full tick from src ringbuffer to current hashtable_t state
-	// from can be NULL (when there is no timeslice for this interval)
-	static void merge_from_to(report_info_t& rinfo, typename src_ticks_t::value_t const *from, hashtable_t& to);
+	// merge ticks from src_ticks_t to hashtable_t
+	static void merge_ticks_into_data(
+			  pinba_globals_t *globals
+			, report_info_t& rinfo
+			, src_ticks_t& ticks
+			, hashtable_t& to
+			, report_snapshot_t::prepare_type_t ptype);
 
 	// get iterator keys/values/histograms at iterator
 	static report_key_t key_at_position(hashtable_t const&, iterator_t const&);
@@ -119,12 +123,12 @@ private:
 		return globals_->dictionary();
 	}
 
-	virtual void prepare() override
+	virtual void prepare(prepare_type_t ptype) override
 	{
 		if (this->is_prepared())
 			return;
 
-		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_);
+		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_, ptype);
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();

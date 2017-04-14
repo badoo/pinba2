@@ -373,7 +373,7 @@ public: // snapshot
 			return dictionary_;
 		}
 
-		virtual void prepare() override
+		virtual void prepare(prepare_type_t ptype) override
 		{
 			if (this->is_prepared())
 				return;

@@ -326,7 +326,12 @@ public: // snapshot
 		}
 
 		// merge from src ringbuffer to snapshot data
-		static void merge_ticks_into_data(pinba_globals_t *globals, report_info_t& rinfo, src_ticks_t const& ticks, hashtable_t& to)
+		static void merge_ticks_into_data(
+			  pinba_globals_t *globals
+			, report_info_t& rinfo
+			, src_ticks_t& ticks
+			, hashtable_t& to
+			, report_snapshot_t::prepare_type_t ptype)
 		{
 #if 0
 			struct merger_t
@@ -439,12 +444,7 @@ public: // snapshot
 				__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
 #endif
 
-			// do NOT clear ticks, as we take pointers to histograms inside
-			// so ticks need to be alive while this report is alive
-
-			// MEOW_DEFER(
-			// 	ticks.clear();
-			// );
+			bool const need_histograms = (rinfo.hv_enabled && ptype != report_snapshot_t::prepare_type::no_histograms);
 
 			uint64_t n_ticks = 0;
 			uint64_t key_lookups = 0;
@@ -468,7 +468,7 @@ public: // snapshot
 					dst.data.ru_utime   += src_data.ru_utime;
 					dst.data.ru_stime   += src_data.ru_stime;
 
-					if (rinfo.hv_enabled)
+					if (need_histograms)
 					{
 						flat_histogram_t const& src_hv = tick->data.hvs[i];
 
@@ -486,6 +486,12 @@ public: // snapshot
 
 			LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
 				rinfo.name, n_ticks, key_lookups, hv_appends);
+
+			// can clean ticks only if histograms were not merged
+			// since histogram merger uses raw pointers to tick_data_t::hvs[]::values
+			// and those need to be alive while this snapshot is alive
+			if (!need_histograms)
+				ticks.clear();
 		}
 	};
 
