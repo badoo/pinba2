@@ -12,7 +12,7 @@
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
 	- [ ] log levels support (with runtime change?)
-- [ ] timer tag based filtering (i.e. take only timers with tag:browser=chrome)
+- [ ] tag based filtering (i.e. take only timers with tag:browser=chrome)
 - per-report
 	- [x] rusage
 	- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
@@ -22,8 +22,8 @@
 - global stats
 	- [x] mysql table
 	- [x] status variables
-	- [ ] make stats table the same as status variables, or remove it in favor of the former
-- [ ] calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
+	- [x] make stats table the same as status variables, or remove it in favor of the former
+- [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
 
 

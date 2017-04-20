@@ -166,11 +166,9 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 {
 	struct view_row_t
 	{
-		pinba_share_ptr   share;
-		std::string       report_name; // copied from share, to reduce locking
-		report_state_ptr  report_state;
+		pinba_share_data_t  share_data;
+		report_state_ptr    report_state;
 	};
-	// using view_row_ptr = std::unique_ptr<view_row_t>;
 	using view_t       = std::vector<view_row_t>;
 
 	view_t            data_;
@@ -197,7 +195,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 			for (auto const& share_pair : P_CTX_->open_shares)
 			{
-				auto const share = share_pair.second;
+				auto const *share = share_pair.second.get();
 
 				// use only shares that are actually supposed to be backed by pinba report
 				if (!share->report_needs_engine)
@@ -207,23 +205,22 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				if (!share->report_active)
 					continue;
 
-				tmp_data.emplace_back();
-				auto& row = tmp_data.back();
-
-				row.share       = share;
-				row.report_name = share->report_name;
+				tmp_data.emplace_back(view_row_t{
+					.share_data   = *share, // a copy
+					.report_state = {},
+				});
 			}
 
 			return tmp_data;
 		}();
 
 		// get reports state, no lock needed here, might be slow
-		// but report that we've taken share for might have been deleted meanwhile
+		// also some reports, that we've coped data for, might have been deleted meanwhile
 		for (auto& row : tmp_data)
 		{
 			try
 			{
-				auto rstate = P_E_->get_report_state(row.report_name);
+				auto rstate = P_E_->get_report_state(row.share_data.report_name);
 
 				assert(rstate); // the above function should throw if rstate is to be returned empty
 
@@ -232,7 +229,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			}
 			catch (std::exception const& e)
 			{
-				LOG_DEBUG(P_L_, "get_report_state for {0} failed (skipping), err: {1}", row.report_name, e.what());
+				LOG_DEBUG(P_L_, "get_report_state for {0} failed (skipping), err: {1}", row.share_data.report_name, e.what());
 				continue;
 			}
 		}
@@ -258,7 +255,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		);
 
 		auto const *row   = &(*pos_);
-		auto const *share = row->share.get();
+		auto const *sdata = &row->share_data;
 		auto       *table = handler->current_table();
 
 		report_info_t const      *rinfo      = row->report_state->info;
@@ -268,9 +265,6 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		// remember to lock this row stats data, since it might be changed by report host thread
 		// FIXME: this probably IS too coarse!
 		std::lock_guard<std::mutex> stats_lk_(rstats->lock);
-
-		// remember to lock share to read, might be too coarse, but whatever
-		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
@@ -294,20 +288,20 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			{
 				case 0:
 					(*field)->set_notnull();
-					(*field)->store(share->mysql_name.c_str(), share->mysql_name.length(), &my_charset_bin);
+					(*field)->store(sdata->mysql_name.c_str(), sdata->mysql_name.length(), &my_charset_bin);
 				break;
 
 				case 1:
 					(*field)->set_notnull();
-					(*field)->store(share->report_name.c_str(), share->report_name.length(), &my_charset_bin);
+					(*field)->store(sdata->report_name.c_str(), sdata->report_name.length(), &my_charset_bin);
 				break;
 
 				case 2:
 				{
-					str_ref const kind_name = [&share]()
+					str_ref const kind_name = [&sdata]()
 					{
-						return (share->view_conf)
-								? pinba_view_kind::enum_as_str_ref(share->view_conf->kind)
+						return (sdata->view_conf)
+								? pinba_view_kind::enum_as_str_ref(sdata->view_conf->kind)
 								: meow::ref_lit("!! <table comment parse error (select from it, to see the error)>");
 					}();
 
@@ -378,10 +372,8 @@ public:
 			return HA_ERR_INTERNAL_ERROR;
 		}
 
-		// TODO: check if percentile fields are being requested
-		//       and do not merge histograms if not
+		// check if percentile fields are being requested and do not merge histograms if not
 
-		// XXX: reading from share without a lock
 		bool const need_percentiles = [&]()
 		{
 			unsigned percentile_field_min = 0;
@@ -431,6 +423,8 @@ public:
 			return false;
 		}();
 
+		// perform snapshot merge, this might take some time
+		// TODO: write this time back to originating report's stats (non-trivial)
 		{
 			meow::stopwatch_t sw;
 
