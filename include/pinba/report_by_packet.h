@@ -92,9 +92,9 @@ public: // packet filtering
 			{
 				for (uint32_t i = 0; i < packet->tag_count; ++i)
 				{
-					if (packet->tags[i].name_id == name_id)
+					if (packet->tag_name_ids[i] == name_id)
 					{
-						return (packet->tags[i].value_id == value_id);
+						return (packet->tag_value_ids[i] == value_id);
 					}
 				}
 				return false;

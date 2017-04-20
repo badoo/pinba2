@@ -148,7 +148,7 @@ inline void dump_packet(packet_t *packet, struct nmpa_s *nmpa)
 	}();
 
 	ff::fmt(stderr, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
-	ff::fmt(stderr, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packet->tags[0]));
+	ff::fmt(stderr, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
 	ff::fmt(stderr, "p: {0}, {1}, {2}, n_timers: {3}, n_tags: {4}, n_timer_tags: {5}\n",
 		packet->dictionary->get_word(packet->host_id),
 		packet->dictionary->get_word(packet->server_id),

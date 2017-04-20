@@ -138,10 +138,13 @@ packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, stru
 	});
 
 	p->tag_count = r->n_tag_name;
-	p->tags = (packed_tag_t*)nmpa_alloc(nmpa, sizeof(packed_tag_t) * r->n_tag_name);
+	p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+	p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
 	for (unsigned i = 0; i < r->n_tag_name; i++)
 	{
-		p->tags[i] = { td[r->tag_name[i]], td[r->tag_value[i]] };
+		// FIXME: maybe split this into two loops (if the difference is even measureable)
+		p->tag_name_ids[i]  = td[r->tag_name[i]];
+		p->tag_value_ids[i] = td[r->tag_value[i]];
 	}
 
 	return p;

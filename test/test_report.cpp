@@ -782,7 +782,7 @@ public:
 			}
 		}
 
-		// finds timer with required tags
+		// put key data into out_range if timer has all the parts
 		auto const fetch_by_timer_tags = [&](key_info_t const& ki, key_subrange_t out_range, packed_timer_t const *t) -> bool
 		{
 			uint32_t const n_tags_required = out_range.size();
@@ -819,11 +819,11 @@ public:
 			{
 				for (uint16_t i = 0, i_end = packet->tag_count; i < i_end; ++i)
 				{
-					if (packet->tags[i].name_id != ki.request_tag_r[tag_i].d.request_tag)
+					if (packet->tag_name_ids[i] != ki.request_tag_r[tag_i].d.request_tag)
 						continue;
 
 					n_tags_found++;
-					out_range[tag_i] = packet->tags[i].value_id;
+					out_range[tag_i] = packet->tag_value_ids[i];
 
 					if (n_tags_found == n_tags_required)
 						return true;
@@ -832,6 +832,7 @@ public:
 
 			return (n_tags_found == n_tags_required);
 		};
+
 
 		auto const find_request_fields = [&](key_info_t const& ki, key_t *out_key) -> bool
 		{
@@ -1108,7 +1109,8 @@ try
 		.ru_utime = duration_t{ 3 * msec_in_sec },
 		.ru_stime = duration_t{ 1 * msec_in_sec },
 		.dictionary = NULL,
-		.tags = NULL,
+		.tag_name_ids = NULL,
+		.tag_value_ids = NULL,
 		.timers = NULL,
 	};
 
