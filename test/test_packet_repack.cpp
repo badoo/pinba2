@@ -162,11 +162,12 @@ inline void dump_packet(packet_t *packet, struct nmpa_s *nmpa)
 		ff::fmt(stdout, "  t[{0}]: {{ {1}, {2}, {3} }\n", i, t.value, t.ru_utime, t.ru_stime);
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
-			auto const& tag = t.tags[j];
+			auto const name_id = t.tag_name_ids[j];
+			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(stdout, "    {0}:{1} -> {2}:{3}\n",
-				tag.name_id, packet->dictionary->get_word(tag.name_id),
-				tag.value_id, packet->dictionary->get_word(tag.value_id));
+				name_id, packet->dictionary->get_word(name_id),
+				value_id, packet->dictionary->get_word(value_id));
 		}
 		ff::fmt(stdout, "\n");
 	}

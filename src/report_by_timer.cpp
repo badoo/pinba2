@@ -798,12 +798,12 @@ public:
 
 				for (uint32_t tag_i = 0; tag_i < t->tag_count; ++tag_i)
 				{
-					if (t->tags[tag_i].name_id != tfd.name_id)
+					if (t->tag_name_ids[tag_i] != tfd.name_id)
 						continue;
 
 					tag_exists = true;
 
-					if (t->tags[tag_i].value_id != tfd.value_id)
+					if (t->tag_value_ids[tag_i] != tfd.value_id)
 						return false;
 				}
 
@@ -824,11 +824,11 @@ public:
 			{
 				for (uint32_t tag_i = 0; tag_i < t->tag_count; ++tag_i)
 				{
-					if (t->tags[tag_i].name_id != ki.timer_tag_r[i].d.timer_tag)
+					if (t->tag_name_ids[tag_i] != ki.timer_tag_r[i].d.timer_tag)
 						continue;
 
 					n_tags_found++;
-					out_range[i] = t->tags[tag_i].value_id;
+					out_range[i] = t->tag_value_ids[tag_i];
 
 					if (n_tags_found == n_tags_required)
 						return true;

@@ -73,21 +73,22 @@ struct packed_tag_t
 static_assert(sizeof(packed_tag_t) == 8, "make sure packed_tag_t has no padding inside");
 static_assert(std::is_standard_layout<packed_tag_t>::value == true, "packed_tag_t must be a standard layout type");
 
-struct packed_timer_t // sizeof == 40bytes (can reduce further using microseconds_t and using uint16_t tag_count)
+struct packed_timer_t
 {
 	uint32_t        hit_count;
 	uint32_t        tag_count;
 	duration_t      value;
 	duration_t      ru_utime;
 	duration_t      ru_stime;
-	packed_tag_t   *tags;
+	uint32_t        *tag_name_ids;
+	uint32_t        *tag_value_ids; // TODO: remove this ptr, address via tag_name_ids
 }; // __attribute__((packed)); // needed only with sizeof() == 28 below
 
 // check the size, had to add __attribute__((packed)) to definition, since the compiler likes
 // to have struct sizes % 8 == 0, to have them nicely aligned in arrays
 // but we don't need that, since 1st member is uint32 and is aligned properly in arrays as well
 // static_assert(sizeof(packed_timer_t) == 28, "make sure packed_timer_t has no padding inside");
-static_assert(sizeof(packed_timer_t) == 40, "make sure packed_timer_t has no padding inside");
+static_assert(sizeof(packed_timer_t) == 48, "make sure packed_timer_t has no padding inside");
 static_assert(std::is_standard_layout<packed_timer_t>::value == true, "packed_timer_t must have standard layout");
 
 struct packet_t
@@ -106,7 +107,7 @@ struct packet_t
 	duration_t      ru_stime;        // use microseconds_t here?
 	dictionary_t    *dictionary;     // dictionary used to translate ids to names
 	uint32_t        *tag_name_ids;   // request tag names  (sequential in memory = scan speed)
-	uint32_t        *tag_value_ids;  // request tag values (sequential in memory = scan speed)
+	uint32_t        *tag_value_ids;  // request tag values (sequential in memory = scan speed) TODO: remove this ptr, address via tag_name_ids
 	packed_timer_t  *timers;
 };
 
@@ -167,12 +168,7 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 		return result;
 	}();
 
-	// if (nmpa)
-	// {
-	// 	ff::fmt(sink, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
-	// }
-
-	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
+	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packed_timer_t), sizeof(packed_tag_t));
 	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
 		packet->host_id, packet->dictionary->get_word(packet->host_id),
 		packet->server_id, packet->dictionary->get_word(packet->server_id),
@@ -197,11 +193,12 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 		ff::fmt(sink, "  t[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
-			auto const& tag = t.tags[j];
+			auto const name_id = t.tag_name_ids[j];
+			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(sink, "    {0}:{1} -> {2}:{3}\n",
-				tag.name_id, packet->dictionary->get_word(tag.name_id),
-				tag.value_id, packet->dictionary->get_word(tag.value_id));
+				name_id, packet->dictionary->get_word(name_id),
+				value_id, packet->dictionary->get_word(value_id));
 		}
 		ff::fmt(sink, "\n");
 	}

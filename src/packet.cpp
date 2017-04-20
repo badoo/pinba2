@@ -125,26 +125,40 @@ packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, stru
 		t->ru_utime  = timer.ru_utime;
 		t->ru_stime  = timer.ru_stime;
 		t->tag_count = timer.tag_count;
-
-		if (timer.tag_count > 0)
-		{
-			t->tags = (packed_tag_t*)nmpa_alloc(nmpa, sizeof(packed_tag_t) * timer.tag_count);
-
-			for (unsigned i = 0; i < timer.tag_count; i++)
-			{
-				t->tags[i] = { td[timer.tag_name_ids[i]], td[timer.tag_value_ids[i]] };
-			}
-		}
 	});
 
-	p->tag_count = r->n_tag_name;
-	p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
-	p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
-	for (unsigned i = 0; i < r->n_tag_name; i++)
+	// timer tags
 	{
-		// FIXME: maybe split this into two loops (if the difference is even measureable)
-		p->tag_name_ids[i]  = td[r->tag_name[i]];
-		p->tag_value_ids[i] = td[r->tag_value[i]];
+		// copy tag names / values in one go, have them be contiguous in memory
+		uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
+		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
+		for (unsigned i = 0; i < r->n_timer_tag_name; i++)
+		{
+			timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
+			timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
+		}
+
+		// fixup base pointers
+		unsigned current_tag_offset = 0;
+		for (unsigned i = 0; i < r->n_timer_value; i++)
+		{
+			p->timers[i].tag_name_ids = timer_tag_name_ids + current_tag_offset;
+			p->timers[i].tag_value_ids = timer_tag_value_ids + current_tag_offset;
+			current_tag_offset += r->timer_tag_count[i];
+		}
+	}
+
+	// request tags
+	p->tag_count = r->n_tag_name;
+	if (p->tag_count > 0)
+	{
+		p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		for (unsigned i = 0; i < r->n_tag_name; i++)
+		{
+			p->tag_name_ids[i]  = td[r->tag_name[i]];
+			p->tag_value_ids[i] = td[r->tag_value[i]];
+		}
 	}
 
 	return p;
