@@ -5,8 +5,6 @@
 #include <type_traits>
 
 #include <boost/noncopyable.hpp>
-#include <boost/intrusive_ptr.hpp>
-#include <boost/smart_ptr/intrusive_ref_counter.hpp>
 
 #include <sparsehash/dense_hash_map>
 

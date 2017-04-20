@@ -334,5 +334,5 @@ namespace { namespace aux {
 
 report_ptr create_report_by_request(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 {
-	return meow::make_intrusive<aux::report___by_request_t>(globals, conf);
+	return std::make_shared<aux::report___by_request_t>(globals, conf);
 }

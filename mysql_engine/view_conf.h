@@ -11,6 +11,10 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct report_conf___by_packet_t;
+struct report_conf___by_request_t;
+struct report_conf___by_timer_t;
+
 MEOW_DEFINE_SMART_ENUM_STRUCT(pinba_view_kind,
 								((stats,                   "stats"))
 								((active_reports,          "active_reports"))
@@ -19,7 +23,7 @@ MEOW_DEFINE_SMART_ENUM_STRUCT(pinba_view_kind,
 								((report_by_packet_data,   "report_by_packet_data"))
 								);
 
-struct pinba_view_conf_t
+struct pinba_view_conf_t : private boost::noncopyable
 {
 	std::string                 orig_comment;
 
@@ -43,18 +47,16 @@ struct pinba_view_conf_t
 
 	duration_t                  min_time;    // 0 if unset
 	duration_t                  max_time;    // 0 if unset
+
+	virtual ~pinba_view_conf_t() {}
+
+	virtual report_conf___by_packet_t const*   get___by_packet() const = 0;
+	virtual report_conf___by_request_t const*  get___by_request() const = 0;
+	virtual report_conf___by_timer_t const*    get___by_timer() const = 0;
 };
-using pinba_view_conf_ptr = std::unique_ptr<pinba_view_conf_t>;
+using pinba_view_conf_ptr = std::shared_ptr<pinba_view_conf_t const>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct report_conf___by_packet_t;
-struct report_conf___by_request_t;
-struct report_conf___by_timer_t;
-
-report_conf___by_packet_t const*   pinba_view_conf_get___by_packet(pinba_view_conf_t const&);
-report_conf___by_request_t const*  pinba_view_conf_get___by_request(pinba_view_conf_t const&);
-report_conf___by_timer_t const*    pinba_view_conf_get___by_timer(pinba_view_conf_t const&);
 
 pinba_view_conf_ptr pinba_view_conf_parse(str_ref table_name, str_ref conf_string);
 

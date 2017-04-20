@@ -18,7 +18,6 @@
 
 #include <boost/noncopyable.hpp>
 
-#include <meow/intrusive_ptr.hpp>
 #include <meow/logging/logger.hpp>
 #include <meow/logging/log_write.hpp>
 
@@ -34,7 +33,7 @@ struct pinba_mysql_ctx_t;
 struct pinba_handler_t;
 
 struct pinba_share_t;
-using pinba_share_ptr = boost::intrusive_ptr<pinba_share_t>;
+using pinba_share_ptr = std::shared_ptr<pinba_share_t>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

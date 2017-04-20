@@ -7,7 +7,6 @@
 
 #include <boost/noncopyable.hpp>
 
-#include <meow/intrusive_ptr.hpp>
 #include <meow/format/format_to_string.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>

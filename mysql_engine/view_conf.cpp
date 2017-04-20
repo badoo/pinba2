@@ -18,6 +18,24 @@ namespace { namespace aux {
 		report_conf___by_packet_t   by_packet_conf;
 		report_conf___by_request_t  by_request_conf;
 		report_conf___by_timer_t    by_timer_conf;
+
+		virtual report_conf___by_packet_t const*   get___by_packet() const override
+		{
+			assert(this->kind == pinba_view_kind::report_by_packet_data);
+			return &this->by_packet_conf;
+		}
+
+		virtual report_conf___by_request_t const*  get___by_request() const override
+		{
+			assert(this->kind == pinba_view_kind::report_by_request_data);
+			return &this->by_request_conf;
+		}
+
+		virtual report_conf___by_timer_t const*    get___by_timer() const override
+		{
+			assert(this->kind == pinba_view_kind::report_by_timer_data);
+			return &this->by_timer_conf;
+		}
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,11 +220,9 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-	static
-	std::unique_ptr<pinba_view_conf___internal_t>
-	pinba_view_conf_parse___internal(str_ref table_name, str_ref conf_string)
+	auto pinba_view_conf_parse___internal(str_ref table_name, str_ref conf_string) -> std::shared_ptr<pinba_view_conf___internal_t>
 	{
-		auto result = meow::make_unique<pinba_view_conf___internal_t>();
+		auto result = std::make_shared<pinba_view_conf___internal_t>();
 		result->orig_comment = conf_string.str();
 		result->name         = table_name.str();
 
@@ -220,13 +236,13 @@ namespace { namespace aux {
 		if (report_type == "stats")
 		{
 			result->kind = pinba_view_kind::stats;
-			return move(result);
+			return result;
 		}
 
 		if (report_type == "active")
 		{
 			result->kind = pinba_view_kind::active_reports;
-			return move(result);
+			return result;
 		}
 
 		if (report_type == "packet" || report_type == "info") // support 'info' here for 'compatibility' with pinba_engine
@@ -258,7 +274,7 @@ namespace { namespace aux {
 			if (err)
 				throw std::runtime_error(ff::fmt_str("bad filters_spec: {0}", err));
 
-			return move(result);
+			return result;
 		}
 
 		if (report_type == "request")
@@ -291,7 +307,7 @@ namespace { namespace aux {
 			if (err)
 				throw std::runtime_error(ff::fmt_str("bad filters_spec: {0}", err));
 
-			return move(result);
+			return result;
 		}
 
 		if (report_type == "timer")
@@ -324,7 +340,7 @@ namespace { namespace aux {
 			if (err)
 				throw std::runtime_error(ff::fmt_str("bad filters_spec: {0}", err));
 
-			return move(result);
+			return result;
 		}
 
 		throw std::runtime_error(ff::fmt_str("{0}; unknown v2/<table_type> {1}", __func__, report_type));
@@ -572,6 +588,29 @@ namespace { namespace aux {
 		return {};
 	}
 
+	pinba_error_t pinba_view_conf___translate(aux::pinba_view_conf___internal_t& vcf)
+	{
+		switch (vcf.kind)
+		{
+			case pinba_view_kind::stats:
+			case pinba_view_kind::active_reports:
+				return {};
+
+			case pinba_view_kind::report_by_request_data:
+				return aux::pinba_view_conf___translate(&vcf.by_request_conf, vcf);
+
+			case pinba_view_kind::report_by_timer_data:
+				return aux::pinba_view_conf___translate(&vcf.by_timer_conf, vcf);
+
+			case pinba_view_kind::report_by_packet_data:
+				return aux::pinba_view_conf___translate(&vcf.by_packet_conf, vcf);
+
+			default:
+				assert(!"must not be reached");
+				return {};
+		}
+	}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 	pinba_error_t pinba_view_conf___validate(pinba_view_conf_t const& vcf)
@@ -592,31 +631,6 @@ namespace { namespace aux {
 }} // namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-// FIXME(antoxa): need to get rid of these switches? (or maybe not, it's only just 3 of them :) )
-
-static pinba_error_t pinba_view_conf___translate(aux::pinba_view_conf___internal_t& vcf)
-{
-	switch (vcf.kind)
-	{
-		case pinba_view_kind::stats:
-		case pinba_view_kind::active_reports:
-			return {};
-
-		case pinba_view_kind::report_by_request_data:
-			return aux::pinba_view_conf___translate(&vcf.by_request_conf, vcf);
-
-		case pinba_view_kind::report_by_timer_data:
-			return aux::pinba_view_conf___translate(&vcf.by_timer_conf, vcf);
-
-		case pinba_view_kind::report_by_packet_data:
-			return aux::pinba_view_conf___translate(&vcf.by_packet_conf, vcf);
-
-		default:
-			assert(!"must not be reached");
-			return {};
-	}
-}
-
 
 pinba_view_conf_ptr pinba_view_conf_parse(str_ref table_name, str_ref conf_string)
 {
@@ -624,15 +638,15 @@ pinba_view_conf_ptr pinba_view_conf_parse(str_ref table_name, str_ref conf_strin
 
 	pinba_error_t err;
 
-	err = pinba_view_conf___validate(*result);
+	err = aux::pinba_view_conf___validate(*result);
 	if (err)
 		throw std::runtime_error(err.what());
 
-	err = pinba_view_conf___translate(*result);
+	err = aux::pinba_view_conf___translate(*result);
 	if (err)
 		throw std::runtime_error(err.what());
 
-	return move(result);
+	return result;
 }
 
 

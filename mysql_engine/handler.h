@@ -43,12 +43,9 @@ pinba_report_ptr    pinba_view_report_create(pinba_view_conf_t const& conf);
 // regardless of what tables are open in mysql
 // these ARE deleted on 'drop table' (aka handler::delete_table())
 // and corresponding report is dropped from pinba engine as well
-struct pinba_share_t
-	: private boost::noncopyable
-	, boost::intrusive_ref_counter<pinba_share_t>
-{
-	THR_LOCK               lock;                 // mysql thread table lock (no idea, mon)
 
+struct pinba_share_data_t // intentionally copyable
+{
 	std::string            mysql_name;           // mysql table name (can be changed)
 	pinba_view_conf_ptr    view_conf;            // config parsed from mysql table comment
 
@@ -56,6 +53,13 @@ struct pinba_share_t
 	std::string            report_name;          // pinba engine report name (immune to mysql table renames)
 	bool                   report_active;        // has the report (above) been activated with pinba engine?
 	bool                   report_needs_engine;  // if this report exists in pinba engine
+};
+
+struct pinba_share_t
+	: private boost::noncopyable
+	, public pinba_share_data_t
+{
+	THR_LOCK               lock;                 // mysql thread table lock (no idea, mon)
 
 	pinba_share_t(std::string const& table_name);
 	~pinba_share_t();

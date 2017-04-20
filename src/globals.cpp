@@ -4,8 +4,6 @@
 #include <nanomsg/pubsub.h>
 #include <nanomsg/reqrep.h>
 
-#include <meow/intrusive_ptr.hpp>
-
 #define MEOW_FORMAT_FD_SINK_NO_WRITEV 1
 #include <meow/logging/fd_logger.hpp>
 

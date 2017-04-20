@@ -4,8 +4,6 @@
 #include <atomic>
 #include <mutex>
 
-#include <meow/intrusive_ptr.hpp>
-
 #include "pinba/globals.h"
 #include "pinba/report_key.h"
 
@@ -138,9 +136,7 @@ void debug_dump_report_snapshot(FILE*, report_snapshot_t*);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct report_t
-	: public boost::intrusive_ref_counter<report_t>
-	, private boost::noncopyable
+struct report_t : private boost::noncopyable
 {
 	virtual ~report_t() {}
 
@@ -163,7 +159,7 @@ struct report_t
 	virtual report_estimates_t  get_estimates() = 0;
 	virtual report_snapshot_ptr get_snapshot() = 0;
 };
-typedef boost::intrusive_ptr<report_t> report_ptr;
+typedef std::shared_ptr<report_t> report_ptr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

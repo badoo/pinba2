@@ -2,7 +2,6 @@
 #include <vector>
 
 #include <meow/defer.hpp>
-#include <meow/intrusive_ptr.hpp>
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"

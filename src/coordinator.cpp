@@ -6,7 +6,6 @@
 #include <nanomsg/pubsub.h>
 #include <nanomsg/reqrep.h>
 
-#include <meow/intrusive_ptr.hpp>
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"

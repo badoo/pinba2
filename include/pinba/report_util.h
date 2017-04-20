@@ -8,7 +8,6 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/sparse_hash_map>
 
-#include <meow/intrusive_ptr.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -251,8 +250,7 @@ struct ticks_ringbuffer_t : private boost::noncopyable
 {
 	using value_type = T;
 
-	struct tick_t
-		: boost::intrusive_ref_counter<tick_t>
+	struct tick_t : private boost::noncopyable
 	{
 		timeval_t   start_tv;
 		timeval_t   end_tv;
@@ -266,7 +264,7 @@ struct ticks_ringbuffer_t : private boost::noncopyable
 		}
 	};
 
-	using tick_ptr     = boost::intrusive_ptr<tick_t>;
+	using tick_ptr     = std::shared_ptr<tick_t>;
 	using ringbuffer_t = std::vector<tick_ptr>;
 
 public:
