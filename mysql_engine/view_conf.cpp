@@ -448,6 +448,42 @@ namespace { namespace aux {
 		if (vcf.max_time.nsec)
 			conf->filters.push_back(report_conf___by_packet_t::make_filter___by_max_time(vcf.max_time));
 
+		for (auto const& filter : vcf.filters)
+		{
+			key_descriptor_t kd;
+
+			pinba_error_t const err = key_descriptor_by_name(&kd, filter.key);
+			if (err)
+				return err;
+
+			switch (kd.kind)
+			{
+				case RKD_REQUEST_FIELD:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_request_field(kd.request_field, value_id));
+				}
+				break;
+
+				case RKD_REQUEST_TAG:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_packet_t::make_filter___by_request_tag(kd.request_tag, value_id));
+				}
+				break;
+
+				case RKD_TIMER_TAG:
+					return ff::fmt_err("timer_tag filtering not supported for 'packet' reports");
+				break;
+
+				default:
+					assert(!"can't be reached");
+					break;
+			}
+		}
+
 		return {};
 	}
 
@@ -498,7 +534,41 @@ namespace { namespace aux {
 		if (vcf.max_time.nsec)
 			conf->filters.push_back(report_conf___by_request_t::make_filter___by_max_time(vcf.max_time));
 
-		// TODO: key filters
+		for (auto const& filter : vcf.filters)
+		{
+			key_descriptor_t kd;
+
+			pinba_error_t const err = key_descriptor_by_name(&kd, filter.key);
+			if (err)
+				return err;
+
+			switch (kd.kind)
+			{
+				case RKD_REQUEST_FIELD:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_request_t::make_filter___by_request_field(kd.request_field, value_id));
+				}
+				break;
+
+				case RKD_REQUEST_TAG:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_request_t::make_filter___by_request_tag(kd.request_tag, value_id));
+				}
+				break;
+
+				case RKD_TIMER_TAG:
+					return ff::fmt_err("timer_tag filtering not supported for 'request' reports");
+				break;
+
+				default:
+					assert(!"can't be reached");
+					break;
+			}
+		}
 
 		return {};
 	}
@@ -563,9 +633,20 @@ namespace { namespace aux {
 			switch (kd.kind)
 			{
 				case RKD_REQUEST_FIELD:
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_request_field(kd.request_field, value_id));
+				}
+				break;
+
 				case RKD_REQUEST_TAG:
-					// TODO: implementation
-					break;
+				{
+					// XXX: try to avoid modifying global state here
+					uint32_t const value_id = P_G_->dictionary()->get_or_add(filter.value);
+					conf->filters.push_back(report_conf___by_timer_t::make_filter___by_request_tag(kd.request_tag, value_id));
+				}
+				break;
 
 				case RKD_TIMER_TAG:
 				{

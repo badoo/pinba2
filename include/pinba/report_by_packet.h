@@ -72,6 +72,36 @@ public: // packet filtering
 			},
 		};
 	}
+
+	static inline filter_descriptor_t make_filter___by_request_field(uint32_t packet_t::* field_ptr, uint32_t value_id)
+	{
+		return filter_descriptor_t {
+			.name    = ff::fmt_str("by_request_field/{0}={1}", 0/*FIXME:field_ptr*/, value_id),
+			.func = [=](packet_t *packet) -> bool
+			{
+				return (packet->*field_ptr == value_id);
+			},
+		};
+	}
+
+	static inline filter_descriptor_t make_filter___by_request_tag(uint32_t name_id, uint32_t value_id)
+	{
+		return filter_descriptor_t {
+			.name    = ff::fmt_str("by_request_tag/{0}={1}", name_id, value_id),
+			.func = [=](packet_t *packet) -> bool
+			{
+				for (uint32_t i = 0; i < packet->tag_count; ++i)
+				{
+					if (packet->tags[i].name_id == name_id)
+					{
+						return (packet->tags[i].value_id == value_id);
+					}
+				}
+				return false;
+			},
+		};
+	}
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
