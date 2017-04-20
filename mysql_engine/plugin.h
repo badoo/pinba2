@@ -34,6 +34,7 @@ pinba_variables_t* pinba_variables();
 // status variables reported through show global status and the likes of it
 
 // use only standard c99 types here, like long, etc. to be compatible with mysql internals
+// when changing this struct - also fix plugin.cpp vars list and handler.cpp stats table view
 
 struct pinba_status_variables_t
 {
@@ -71,9 +72,10 @@ struct pinba_status_variables_t
 	unsigned long long  dictionary_size;
 	unsigned long long  dictionary_mem_used;
 };
+using pinba_status_variables_ptr = std::unique_ptr<pinba_status_variables_t>;
 
-void                      pinba_update_status_variables();
-pinba_status_variables_t* pinba_status_variables();
+pinba_status_variables_ptr pinba_collect_status_variables();
+pinba_status_variables_t*  pinba_status_variables();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

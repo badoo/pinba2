@@ -67,38 +67,30 @@ struct pinba_view___base_t : public pinba_view_t
 
 struct pinba_view___stats_t : public pinba_view___base_t
 {
-	bool output_done;
+	pinba_status_variables_ptr vars_;
 
 	virtual int  rnd_init(pinba_handler_t*, bool scan) override
 	{
-		output_done = false;
+		vars_ = pinba_collect_status_variables();
+		return 0;
+	}
+
+	virtual int  rnd_end(pinba_handler_t*) override
+	{
+		vars_.reset();
 		return 0;
 	}
 
 	virtual int  rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
-		if (output_done)
+		if (!vars_)
 			return HA_ERR_END_OF_FILE;
 
-		auto const *stats = P_G_->stats();
+		MEOW_DEFER(
+			vars_.reset();
+		);
+
 		auto *table = handler->current_table();
-
-		auto const repacker_threads_tmp = [&]()
-		{
-			std::lock_guard<std::mutex> lk_(stats->mtx);
-			return stats->repacker_threads;
-		}();
-
-		repacker_stats_t repacker_stats = [&]()
-		{
-			repacker_stats_t result = {};
-			for (auto const& rst : repacker_threads_tmp)
-			{
-				result.ru_utime += rst.ru_utime;
-				result.ru_stime += rst.ru_stime;
-			}
-			return result;
-		}();
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
@@ -114,76 +106,56 @@ struct pinba_view___stats_t : public pinba_view___base_t
 			if (!bitmap_is_set(table->read_set, field_index))
 				continue;
 
-			// mark field as writeable to avoid assert() in ::store() calls
-			// got no idea how to do this properly anyway
-			// bitmap_set_bit(table->write_set, field_index);
-
 			switch(field_index)
 			{
-				case 0:
-				{
-					auto const uptime = os_unix::clock_monotonic_now() - stats->start_tv;
-					(*field)->set_notnull();
-					(*field)->store(timeval_to_double(uptime));
-				}
-				break;
+				#define STORE(N, field_name)                 \
+					case N:                                  \
+						(*field)->set_notnull();             \
+						(*field)->store(vars_->field_name);  \
+					break;
+				/**/
 
-				case 1:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.poll_total);
-				break;
+				STORE(0,  uptime);
 
-				case 2:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_total);
-				break;
+				STORE(1,  udp_poll_total);
+				STORE(2,  udp_recv_total);
+				STORE(3,  udp_recv_eagain);
+				STORE(4,  udp_recv_bytes);
+				STORE(5,  udp_recv_packets);
+				STORE(6,  udp_packet_decode_err);
+				STORE(7,  udp_batch_send_total);
+				STORE(8,  udp_batch_send_err);
+				STORE(9,  udp_ru_utime);
+				STORE(10, udp_ru_stime);
 
-				case 3:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_eagain);
-				break;
+				STORE(11, repacker_poll_total);
+				STORE(12, repacker_recv_total);
+				STORE(13, repacker_recv_eagain);
+				STORE(14, repacker_recv_packets);
+				STORE(15, repacker_packet_validate_err);
+				STORE(16, repacker_batch_send_total);
+				STORE(17, repacker_batch_send_by_timer);
+				STORE(18, repacker_batch_send_by_size);
+				STORE(19, repacker_ru_utime);
+				STORE(20, repacker_ru_stime);
 
-				case 4:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_bytes);
-				break;
+				STORE(21, coordinator_batches_received);
+				STORE(22, coordinator_batch_send_total);
+				STORE(23, coordinator_batch_send_err);
+				STORE(24, coordinator_control_requests);
+				STORE(25, coordinator_ru_utime);
+				STORE(26, coordinator_ru_stime);
 
-				case 5:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.recv_packets);
-				break;
+				STORE(27, dictionary_size);
+				STORE(28, dictionary_mem_used);
 
-				case 6:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.packet_decode_err);
-				break;
-
-				case 7:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.batch_send_total);
-				break;
-
-				case 8:
-					(*field)->set_notnull();
-					(*field)->store(stats->udp.batch_send_err);
-				break;
-
-				case 9:
-					(*field)->set_notnull();
-					(*field)->store(timeval_to_double(repacker_stats.ru_utime));
-				break;
-
-				case 10:
-					(*field)->set_notnull();
-					(*field)->store(timeval_to_double(repacker_stats.ru_stime));
-				break;
+				#undef STORE
 
 			default:
 				break;
 			}
 		}
 
-		output_done = true;
 		return 0;
 	}
 };

@@ -26,16 +26,17 @@ pinba_variables_t* pinba_variables()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-static pinba_status_variables_t pinba_status_variables_ = {};
+static pinba_status_variables_t  pinba_status_variables_;
+static std::mutex                pinba_status_lock_;
 
 pinba_status_variables_t* pinba_status_variables()
 {
 	return &pinba_status_variables_;
 }
 
-void pinba_update_status_variables()
+pinba_status_variables_ptr pinba_collect_status_variables()
 {
-	auto       *vars  = pinba_status_variables();
+	auto        vars  = meow::make_unique<pinba_status_variables_t>();
 	auto const *stats = P_G_->stats();
 
 	vars->uptime = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
@@ -110,6 +111,8 @@ void pinba_update_status_variables()
 		vars->dictionary_size     = dictionary->size();
 		vars->dictionary_mem_used = dictionary->memory_used();
 	}
+
+	return std::move(vars);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -371,7 +374,19 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 		{ NullS, NullS, SHOW_LONG }
 	};
 
-	pinba_update_status_variables();
+	// XXX: assume that system vars are only selected with some kind of lock held
+	//      otherwise - i've got no idea how to protect the global datastructure
+	//      against modification while data is being read
+	//      i mean there is no way to lock things here, since we're not going to get called again to unlock
+	//      and can't just clone the data, since there is no way to free afterwards
+	//
+	//      so just lock on our side to prevent multiple 'show status' queries from fucking up the data
+	//      copy needed, since our var pointers are fixed in SVAR macros above
+	{
+		std::lock_guard<std::mutex> lk_(pinba_status_lock_);
+		*pinba_status_variables() = *pinba_collect_status_variables();
+	}
+
 	var->type = SHOW_ARRAY;
 	var->value = (char*)&vars;
 }
