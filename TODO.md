@@ -33,7 +33,7 @@
 	- [ ] configure support (or maybe runtime detection with dlsym?)
 - [ ] {medium} sorted arrays for histograms (almost there)
 - [ ] {medium} thread affinity
-- [ ] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (SSE mon!)
+- [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
 - [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
 	- kernel udp memory is usually tuned very low

@@ -87,24 +87,71 @@ Table comment syntax
 example
 
 	mysql> CREATE TABLE if not exists `stats` (
-			  `uptime` double NOT NULL,
-			  `udp_poll_total` bigint(20) unsigned NOT NULL,
-			  `udp_recv_total` bigint(20) unsigned NOT NULL,
-			  `udp_recv_eagain` bigint(20) unsigned NOT NULL,
-			  `udp_recv_bytes` bigint(20) unsigned NOT NULL,
-			  `udp_packets_received` bigint(20) unsigned NOT NULL,
-			  `udp_packets_decode_err` bigint(20) unsigned NOT NULL,
-			  `udp_batches` bigint(20) unsigned NOT NULL,
-			  `udp_batches_lost` bigint(20) unsigned NOT NULL
+			  `uptime` DOUBLE NOT NULL,
+			  `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_recv_bytes` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_packet_decode_err` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+			  `udp_ru_utime` DOUBLE NOT NULL,
+			  `udp_ru_stime` DOUBLE NOT NULL,
+			  `repacker_poll_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_recv_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_packet_validate_err` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_batch_send_by_timer` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_batch_send_by_size` BIGINT(20) UNSIGNED NOT NULL,
+			  `repacker_ru_utime` DOUBLE NOT NULL,
+			  `repacker_ru_stime` DOUBLE NOT NULL,
+			  `coordinator_batches_received` BIGINT(20) UNSIGNED NOT NULL,
+			  `coordinator_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+			  `coordinator_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+			  `coordinator_control_requests` BIGINT(20) UNSIGNED NOT NULL,
+			  `coordinator_ru_utime` DOUBLE NOT NULL,
+			  `coordinator_ru_stime` DOUBLE NOT NULL,
+			  `dictionary_size` BIGINT(20) UNSIGNED NOT NULL,
+			  `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL
 			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
-	mysql> select uptime, udp_recv_total, udp_recv_bytes, udp_packets_received, udp_packets_decode_err, udp_recv_bytes/uptime as bytes_per_sec, udp_packets_received/uptime as packets_per_sec, udp_recv_bytes/udp_packets_received as bytes_per_packet from stats;
-	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
-	| uptime         | udp_recv_total | udp_recv_bytes | udp_recv_packets | udp_packets_decode_err | bytes_per_sec     | packets_per_sec   | bytes_per_packet |
-	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
-	| 2920.189254705 |        2982158 |    21280114623 |         23070611 |                      0 | 7287238.177701511 | 7900.382128599611 |         922.3906 |
-	+----------------+----------------+----------------+----------------------+------------------------+-------------------+-------------------+------------------+
-	1 row in set (0.00 sec)
+
+	mysql> select *, (repacker_ru_utime/uptime) as repacker_ru_utime_per_sec from stats\G
+	*************************** 1. row ***************************
+	                      uptime: 68010.137554896
+	              udp_poll_total: 221300494
+	              udp_recv_total: 491356020
+	             udp_recv_eagain: 221273810
+	              udp_recv_bytes: 825110655708
+	            udp_recv_packets: 3688826822
+	       udp_packet_decode_err: 0
+	        udp_batch_send_total: 210814894
+	          udp_batch_send_err: 0
+	                udp_ru_utime: 5589.292
+	                udp_ru_stime: 7014.176
+	         repacker_poll_total: 211720282
+	         repacker_recv_total: 421384094
+	        repacker_recv_eagain: 210569200
+	       repacker_recv_packets: 3688826822
+	repacker_packet_validate_err: 0
+	   repacker_batch_send_total: 3719021
+	repacker_batch_send_by_timer: 677901
+	 repacker_batch_send_by_size: 3041120
+	           repacker_ru_utime: 12269.856
+	           repacker_ru_stime: 7373.804
+	coordinator_batches_received: 3719021
+	coordinator_batch_send_total: 7437390
+	  coordinator_batch_send_err: 0
+	coordinator_control_requests: 6812
+	        coordinator_ru_utime: 74.696
+	        coordinator_ru_stime: 59.36
+	             dictionary_size: 364
+	         dictionary_mem_used: 6303104
+	   repacker_ru_utime_per_sec: 0.18041216267348514
+
 
 **Active reports (unfinished)**
 
