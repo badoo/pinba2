@@ -66,6 +66,13 @@ namespace { namespace aux {
 			return fd_;
 		}
 
+		int release()
+		{
+			int tmp_fd = fd_;
+			fd_ = -1;
+			return tmp_fd;
+		}
+
 		void reset()
 		{
 			while (fd_ >= 0)
@@ -112,7 +119,7 @@ namespace { namespace aux {
 				.open(AF_SP, NN_PULL)
 				.bind(conf_->nn_shutdown);
 
-			this->try_bind();
+			this->try_resolve_listen_addr_port();
 		}
 
 		virtual void startup() override
@@ -124,7 +131,13 @@ namespace { namespace aux {
 			{
 				stats_->collector_threads.push_back({});
 
-				std::thread t([this, i]()
+				// per-thread SO_REUSEPORT bind
+				fd_handle_t fd_h = this->try_bind_to_addr(ai_);
+
+				// move lambda capture is not available in c++11
+				int const fd = fd_h.release();
+
+				std::thread t([this, i, fd]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
 					pthread_setname_np(pthread_self(), thr_name.c_str());
@@ -133,7 +146,7 @@ namespace { namespace aux {
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 					);
 
-					this->eat_udp(i);
+					this->eat_udp(i, fd_handle_t(fd));
 				});
 
 				// t.detach();
@@ -155,17 +168,14 @@ namespace { namespace aux {
 
 	private:
 
-		void try_bind()
+		void try_resolve_listen_addr_port()
 		{
 			os_addrinfo_list_ptr ai_list = os_unix::getaddrinfo_ex(conf_->address.c_str(), conf_->port.c_str(), AF_INET, SOCK_DGRAM, 0);
 			os_addrinfo_t *ai = ai_list.get(); // take 1st item for now
 
-			auto fd = this->try_bind_to_addr(ai);
-
 			// commit if everything is ok
 			ai_list_ = std::move(ai_list);
 			ai_      = ai;
-			fd_      = std::move(fd);
 		}
 
 		fd_handle_t try_bind_to_addr(os_addrinfo_t *ai)
@@ -178,6 +188,8 @@ namespace { namespace aux {
 			return std::move(fd);
 		}
 
+	private: // per-thread stuff
+
 		void send_current_batch(uint32_t thread_id, raw_request_ptr& req)
 		{
 			++stats_->udp.batch_send_total;
@@ -188,13 +200,13 @@ namespace { namespace aux {
 			req.reset(); // signal the need to reinit
 		}
 
-		void eat_udp(uint32_t const thread_id)
+		void eat_udp(uint32_t const thread_id, fd_handle_t fd)
 		{
-			// this->eat_udp_recv(thread_id);
-			this->eat_udp_recvmmsg(thread_id);
+			// this->eat_udp_recv(thread_id, std::move(fd));
+			this->eat_udp_recvmmsg(thread_id, std::move(fd));
 		}
 
-		void eat_udp_recv(uint32_t const thread_id)
+		void eat_udp_recv(uint32_t const thread_id, fd_handle_t fd)
 		{
 			static constexpr size_t const read_buffer_size = 64 * 1024; // max udp message size
 			char buf[read_buffer_size];
@@ -206,9 +218,6 @@ namespace { namespace aux {
 				.free = nmpa___pba_free,
 				.allocator_data = NULL, // changed in progress
 			};
-
-			// SO_REUSEPORT bind in thread
-			fd_handle_t const fd = this->try_bind_to_addr(ai_);
 
 			nmsg_poller_t poller;
 
@@ -301,7 +310,7 @@ namespace { namespace aux {
 				.loop();
 		}
 
-		void eat_udp_recvmmsg(uint32_t const thread_id)
+		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t fd)
 		{
 			size_t const max_message_size   = 64 * 1024; // max udp message size
 			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this
@@ -328,9 +337,6 @@ namespace { namespace aux {
 				.free = nmpa___pba_free,
 				.allocator_data = NULL, // changed in progress
 			};
-
-			// SO_REUSEPORT bind in thread
-			fd_handle_t const fd = this->try_bind_to_addr(ai_);
 
 			nmsg_poller_t poller;
 
@@ -439,7 +445,6 @@ namespace { namespace aux {
 		}
 
 	private:
-		fd_handle_t           fd_;
 		os_addrinfo_list_ptr  ai_list_;
 		os_addrinfo_t         *ai_;
 
