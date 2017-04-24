@@ -32,14 +32,23 @@
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
 	- [ ] configure support (or maybe runtime detection with dlsym?)
-- [ ] {easy} SO_REUSEPORT for udp threads
+- [x] {easy} SO_REUSEPORT for udp threads
+	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
 - [ ] {medium} sorted arrays for histograms (almost there)
-- [ ] {medium} thread affinity
+	- [x] timer reports
+	- [ ] request reports
+	- [ ] packet reports
+	- [ ] performance numbers
+- [ ] {medium} thread cpu + numa affinity
+	- [ ] coordinator (or packet relay for that matter) affinity + priority
+	- [ ] repacker affinity + config support
+	- [ ] udp collector affinity + config support
+	- [ ] doc, how to assign interrupts to cores + numa nodes (links at least)
 - [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
 - [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
 	- kernel udp memory is usually tuned very low
-	- so beneficial to increase it to be able to handle high packet+data rates
+	- so, it's beneficial to increase it to be able to handle high packet+data rates
 	- should provide guidelines here (like 1gbps in traffic = ~120mb/sec, should probably reserve at least 60mb for 1/2 second hickups)
 - [ ] {easy} flatbuffer (https://google.github.io/flatbuffers/) instead of protobuf?
 	- hard to change all clients
