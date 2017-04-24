@@ -173,7 +173,7 @@ This table lists all reports/tables known to the engine with additional informat
 | ru_stime | rusage: system time |
 | last_tick_time | time we last merged temporary data to selectable data |
 | last_tick_prepare_duration | time it took to prepare to merge temp data to selectable data |
-| last_snapshot_merge_duration | time it took to prepare last select |
+| last_snapshot_merge_duration | time it took to prepare last select (not implemented yet) |
 
 Table comment syntax
 

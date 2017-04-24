@@ -81,7 +81,7 @@ public:
 public:
 
 	pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg);
-	~pinba_handler_t();
+	virtual ~pinba_handler_t(); // it's virtual in base class, but be explicit here
 
 	/** @brief
 		The name that will be used for display purposes.
@@ -118,7 +118,12 @@ public:
 		// TODO
 		// | HA_STATS_RECORDS_IS_EXACT
 
-		return ( HA_NO_AUTO_INCREMENT | HA_NO_TRANSACTIONS);
+		return (
+			  HA_NO_AUTO_INCREMENT
+			| HA_NO_TRANSACTIONS
+			| HA_REC_NOT_IN_SEQ // unsure
+			| HA_NO_BLOBS
+			);
 	}
 
 	/** @brief

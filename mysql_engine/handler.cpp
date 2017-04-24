@@ -794,11 +794,11 @@ pinba_share_t::~pinba_share_t()
 	thr_lock_delete(&this->lock);
 }
 
-static pinba_share_ptr pinba_share_get_or_create(char const *table_name)
+static pinba_share_ptr pinba_share_get_or_create_locked(char const *table_name)
 {
-	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
+	// P_CTX_->lock is locked here
 
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+	LOG_DEBUG(P_L_, "{0}; table_name: {1}", __func__, table_name);
 
 	auto& open_shares = P_CTX_->open_shares;
 
@@ -867,12 +867,11 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 
 	try
 	{
-		if (!table_arg->s)
+		if (!table->s || !table->s->comment.str)
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
-		auto share = pinba_share_get_or_create(table_name);
-
 		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+		auto share = pinba_share_get_or_create_locked(table_name);
 
 		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
 		share_init_with_table_comment_locked(share, comment);
@@ -910,39 +909,46 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 	//  - table just created and not yet active, i.e. got parsed config and created report
 	//    but pinba engine is not aware of that report yet
 
-	// FIXME: need to get A share here, and assign to this->share_ after init completion (but still need to lock!)
-	this->share_ = pinba_share_get_or_create(table_name);
+	pinba_share_ptr share;
 
-	// lock to use share, too coarse, but whatever
-	std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-	try
 	{
-		// config NOT parsed yet (i.e. existing table after restart)
-		if (!share_->view_conf)
+		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
+		try
 		{
-			if (!current_table()->s)
-				throw std::runtime_error("pinba table must have a comment, please see docs");
+			share = pinba_share_get_or_create_locked(table_name);
 
-			str_ref const comment = { current_table()->s->comment.str, size_t(current_table()->s->comment.length) };
-			share_init_with_table_comment_locked(share_, comment);
+			// config NOT parsed yet (i.e. existing table after restart)
+			if (!share->view_conf)
+			{
+				TABLE *table = current_table();
+
+				if (!table->s || !table->s->comment.str)
+					throw std::runtime_error("pinba table must have a comment, please see docs");
+
+				str_ref const comment = { table->s->comment.str, size_t(table->s->comment.length) };
+				share_init_with_table_comment_locked(share, comment);
+			}
 		}
+		catch (std::exception const& e) // catch block should run with lock held, since we're reading from share
+		{
+			// this MUST not happen in fact, since all tables should have been created
+			// and we do parse comments on create()
+			// might happen when pinba versions are upgraded or something, i guess?
 
-		pinba_view_ = pinba_view_create(*share_->view_conf);
-	}
-	catch (std::exception const& e)
-	{
-		// this MUST not happen in fact, since all tables should have been created
-		// and we do parse comments on create()
-		// might happen when pinba versions are upgraded or something, i guess?
+			LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, table_name, e.what());
+			my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
+			DBUG_RETURN(HA_WRONG_CREATE_OPTION);
+		}
+	} // P_CTX_->lock released here
 
-		LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, share_->mysql_name, e.what());
+	// don't need to lock for this, view_conf is immutable
+	// but allocation can throw
+	this->pinba_view_ = pinba_view_create(*share->view_conf);
 
-		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
-		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
-	}
-
-	thr_lock_data_init(&share_->lock, &this->lock_data, (void*)this);
+	// commit here, nothrow block
+	thr_lock_data_init(&share->lock, &this->lock_data, (void*)this);
+	this->share_ = share;
 
 	DBUG_RETURN(0);
 }
@@ -998,8 +1004,6 @@ int pinba_handler_t::rnd_init(bool scan)
 			{
 				assert(share_->report);
 
-				// FIXME: if report activation fails, we will have lost the report (and assert abouve would fire)
-				//        should be fixed with re-creating report again, or just make it ref counted
 				pinba_error_t err = P_E_->add_report(share_->report);
 				if (err)
 					throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));
@@ -1017,6 +1021,7 @@ int pinba_handler_t::rnd_init(bool scan)
 		}
 	} // P_CTX_->lock released here
 
+	// this should be nothrow
 	int const r = pinba_view_->rnd_init(this, scan);
 
 	DBUG_RETURN(r);

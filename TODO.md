@@ -3,16 +3,17 @@
 	- [x] engine
 	- [x] report configs (in comments)
 	- [x] table with list of all reports and their data
-	- [ ] table listing all open tables and their state
+	- [x] {won't fix, there is no need currently} table listing all open tables and their state
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
+		- [ ] there is a weird memory leak that i'm not sure is mariadb's or mine, or something else (still testing)
 	- [x] docs (well, readme should suffice for now)
 	- [ ] guidelines - how to run mysql with jemalloc
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
 	- [ ] log levels support (with runtime change?)
-- [ ] tag based filtering (i.e. take only timers with tag:browser=chrome)
+- [x] tag based filtering (i.e. take only timers with tag:browser=chrome)
 - per-report
 	- [x] rusage
 	- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
@@ -31,6 +32,7 @@
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
 	- [ ] configure support (or maybe runtime detection with dlsym?)
+- [ ] {easy} SO_REUSEPORT for udp threads
 - [ ] {medium} sorted arrays for histograms (almost there)
 - [ ] {medium} thread affinity
 - [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
