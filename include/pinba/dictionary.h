@@ -184,5 +184,42 @@ struct dictionary_t
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+// single threaded cache for dictionary_t
+// transforms word_id -> word only
+// intended to be used in snapshot scans, snapshot data never changes, so we can cache d->size()
+
+struct snapshot_dictionary_t : private boost::noncopyable
+{
+	using words_t = std::deque<str_ref>;
+
+	mutable words_t  words;
+	dictionary_t     *d;
+	uint32_t         d_words_size;
+
+	explicit snapshot_dictionary_t(dictionary_t *dict)
+		: d(dict)
+	{
+		d_words_size = d->size();
+		words.resize(d_words_size);
+	}
+
+	str_ref get_word(uint32_t word_id) const
+	{
+		if (word_id == 0)
+			return {};
+
+		if (word_id > d_words_size)
+			return {};
+
+		str_ref& word = words[word_id-1];
+
+		if (!word) // cache miss
+			word = d->get_word(word_id);
+
+		return word;
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 #endif // PINBA__DICTIONARY_H_

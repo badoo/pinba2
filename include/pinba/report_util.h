@@ -107,6 +107,7 @@ public:
 		, ticks_(ticks)
 		, rinfo_(rinfo)
 		, globals_(globals)
+		, snapshot_d(globals->dictionary())
 	{
 	}
 
@@ -206,7 +207,9 @@ private:
 		report_key_str_t result;
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
-			result.push_back(dictionary()->get_word(k[i]));
+			// str_ref const word = dictionary()->get_word(k[i]);
+			str_ref const word = snapshot_d.get_word(k[i]);
+			result.push_back(word);
 		}
 		return result;
 	}
@@ -241,6 +244,8 @@ private:
 	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
 	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
 	pinba_globals_t  *globals_;  // globals for logging / dictionary
+
+	snapshot_dictionary_t snapshot_d;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
