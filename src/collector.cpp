@@ -35,6 +35,65 @@ namespace ff = meow::format;
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+	struct fd_handle_t
+	{
+		int fd_;
+
+		fd_handle_t()
+			: fd_(-1)
+		{
+		}
+
+		explicit fd_handle_t(int fd)
+			: fd_(fd)
+		{
+		}
+
+		fd_handle_t(fd_handle_t&& other)
+			: fd_(-1)
+		{
+			std::swap(fd_, other.fd_);
+		}
+
+		void operator=(fd_handle_t&& other)
+		{
+			reset();
+			std::swap(fd_, other.fd_);
+		}
+
+		int operator*() const
+		{
+			return fd_;
+		}
+
+		void reset()
+		{
+			while (fd_ >= 0)
+			{
+				int const r = close(fd_);
+				if (0 == r)
+				{
+					fd_ = -1;
+					break;
+				}
+
+				assert(r < 0);
+				if (errno == EINTR)
+					continue;
+
+				// silently swallow the error otherwise, leaking the fd
+				break;
+			}
+		}
+
+		~fd_handle_t()
+		{
+			reset();
+		}
+	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 	struct collector_impl_t : public collector_t
 	{
 		collector_impl_t(pinba_globals_t *globals, collector_conf_t *conf)
@@ -101,12 +160,22 @@ namespace { namespace aux {
 			os_addrinfo_list_ptr ai_list = os_unix::getaddrinfo_ex(conf_->address.c_str(), conf_->port.c_str(), AF_INET, SOCK_DGRAM, 0);
 			os_addrinfo_t *ai = ai_list.get(); // take 1st item for now
 
-			os_unix::fd_handle_t fd { os_unix::socket_ex(ai->ai_family, ai->ai_socktype, ai->ai_protocol) };
-			os_unix::setsockopt_ex(fd.get(), SOL_SOCKET, SO_REUSEADDR, 1);
-			os_unix::bind_ex(fd.get(), ai->ai_addr, ai->ai_addrlen);
+			auto fd = this->try_bind_to_addr(ai);
 
 			// commit if everything is ok
-			fd_ = fd.release();
+			ai_list_ = std::move(ai_list);
+			ai_      = ai;
+			fd_      = std::move(fd);
+		}
+
+		fd_handle_t try_bind_to_addr(os_addrinfo_t *ai)
+		{
+			fd_handle_t fd { os_unix::socket_ex(ai->ai_family, ai->ai_socktype, ai->ai_protocol) };
+			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEADDR, 1);
+			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);
+			os_unix::bind_ex(*fd, ai->ai_addr, ai->ai_addrlen);
+
+			return std::move(fd);
 		}
 
 		void send_current_batch(uint32_t thread_id, raw_request_ptr& req)
@@ -138,6 +207,9 @@ namespace { namespace aux {
 				.allocator_data = NULL, // changed in progress
 			};
 
+			// SO_REUSEPORT bind in thread
+			fd_handle_t const fd = this->try_bind_to_addr(ai_);
+
 			nmsg_poller_t poller;
 
 			poller
@@ -158,14 +230,14 @@ namespace { namespace aux {
 					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
 					poller.set_shutdown_flag();
 				})
-				.read_plain_fd(fd_, [&](timeval_t now)
+				.read_plain_fd(*fd, [&](timeval_t now)
 				{
 					// try receiving as much as possible without blocking
 					while (true)
 					{
 						++stats_->udp.recv_total;
 
-						int const n = recv(fd_, buf, sizeof(buf), MSG_DONTWAIT);
+						int const n = recv(*fd, buf, sizeof(buf), MSG_DONTWAIT);
 						if (n > 0)
 						{
 							++stats_->udp.recv_packets;
@@ -217,7 +289,7 @@ namespace { namespace aux {
 							return;
 						}
 
-						// XXX: this will never happen, even if fd_ is closed from main thread
+						// XXX: this will never happen, even if socket is closed from main thread
 						if (n == 0)
 						{
 							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
@@ -257,6 +329,9 @@ namespace { namespace aux {
 				.allocator_data = NULL, // changed in progress
 			};
 
+			// SO_REUSEPORT bind in thread
+			fd_handle_t const fd = this->try_bind_to_addr(ai_);
+
 			nmsg_poller_t poller;
 
 			poller
@@ -277,7 +352,7 @@ namespace { namespace aux {
 					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
 					poller.set_shutdown_flag();
 				})
-				.read_plain_fd(fd_, [&](timeval_t now)
+				.read_plain_fd(*fd, [&](timeval_t now)
 				{
 					// recv as much as possible without blocking
 					// but see comments in EAGAIN handling on sleep() and saving syscalls
@@ -285,7 +360,7 @@ namespace { namespace aux {
 					{
 						++stats_->udp.recv_total;
 
-						int const n = recvmmsg(fd_, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+						int const n = recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
 						if (n > 0)
 						{
 							stats_->udp.recv_packets += uint64_t(n);
@@ -351,7 +426,7 @@ namespace { namespace aux {
 							return;
 						}
 
-						// XXX: this will never happen, even if fd_ is closed from main thread
+						// XXX: this will never happen, even if socket is closed from main thread
 						if (n == 0)
 						{
 							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
@@ -364,13 +439,16 @@ namespace { namespace aux {
 		}
 
 	private:
-		int               fd_;
-		nmsg_socket_t     out_sock_;
-		nmsg_socket_t     shutdown_sock_;
+		fd_handle_t           fd_;
+		os_addrinfo_list_ptr  ai_list_;
+		os_addrinfo_t         *ai_;
 
-		pinba_globals_t   *globals_;
-		pinba_stats_t     *stats_;
-		collector_conf_t  *conf_;
+		nmsg_socket_t         out_sock_;
+		nmsg_socket_t         shutdown_sock_;
+
+		pinba_globals_t       *globals_;
+		pinba_stats_t         *stats_;
+		collector_conf_t      *conf_;
 
 		std::vector<std::thread> threads_;
 	};

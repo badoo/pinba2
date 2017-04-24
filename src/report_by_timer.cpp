@@ -260,7 +260,7 @@ public: // snapshot
 
 		static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			row_t *row                  = &it->second;
+			row_t *row = &it->second;
 
 			if (row->saved_hv.empty()) // already merged
 				return &row->merged_hv;
