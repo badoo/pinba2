@@ -275,6 +275,7 @@ namespace { namespace aux {
 
 			packet_batch_ptr batch = create_batch();
 			dictionary_t *dictionary = globals_->dictionary();
+			repacker_dictionary_t r_dictionary { globals_->dictionary() };
 
 			// processing loop
 			nmsg_poller_t poller;
@@ -346,7 +347,8 @@ namespace { namespace aux {
 							continue;
 						}
 
-						packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
+						// packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
+						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
 
 						// append to current batch
 						batch->packets[batch->packet_count] = packet;

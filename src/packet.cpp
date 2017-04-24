@@ -90,8 +90,8 @@ request_validate_result_t pinba_validate_request(Pinba__Request const *r)
 	return request_validate_result::okay;
 }
 
-
-packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa)
+template<class D>
+static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, dictionary_t *dict, struct nmpa_s *nmpa)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
@@ -113,7 +113,7 @@ packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, stru
 	p->request_time = duration_from_float(r->request_time);
 	p->ru_utime     = duration_from_float(r->ru_utime);
 	p->ru_stime     = duration_from_float(r->ru_stime);
-	p->dictionary   = d;
+	p->dictionary   = dict;
 
 	p->timer_count = r->n_timer_value;
 	p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
@@ -164,3 +164,13 @@ packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, stru
 	return p;
 }
 
+packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa)
+{
+	return pinba_request_to_packet___impl(r, d, d, nmpa);
+}
+
+
+packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa)
+{
+	return pinba_request_to_packet___impl(r, d, d->d, nmpa);
+}

@@ -240,7 +240,11 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					);
 
 request_validate_result_t pinba_validate_request(Pinba__Request const *r);
+
+struct dictionary_t;
+struct repacker_dictionary_t;
 packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa);
+packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

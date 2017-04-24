@@ -70,6 +70,22 @@ struct scoped_read_lock_t : private boost::noncopyable
 	}
 };
 
+struct scoped_write_lock_t : private boost::noncopyable
+{
+	rw_mutex_t *mtx_;
+
+	scoped_write_lock_t(rw_mutex_t& mtx)
+		: mtx_(&mtx)
+	{
+		mtx_->wr_lock();
+	}
+
+	~scoped_write_lock_t()
+	{
+		mtx_->unlock();
+	}
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct dictionary_get_result_t
@@ -164,7 +180,28 @@ struct dictionary_t
 		// slowpath
 		lock_.upgrade_to_wrlock();
 
-		// check again, as hash might've changed!
+		return this->get_or_add_wrlocked(word);
+	}
+
+	uint32_t get_or_add_pessimistic(str_ref const word, str_ref *real_string)
+	{
+		if (!word)
+			return 0;
+
+		scoped_write_lock_t lock_(mtx_);
+
+		uint32_t const word_id = this->get_or_add_wrlocked(word);
+
+		if (real_string)
+			*real_string = words[word_id - 1];
+
+		return word_id;
+	}
+
+private:
+
+	uint32_t get_or_add_wrlocked(str_ref const word)
+	{
 		++this->lookup_count;
 		auto const it = hash.find(word);
 		if (hash.end() != it)
@@ -179,6 +216,7 @@ struct dictionary_t
 
 		++this->insert_count;
 		hash.insert({words.back(), word_id});
+
 		return word_id;
 	}
 };
@@ -190,7 +228,7 @@ struct dictionary_t
 
 struct snapshot_dictionary_t : private boost::noncopyable
 {
-	using words_t = std::deque<str_ref>;
+	using words_t = std::vector<str_ref>;
 
 	mutable words_t  words;
 	dictionary_t     *d;
@@ -217,6 +255,44 @@ struct snapshot_dictionary_t : private boost::noncopyable
 			word = d->get_word(word_id);
 
 		return word;
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// single threaded cache for dictionary_t to be used by repacker
+// get_or_add only, i.e. str_ref -> uint32_t
+
+struct repacker_dictionary_t : private boost::noncopyable
+{
+	using hash_t = google::dense_hash_map<str_ref, uint32_t, dictionary_word_hasher_t>;
+
+	hash_t        hash;
+	dictionary_t  *d;
+
+	repacker_dictionary_t(dictionary_t *dict)
+		: hash() // , hash(dict->size()) // provide initial size
+		, d(dict)
+	{
+		hash.set_empty_key(str_ref{});
+	}
+
+	uint32_t get_or_add(str_ref const word)
+	{
+		if (!word)
+			return 0;
+
+		// fastpath - local lookup
+		auto const it = hash.find(word);
+		if (hash.end() != it)
+			return it->second;
+
+		// cache miss - slowpath
+		// can't store `word' in hash, since it might be the same string by content, but not in memory
+		str_ref real_string = {};
+		uint32_t const word_id = d->get_or_add_pessimistic(word, &real_string);
+
+		hash.insert({real_string, word_id});
+		return word_id;
 	}
 };
 
