@@ -695,33 +695,38 @@ public:
 
 			// percentiles
 			// TODO: calculate all required percentiles in one go
+			//       performance testing shows that for short (~100 items) histograms it gives no effect whatsoever
+			//       need to to test for large ones (10k+ items)
 			auto const& percentiles = share_data_.view_conf->percentiles;
 
 			unsigned const n_percentile_fields = percentiles.size();
 			if (findex < n_percentile_fields)
 			{
 				auto const *histogram = snapshot_->get_histogram(pos_);
-				assert(histogram != nullptr);
 
-				auto const percentile_d = [&]() -> duration_t
+				// protect against percentile field in report without percentiles
+				if (histogram != nullptr)
 				{
-					if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+					auto const percentile_d = [&]() -> duration_t
 					{
-						auto const *hv = static_cast<histogram_t const*>(histogram);
-						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
-					}
-					else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
-					{
-						auto const *hv = static_cast<flat_histogram_t const*>(histogram);
-						return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
-					}
+						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<histogram_t const*>(histogram);
+							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+						}
+						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
+							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+						}
 
-					assert(!"must not be reached");
-					return {0};
-				}();
+						assert(!"must not be reached");
+						return {0};
+					}();
 
-				(*field)->set_notnull();
-				(*field)->store(duration_seconds_as_double(percentile_d));
+					(*field)->set_notnull();
+					(*field)->store(duration_seconds_as_double(percentile_d));
+				}
 
 				continue;
 			}
