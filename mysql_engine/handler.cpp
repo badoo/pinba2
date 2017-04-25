@@ -872,7 +872,7 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 
 	try
 	{
-		if (!table->s || !table->s->comment.str)
+		if (!table_arg->s || !table_arg->s->comment.str)
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
 		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
