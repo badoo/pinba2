@@ -169,13 +169,10 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		pinba_share_data_t  share_data;
 		report_state_ptr    report_state;
 	};
-	using view_t       = std::vector<view_row_t>;
+	using view_t = std::vector<view_row_t>;
 
 	view_t            data_;
 	view_t::iterator  pos_;
-
-	// pinba_open_shares_t           shares_;
-	// pinba_open_shares_t::iterator pos_;
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
@@ -258,9 +255,10 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		auto const *sdata = &row->share_data;
 		auto       *table = handler->current_table();
 
-		report_info_t const      *rinfo      = row->report_state->info;
-		report_stats_t const     *rstats     = row->report_state->stats;
-		report_estimates_t const *restimates = &row->report_state->estimates;
+		report_state_t           *rstate     = row->report_state.get();
+		report_info_t const      *rinfo      = rstate->info;
+		report_stats_t const     *rstats     = rstate->stats;
+		report_estimates_t const *restimates = &rstate->estimates;
 
 		// remember to lock this row stats data, since it might be changed by report host thread
 		// FIXME: this probably IS too coarse!
@@ -288,15 +286,20 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			{
 				case 0:
 					(*field)->set_notnull();
-					(*field)->store(sdata->mysql_name.c_str(), sdata->mysql_name.length(), &my_charset_bin);
+					(*field)->store(rstate->id);
 				break;
 
 				case 1:
 					(*field)->set_notnull();
-					(*field)->store(sdata->report_name.c_str(), sdata->report_name.length(), &my_charset_bin);
+					(*field)->store(sdata->mysql_name.c_str(), sdata->mysql_name.length(), &my_charset_bin);
 				break;
 
 				case 2:
+					(*field)->set_notnull();
+					(*field)->store(sdata->report_name.c_str(), sdata->report_name.length(), &my_charset_bin);
+				break;
+
+				case 3:
 				{
 					str_ref const kind_name = [&sdata]()
 					{
@@ -310,7 +313,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				}
 				break;
 
-				case 3:
+				case 4:
 				{
 					auto const uptime = os_unix::clock_monotonic_now() - rstats->created_tv;
 					(*field)->set_notnull();
@@ -325,27 +328,27 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 					break;
 				/**/
 
-				STORE(4,  duration_seconds_as_double(rinfo->time_window));
-				STORE(5,  rinfo->tick_count);
-				STORE(6,  restimates->row_count);
-				STORE(7,  restimates->mem_used);
-				STORE(8,  rstats->packets_recv_total);
-				STORE(9,  rstats->packets_send_err);
-				STORE(10, rstats->packets_aggregated);
-				STORE(11, rstats->packets_dropped_by_bloom);
-				STORE(12, rstats->packets_dropped_by_filters);
-				STORE(13, rstats->packets_dropped_by_rfield);
-				STORE(14, rstats->packets_dropped_by_rtag);
-				STORE(15, rstats->packets_dropped_by_timertag);
-				STORE(16, rstats->timers_scanned);
-				STORE(17, rstats->timers_aggregated);
-				STORE(18, rstats->timers_skipped_by_filters);
-				STORE(19, rstats->timers_skipped_by_tags);
-				STORE(20, timeval_to_double(rstats->ru_utime));
-				STORE(21, timeval_to_double(rstats->ru_stime));
-				STORE(22, timeval_to_double(rstats->last_tick_tv));
-				STORE(23, duration_seconds_as_double(rstats->last_tick_prepare_d));
-				STORE(24, duration_seconds_as_double(rstats->last_snapshot_merge_d));
+				STORE(5,  duration_seconds_as_double(rinfo->time_window));
+				STORE(6,  rinfo->tick_count);
+				STORE(7,  restimates->row_count);
+				STORE(8,  restimates->mem_used);
+				STORE(9,  rstats->packets_recv_total);
+				STORE(10, rstats->packets_send_err);
+				STORE(11, rstats->packets_aggregated);
+				STORE(12, rstats->packets_dropped_by_bloom);
+				STORE(13, rstats->packets_dropped_by_filters);
+				STORE(14, rstats->packets_dropped_by_rfield);
+				STORE(15, rstats->packets_dropped_by_rtag);
+				STORE(16, rstats->packets_dropped_by_timertag);
+				STORE(17, rstats->timers_scanned);
+				STORE(18, rstats->timers_aggregated);
+				STORE(19, rstats->timers_skipped_by_filters);
+				STORE(20, rstats->timers_skipped_by_tags);
+				STORE(21, timeval_to_double(rstats->ru_utime));
+				STORE(22, timeval_to_double(rstats->ru_stime));
+				STORE(23, timeval_to_double(rstats->last_tick_tv));
+				STORE(24, duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE(25, duration_seconds_as_double(rstats->last_snapshot_merge_d));
 
 				#undef STORE
 			}

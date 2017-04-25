@@ -42,6 +42,7 @@ CREATE TABLE if not exists `stats` (
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
 CREATE TABLE if not exists `active` (
+  `id` int unsigned NOT NULL,
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
   `kind` varchar(64) NOT NULL,

@@ -159,6 +159,7 @@ This table lists all reports/tables known to the engine with additional informat
 
 | Field  | Description |
 |:------ |:----------- |
+| id | internal id, useful for matching reports with system threads. report calls pthread_setname_np("rh/[id]") |
 | table_name | mysql fully qualified table name (including database) |
 | internal_name | the name known to the engine (it never changes with table renames, but you shouldn't really care about that). |
 | kind | internal report kind (one of the kinds described in this doc, like stats, active, etc.) |
@@ -192,6 +193,7 @@ Table comment syntax
 example
 
 	mysql> CREATE TABLE if not exists `active` (
+			  `id` int unsigned NOT NULL,
 			  `table_name` varchar(128) NOT NULL,
 			  `internal_name` varchar(128) NOT NULL,
 			  `kind` varchar(64) NOT NULL,

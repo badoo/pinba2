@@ -77,6 +77,7 @@ struct report_estimates_t
 
 struct report_state_t
 {
+	uint32_t             id;
 	report_info_t const  *info;
 	report_stats_t       *stats;
 	report_estimates_t   estimates;

@@ -22,6 +22,8 @@ namespace { namespace aux {
 
 	struct report_host_conf_t
 	{
+		uint32_t    id;
+
 		std::string name;
 		std::string thread_name;
 
@@ -41,6 +43,7 @@ namespace { namespace aux {
 		virtual void startup(report_ptr) = 0;
 		virtual void shutdown() = 0;
 
+		virtual uint32_t id() const = 0;
 		virtual report_t* report() const = 0;
 		virtual report_stats_t* stats() = 0;
 
@@ -194,6 +197,11 @@ namespace { namespace aux {
 				stats_.packets_send_err += batch->packet_count;
 			}
 			return success;
+		}
+
+		virtual uint32_t id() const override
+		{
+			return conf_.id;
 		}
 
 		virtual report_t* report() const override
@@ -379,11 +387,12 @@ namespace { namespace aux {
 								LOG_DEBUG(globals_->logger(), "creating report {0}", r->report->name());
 
 								auto const report_name = r->report->name().str();
-								auto const thread_id   = report_hosts_.size();
+								auto const thread_id   = static_cast<uint32_t>(report_hosts_.size());
 								auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);
 								auto const rh_name     = ff::fmt_str("rh/{0}/{1}", thread_id, report_name);
 
 								report_host_conf_t const rh_conf = {
+									.id                = thread_id,
 									.name              = rh_name,
 									.thread_name       = thr_name,
 									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
@@ -458,6 +467,7 @@ namespace { namespace aux {
 								auto state = meow::make_unique<report_state_t>();
 								host->execute_in_thread([&](report_host_t *rhost)
 								{
+									state->id        = rhost->id();
 									state->stats     = rhost->stats();
 									state->info      = rhost->report()->info();
 									state->estimates = rhost->report()->get_estimates();
