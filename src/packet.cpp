@@ -3,6 +3,7 @@
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
 #include "pinba/packet.h"
+#include "pinba/bloom.h"
 
 #include "proto/pinba.pb-c.h"
 
@@ -115,6 +116,10 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 	p->ru_stime     = duration_from_float(r->ru_stime);
 	p->dictionary   = dict;
 
+	// bloom should be somewhere close to the top
+	p->timer_bloom = (timertag_bloom_t*)nmpa_calloc(nmpa, sizeof(timertag_bloom_t)); // NOTE: no ctor is called here!
+
+	// timers basic info
 	p->timer_count = r->n_timer_value;
 	p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
 	for_each_timer(r, [&](Pinba__Request const *r, timer_data_t const& timer)
@@ -134,6 +139,8 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
 		for (unsigned i = 0; i < r->n_timer_tag_name; i++)
 		{
+			p->timer_bloom->add(td[r->timer_tag_name[i]]);
+
 			timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
 			timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
 		}

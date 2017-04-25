@@ -131,6 +131,7 @@ namespace { namespace aux {
 				);
 
 
+				report_->stats_init(&stats_);
 				report_->ticks_init(os_unix::clock_monotonic_now());
 
 				nmsg_poller_t poller;

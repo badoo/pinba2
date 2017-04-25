@@ -1,9 +1,8 @@
 #ifndef PINBA__NMSG__SOCKET_H_
 #define PINBA__NMSG__SOCKET_H_
 
-#include <algorithm> // swap
 #include <stdexcept>
-#include <utility>   // move
+#include <utility>   // move, swap
 #include <type_traits>
 
 #include <boost/noncopyable.hpp>
@@ -51,8 +50,7 @@ public:
 	nmsg_socket_t(nmsg_socket_t&& other)
 		: nmsg_socket_t()
 	{
-		using std::swap;
-		swap(fd_, other.fd_);
+		std::swap(fd_, other.fd_);
 	}
 
 	~nmsg_socket_t()
@@ -60,11 +58,10 @@ public:
 		close();
 	}
 
-	nmsg_socket_t& operator=(nmsg_socket_t&& other)
+	void operator=(nmsg_socket_t&& other)
 	{
-		using std::swap;
-		swap(fd_, other.fd_);
-		return *this;
+		this->close();
+		std::swap(fd_, other.fd_);
 	}
 
 	int operator*() const
@@ -207,6 +204,7 @@ public:
 		T value;
 
 		int const n = nn_recv(fd_, (void*)&value, sizeof(T), flags);
+		// ff::fmt(stderr, "nn_recv({0}, {1}, {2}, {3}) -> {4}\n", fd_, &value, sizeof(T), flags, n);
 		if (n < 0) {
 			int const err = nn_errno();
 
@@ -226,6 +224,7 @@ public:
 	bool send_ex(T const& value, int flags)
 	{
 		int const n = nn_send(fd_, (void*)&value, sizeof(T), flags);
+		// ff::fmt(stderr, "nn_send({0}, {1}, {2}, {3}) -> {4}\n", fd_, &value, sizeof(T), flags, n);
 		if (n < 0) {
 			int const err = nn_errno();
 			if ((flags & NN_DONTWAIT) && (err == EAGAIN))

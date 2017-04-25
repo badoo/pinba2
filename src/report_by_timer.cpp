@@ -9,6 +9,7 @@
 #include <sparsehash/dense_hash_map>
 
 #include "pinba/globals.h"
+#include "pinba/bloom.h"
 #include "pinba/histogram.h"
 #include "pinba/multi_merge.h"
 #include "pinba/packet.h"
@@ -588,19 +589,23 @@ public: // key extraction and transformation
 
 private:
 	pinba_globals_t           *globals_;
+	report_stats_t            *stats_;
 	report_conf___by_timer_t  conf_;
 
-	report_info_t  info_;
-	key_info_t     ki_;
+	report_info_t             info_;
+	key_info_t                ki_;
 
-	ticks_t        ticks_;
+	ticks_t                   ticks_;
 
-	uint64_t       packet_unqiue_;
+	uint64_t                  packet_unqiue_;
+
+	timertag_bloom_t          timer_bloom_;
 
 public:
 
 	report___by_timer_t(pinba_globals_t *globals, report_conf___by_timer_t const& conf)
 		: globals_(globals)
+		, stats_(nullptr)
 		, conf_(conf)
 		, ticks_(conf.tick_count)
 		, packet_unqiue_{1} // init this to 1, so it's different from 0 in default constructed data_t
@@ -620,6 +625,20 @@ public:
 			.hv_bucket_d     = conf_.hv_bucket_d,
 		};
 
+		// bloom
+		{
+			for (auto const& kd : conf_.keys)
+			{
+				if (RKD_TIMER_TAG != kd.kind)
+					continue;
+
+				timer_bloom_.add(kd.timer_tag);
+			}
+
+			for (auto const& ttf : conf_.timertag_filters)
+				timer_bloom_.add(ttf.name_id);
+		}
+
 		ki_.from_config(conf);
 	}
 
@@ -633,9 +652,9 @@ public:
 		return &info_;
 	}
 
-	virtual int kind() const override
+	virtual void stats_init(report_stats_t *stats) override
 	{
-		return info_.kind;
+		stats_ = stats;
 	}
 
 public:
@@ -781,12 +800,26 @@ public:
 
 	virtual void add(packet_t *packet)
 	{
+		// bloom check
+		// TODO: bloom drops + false positives counters
+		if (packet->timer_bloom)
+		{
+			if (!packet->timer_bloom->contains(this->timer_bloom_))
+			{
+				stats_->packets_dropped_by_bloom++;
+				return;
+			}
+		}
+
 		// run all filters and check if packet is 'interesting to us'
 		for (size_t i = 0, i_end = conf_.filters.size(); i < i_end; ++i)
 		{
 			auto const& filter = conf_.filters[i];
 			if (!filter.func(packet))
+			{
+				stats_->packets_dropped_by_filters++;
 				return;
+			}
 		}
 
 		// check if timer is interesting (aka satisfies filters)
@@ -884,13 +917,24 @@ public:
 
 		bool const tags_found = find_request_tags(ki_, &key_inprogress);
 		if (!tags_found)
+		{
+			stats_->packets_dropped_by_rtag++;
 			return;
+		}
 
 		bool const fields_found = find_request_fields(ki_, &key_inprogress);
 		if (!fields_found)
+		{
+			stats_->packets_dropped_by_rfield++;
 			return;
+		}
 
 		// need to scan all timers, find matching and increment for each one
+		// use local counters to save on atomics
+		uint32_t timers_scanned            = 0;
+		uint32_t timers_aggregated         = 0;
+		uint32_t timers_skipped_by_filters = 0;
+		uint32_t timers_skipped_by_tags    = 0;
 		{
 			packet_unqiue_++; // next unique, since this is the new packet add
 
@@ -900,13 +944,21 @@ public:
 			{
 				packed_timer_t const *timer = &packet->timers[i];
 
+				timers_scanned++;
+
 				bool const timer_ok = filter_by_timer_tags(timer);
-				if (!timer_ok)
+				if (!timer_ok) {
+					timers_skipped_by_filters++;
 					continue;
+				}
 
 				bool const timer_found = fetch_by_timer_tags(ki_, timer_key_range, timer);
-				if (!timer_found)
+				if (!timer_found) {
+					timers_skipped_by_tags++;
 					continue;
+				}
+
+				timers_aggregated++;
 
 				// LOG_DEBUG(globals_->logger(), "found key '{0}'", key_to_string(key_inprogress));
 
@@ -926,14 +978,24 @@ public:
 				}
 			}
 		}
+
+		stats_->timers_scanned            += timers_scanned;
+		stats_->timers_aggregated         += timers_aggregated;
+		stats_->timers_skipped_by_filters += timers_skipped_by_filters;
+		stats_->timers_skipped_by_tags    += timers_skipped_by_tags;
+
+		if (!timers_aggregated)
+			stats_->packets_dropped_by_timertag++;
+		else
+			stats_->packets_aggregated++;
 	}
 
 	virtual void add_multi(packet_t **packets, uint32_t packet_count) override
 	{
-		// TODO: maybe optimize this we can
 		for (uint32_t i = 0; i < packet_count; ++i)
 			this->add(packets[i]);
 	}
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

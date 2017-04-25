@@ -190,6 +190,7 @@ namespace { namespace aux {
 
 		report___by_request_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 			: globals_(globals)
+			, stats_(nullptr)
 			, conf_(conf)
 			, ticks_(conf.tick_count)
 		{
@@ -223,9 +224,9 @@ namespace { namespace aux {
 			return &info_;
 		}
 
-		virtual int kind() const override
+		virtual void stats_init(report_stats_t *stats) override
 		{
-			return info_.kind;
+			stats_ = stats;
 		}
 
 	public:
@@ -284,7 +285,10 @@ namespace { namespace aux {
 			{
 				auto const& filter = conf_.filters[i];
 				if (!filter.func(packet))
+				{
+					stats_->packets_dropped_by_filters++;
 					return;
+				}
 			}
 
 			// construct a key, by runinng all key fetchers
@@ -296,7 +300,10 @@ namespace { namespace aux {
 
 				report_conf___by_request_t::key_fetch_result_t const r = key_descriptor.fetcher(packet);
 				if (!r.found)
+				{
+					stats_->packets_dropped_by_rtag++;
 					return;
+				}
 
 				k.push_back(r.key_value);
 			}
@@ -309,18 +316,20 @@ namespace { namespace aux {
 			{
 				item.hv_increment(packet, conf_.hv_bucket_count, conf_.hv_bucket_d);
 			}
+
+			stats_->packets_aggregated++;
 		}
 
 		virtual void add_multi(packet_t **packets, uint32_t packet_count) override
 		{
-			// TODO: maybe optimize this we can
 			for (uint32_t i = 0; i < packet_count; ++i)
 				this->add(packets[i]);
 		}
 
 	// private:
-	protected:
+	protected: // protected for test/test_report.cpp
 		pinba_globals_t             *globals_;
+		report_stats_t              *stats_;
 		report_conf___by_request_t  conf_;
 
 		report_info_t               info_;

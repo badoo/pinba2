@@ -63,6 +63,7 @@ namespace { namespace aux {
 
 		int operator*() const
 		{
+			assert(fd_ >= 0);
 			return fd_;
 		}
 
@@ -146,7 +147,8 @@ namespace { namespace aux {
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 					);
 
-					this->eat_udp(i, fd_handle_t(fd));
+					fd_handle_t fd_h { fd };
+					this->eat_udp(i, fd_h);
 				});
 
 				// t.detach();
@@ -200,13 +202,13 @@ namespace { namespace aux {
 			req.reset(); // signal the need to reinit
 		}
 
-		void eat_udp(uint32_t const thread_id, fd_handle_t fd)
+		void eat_udp(uint32_t const thread_id, fd_handle_t const& fd)
 		{
 			// this->eat_udp_recv(thread_id, std::move(fd));
 			this->eat_udp_recvmmsg(thread_id, std::move(fd));
 		}
 
-		void eat_udp_recv(uint32_t const thread_id, fd_handle_t fd)
+		void eat_udp_recv(uint32_t const thread_id, fd_handle_t const& fd)
 		{
 			static constexpr size_t const read_buffer_size = 64 * 1024; // max udp message size
 			char buf[read_buffer_size];
@@ -310,7 +312,7 @@ namespace { namespace aux {
 				.loop();
 		}
 
-		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t fd)
+		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t const& fd)
 		{
 			size_t const max_message_size   = 64 * 1024; // max udp message size
 			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this

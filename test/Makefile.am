@@ -29,6 +29,7 @@ noinst_PROGRAMS = \
 	test_collector \
 	test_packet_repack \
 	test_report \
+	test_bloom_filter \
 	test_nanomsg_broadcast \
 	test_nanomsg_connect \
 	test_nanomsg_ticker \
@@ -47,6 +48,10 @@ test_packet_repack_SOURCES = \
 
 test_report_SOURCES = \
 	test_report.cpp \
+	#
+
+test_bloom_filter_SOURCES = \
+	test_bloom_filter.cpp \
 	#
 
 test_nanomsg_broadcast_SOURCES = \

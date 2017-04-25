@@ -711,9 +711,8 @@ public:
 		return &info_;
 	}
 
-	virtual int kind() const override
+	virtual void stats_init(report_stats_t *stats) override
 	{
-		return info_.kind;
 	}
 
 public:

@@ -318,17 +318,36 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				}
 				break;
 
-				case 4:  (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rinfo->time_window)); break;
-				case 5:  (*field)->set_notnull(); (*field)->store(rinfo->tick_count); break;
-				case 6:  (*field)->set_notnull(); (*field)->store(restimates->row_count); break;
-				case 7:  (*field)->set_notnull(); (*field)->store(restimates->mem_used); break;
-				case 8:  (*field)->set_notnull(); (*field)->store(rstats->packets_recv_total); break;
-				case 9:  (*field)->set_notnull(); (*field)->store(rstats->packets_send_err); break;
-				case 10: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_utime)); break;
-				case 11: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->ru_stime)); break;
-				case 12: (*field)->set_notnull(); (*field)->store(timeval_to_double(rstats->last_tick_tv)); break;
-				case 13: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_tick_prepare_d)); break;
-				case 14: (*field)->set_notnull(); (*field)->store(duration_seconds_as_double(rstats->last_snapshot_merge_d)); break;
+				#define STORE(N, value)           \
+					case N:                       \
+						(*field)->set_notnull();  \
+						(*field)->store(value);   \
+					break;
+				/**/
+
+				STORE(4,  duration_seconds_as_double(rinfo->time_window));
+				STORE(5,  rinfo->tick_count);
+				STORE(6,  restimates->row_count);
+				STORE(7,  restimates->mem_used);
+				STORE(8,  rstats->packets_recv_total);
+				STORE(9,  rstats->packets_send_err);
+				STORE(10, rstats->packets_aggregated);
+				STORE(11, rstats->packets_dropped_by_bloom);
+				STORE(12, rstats->packets_dropped_by_filters);
+				STORE(13, rstats->packets_dropped_by_rfield);
+				STORE(14, rstats->packets_dropped_by_rtag);
+				STORE(15, rstats->packets_dropped_by_timertag);
+				STORE(16, rstats->timers_scanned);
+				STORE(17, rstats->timers_aggregated);
+				STORE(18, rstats->timers_skipped_by_filters);
+				STORE(19, rstats->timers_skipped_by_tags);
+				STORE(20, timeval_to_double(rstats->ru_utime));
+				STORE(21, timeval_to_double(rstats->ru_stime));
+				STORE(22, timeval_to_double(rstats->last_tick_tv));
+				STORE(23, duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE(24, duration_seconds_as_double(rstats->last_snapshot_merge_d));
+
+				#undef STORE
 			}
 		} // field for
 

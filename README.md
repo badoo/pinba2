@@ -73,7 +73,7 @@ general syntax for comment is as follows (not all reports use all the fields).
 	- any of (separate with commas):
 		- 'min_time=&lt;milliseconds&gt;'
 		- 'max_time=&lt;milliseconds&gt;'
-		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has tags with given values and accept only those
+		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has fields, request or timer tags with given values and accept only those
 
 
 **Stats report (unfinished, might replace with status variables)**
@@ -169,6 +169,16 @@ This table lists all reports/tables known to the engine with additional informat
 | approx_mem_used | approximate memory usage |
 | packets_received | packets received and processed |
 | packets_lost | packets that could not be processed and had to be dropped (aka, report couldn't cope with such packet rate) |
+| packets_aggregated | number of packets that we took useful information from |
+| packets_dropped_by_bloom | number of packets dropped by bloom filter |
+| packets_dropped_by_filters | number of packets dropped by packet-level filters |
+| packets_dropped_by_rfield | number of packets dropped by request_field aggregation |
+| packets_dropped_by_rtag | number of packets dropped by request_tag aggregation |
+| packets_dropped_by_timertag | number of packets dropped by timer_tag aggregation (i.e. no useful timers) |
+| timers_scanned | number of timers scanned |
+| timers_aggregated | number of timers that we took useful information from |
+| timers_skipped_by_filters | number of timers skipped by timertag filters |
+| timers_skipped_by_tags | number of timers skipped by not having required tags present |
 | ru_utime | rusage: user time |
 | ru_stime | rusage: system time |
 | last_tick_time | time we last merged temporary data to selectable data |
@@ -192,6 +202,16 @@ example
 			  `approx_mem_used` bigint(20) unsigned NOT NULL,
 			  `packets_received` bigint(20) unsigned NOT NULL,
 			  `packets_lost` bigint(20) unsigned NOT NULL,
+			  `packets_aggregated` bigint(20) unsigned NOT NULL,
+			  `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
+			  `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
+			  `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
+			  `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
+			  `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
+			  `timers_scanned` bigint(20) unsigned NOT NULL,
+			  `timers_aggregated` bigint(20) unsigned NOT NULL,
+			  `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
+			  `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
 			  `ru_utime` double NOT NULL,
 			  `ru_stime` double NOT NULL,
 			  `last_tick_time` double NOT NULL,

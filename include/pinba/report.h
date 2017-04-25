@@ -40,13 +40,25 @@ struct report_stats_t
 	timeval_t created_tv;
 	timeval_t created_realtime_tv;
 
-	std::atomic<uint64_t> batches_send_total = {0};
-	std::atomic<uint64_t> batches_send_err   = {0};
-	std::atomic<uint64_t> batches_recv_total = {0};
+	std::atomic<uint64_t> batches_send_total          = {0};
+	std::atomic<uint64_t> batches_send_err            = {0};
+	std::atomic<uint64_t> batches_recv_total          = {0};
 
-	std::atomic<uint64_t> packets_send_total = {0};
-	std::atomic<uint64_t> packets_send_err   = {0};
-	std::atomic<uint64_t> packets_recv_total = {0};
+	std::atomic<uint64_t> packets_send_total          = {0};
+	std::atomic<uint64_t> packets_send_err            = {0};
+	std::atomic<uint64_t> packets_recv_total          = {0};
+
+	std::atomic<uint64_t> packets_aggregated          = {0}; // number of packets that we took useful information from
+	std::atomic<uint64_t> packets_dropped_by_bloom    = {0}; // number of packets dropped by bloom filter
+	std::atomic<uint64_t> packets_dropped_by_filters  = {0}; // number of packets dropped by packet-level filters
+	std::atomic<uint64_t> packets_dropped_by_rfield   = {0}; // number of packets dropped by request_field aggregation
+	std::atomic<uint64_t> packets_dropped_by_rtag     = {0}; // number of packets dropped by request_tag aggregation
+	std::atomic<uint64_t> packets_dropped_by_timertag = {0}; // number of packets dropped by timer_tag aggregation (i.e. no useful timers)
+
+	std::atomic<uint64_t> timers_scanned              = {0}; // number of timers scanned
+	std::atomic<uint64_t> timers_aggregated           = {0}; // number of timers that we took useful information from
+	std::atomic<uint64_t> timers_skipped_by_filters   = {0}; // number of timers skipped by timertag filters
+	std::atomic<uint64_t> timers_skipped_by_tags      = {0}; // number of timers skipped by not having required tags present
 
 	timeval_t  last_tick_tv          = {0,0};       // last tick happened at this time
 	duration_t last_tick_prepare_d   = {0};         // how long did last tick processing take
@@ -145,20 +157,15 @@ struct report_t : private boost::noncopyable
 	virtual ~report_t() {}
 
 	virtual str_ref name() const = 0;
-
-	// generic report info, mostly processed from report config
 	virtual report_info_t const* info() const = 0;
 
-	// TODO: report kinds need some love, maybe just have separate classes for them
-	//       or have this one too (since we'd like to store them all in one place)
-	//       or just remove this one, and put kind into report_info_t
-	virtual int kind() const = 0;
+	virtual void stats_init(report_stats_t *stats) = 0;
 
 	virtual void ticks_init(timeval_t curr_tv) = 0;
 	virtual void tick_now(timeval_t curr_tv) = 0;
 
 	virtual void add(packet_t*) = 0;
-	virtual void add_multi(packet_t**, uint32_t packet_count) = 0;
+	virtual void add_multi(packet_t**, uint32_t) = 0;
 
 	virtual report_estimates_t  get_estimates() = 0;
 	virtual report_snapshot_ptr get_snapshot() = 0;

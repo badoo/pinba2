@@ -155,6 +155,7 @@ namespace { namespace aux {
 
 		report___by_packet_t(pinba_globals_t *globals, report_conf___by_packet_t const& conf)
 			: globals_(globals)
+			, stats_(nullptr)
 			, conf_(conf)
 			, ticks_(conf.tick_count)
 		{
@@ -181,9 +182,9 @@ namespace { namespace aux {
 			return &info_;
 		}
 
-		virtual int kind() const override
+		virtual void stats_init(report_stats_t *stats) override
 		{
-			return info_.kind;
+			stats_ = stats;
 		}
 
 	public:
@@ -233,7 +234,10 @@ namespace { namespace aux {
 			{
 				auto const& filter = conf_.filters[i];
 				if (!filter.func(packet))
+				{
+					stats_->packets_dropped_by_filters++;
 					return;
+				}
 			}
 
 			// apply packet data
@@ -244,6 +248,8 @@ namespace { namespace aux {
 			{
 				item.hv_increment(packet, conf_.hv_bucket_count, conf_.hv_bucket_d);
 			}
+
+			stats_->packets_aggregated++;
 		}
 
 		virtual void add_multi(packet_t **packets, uint32_t packet_count) override
@@ -255,6 +261,7 @@ namespace { namespace aux {
 	// private:
 	protected:
 		pinba_globals_t             *globals_;
+		report_stats_t              *stats_;
 		report_conf___by_packet_t   conf_;
 
 		report_info_t               info_;

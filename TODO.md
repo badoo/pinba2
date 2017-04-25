@@ -55,6 +55,7 @@
 	- not really worth it, since pb unpack doesn't seem to take that much cpu
 - [ ] {hard} maybe replace nanomsg with something doing less locking / syscalls (thorough meamurements first!)
 - [ ] {medium, worth it?} simple bloom filtering (aka is this report interested in this packet?)
+	- [x] poor man's handmade solution with std::bitset
 	- a library like this one? https://github.com/mavam/libbf
 	- try calculating a simple bloom filter (over tag names) for all incoming packets
 	- report has it's own bloom, filled with tag names it's interested in
