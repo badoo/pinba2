@@ -1,32 +1,59 @@
 # Pinba2
 An attempt to rethink internal implementation and some features of excellent https://github.com/tony2001/pinba_engine by @tony2001.
 
-See also: [TODO](TODO.md)
+**Key differences from original implementation**
+
+- no raw data tables (i.e. requests, timers) support, yet (can be implemented)
+	- raw data tables have VERY high memory usage requirements and uses are limited
+- simpler, more flexible configuration
+	- only 3 kinds of reports (of which you mostly need one: timer), covering all use cases from original pinba
+	- simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
+		- supports 7 keys max at the moment (never seen anyone using more than 5 anyway)
+		- performance is about the same, regardless of the number of keys used
+	- more options can be configured per report now
+		- stats gathering history: i.e. some reports can aggregate over 60sec, while others - over 300sec, as needed
+		- histograms+percentiles: some reports might need very detailed histograms, while others - coarse
+- improved performance, reduced cpu/memory usage
+	- currently handles ~72k simple packets/sec (~200mbps) with 5 medium-complexity reports (4 keys aggregation) @ ~40% overall cpu usage
+	- uses significantly less memory (orders of magnitude) for common cases, since we don't store raw requests by default
+	- current goal is to be able to handle 10gpbs of incoming traffic with hundreds of reports
+	- selects from complex reports never slow down new data aggregation
+
+**Same client libraries can be used with this pinba implementation**
+
+**See also**
+[TODO](TODO.md)
 
 # Docker
 - [Fedora 25](docker/fedora-25/) (kinda works)
 - [Mariadb/debian](docker/debian-mariadb/) (unfinished)
 
 # Building
-requires
+
+**requirements**
+
 - gcc 4.9.4+ (but will increase this requirement to something like gcc6+ soon)
 - meow: https://github.com/anton-povarov/meow
 - boost: http://boost.org/ (or just install from packages for your distro)
 - nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases, or just pull master)
+- mysql (5.6+) or mariadb (10+)
+	- mysql: need source code, run ./configure, since mysql doesn't install all internal headers we need
+	- mariadb just install from with your favorite package manager, and point pinba to header files
 
-To build, run
+**To build, run**
 
     $ ./buildconf.sh
 
     $ ./configure
         --prefix=<path>
-        --with-mysql=<path to mysql source code (you *MUST* have run configure in there first)>
+        --with-mysql=<path to configured mysql source code, or mariadb installed headers>
         --with-nanomsg=<nanomsg install dir>
         --with-meow=<path>
         --with-boost=<path (need headers only)>
 
 # Installation
 Unfinished, use containers or
+
 - copy mysql_engine/.libs/libpinba_engine2.so to mysql plugin directory
 - install plugin
 - create database pinba
@@ -41,6 +68,18 @@ Something like this
 	$ cat scripts/default_tables.sql | mysql
 	$ cat scripts/default_reports.sql | mysql
 
+**Jemalloc**
+highly recommended to run mysql/mariadb with jemalloc enabled
+
+- mariadb does this automatically (i think) [and has been for quite a while](https://mariadb.org/mariadb-5-5-33-now-available/)
+- mysql [has \-\-malloc-lib option](https://dev.mysql.com/doc/refman/5.7/en/mysqld-safe.html#option_mysqld_safe_malloc-lib)
+- percona [has an ok guide](https://www.percona.com/blog/2017/01/03/enabling-and-disabling-jemalloc-on-percona-server/)
+
+
+**Compatibility**
+
+- if mysql/mariadb are built with debug enabled (or you're using debug packages) - build with \-\-enable-debug, or stuff will not work
+- make sure that you're building pinba with the same mysql/mariadb version that you're going to install built plugin into, or mysterious crashes might happen
 
 # SQL
 All pinba tables are created with sql comment to tell the engine about table purpose and structure,
@@ -59,24 +98,47 @@ general syntax for comment is as follows (not all reports use all the fields).
 		- @timer_tag_name: use this timer tag's value as key (timer reports only)
 	- example: '~host,~script,+application,@group,@server'
 		- will aggregate on 5 keys
-		- 'hostname', 'scriptname', 'servername' global fields, plus 'group' and 'server' timer tag values
+		- 'hostname', 'scriptname' global fields, 'application' request tag, plus 'group' and 'server' timer tag values
 - &lt;histogram+percentiles&gt;: histogram time and percentiles definition
 	- 'no_percentiles': disable
 	- syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
 		- &lt;percentiles&gt;=p&lt;number&gt;[,p&lt;number&gt;[...]]
+		- (alt syntax) &lt;percentiles&gt;='percentiles='&lt;number&gt;[:&lt;number&gt;[...]]
 	- example: 'hv=0:2000:20000,p99,p100'
 		- this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
 		- also adds 2 percentiles to report 99th and 100th, percentile calculation precision is 0.1ms given above
-		- report uses 'request_time' from incoming packets for percentiles calculation
+		- uses 'request_time' (for packet/request reports) or 'timer_value' (for timer reports) from incoming packets for percentiles calculation
+	- example (alt syntax): 'hv=0:2000:20000,percentiles=99:100'
+		- same effect as above
 - &lt;filters&gt;: accept only packets maching these filters into this report
 	- to disable: put 'no_filters' here, report will accept all packets
 	- any of (separate with commas):
 		- 'min_time=&lt;milliseconds&gt;'
 		- 'max_time=&lt;milliseconds&gt;'
 		- '&lt;tag_spec&gt;=<value&gt;' - check that packet has fields, request or timer tags with given values and accept only those
+	- &lt;tag_spec&gt; is the same as &lt;key_spec&gt; above, i.e. ~request_field,+request_tag,@timer_tag
+	- example: min_time=0,max_time=1000,+browser=chrome
+		- will accept only requests with request_time in range [0, 1000)ms with request tag 'browser' present and value 'chrome'
+		- there is currently no way to filter timers by their timer_value, can't think of a use case really
+
+**General notes**
+
+*Reports*
+
+- There are 3 kinds of reports: packet, request, timer. Reports differ on how they aggregate and present data.
+- A report is basically a table of key/value pairs: aggregation_key => aggregated_data.
+	- Aggregation_key is something that you configure (i.e. aggregate incoming stream on ~host,~script,+request_tag).
+	- Aggregated_data is report-specific (i.e. structure with fields like: req_count, hit_count, total_time, etc.).
+
+*SQL Tables*
+
+- All report tables have same simple structure
+	- Aggregation_key, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
+	- Aggregated_data, one field per data field (i.e. packet report needs 7 fields)
+	- Percentiles, one field per configured percentile
 
 
-**Stats report (unfinished, might replace with status variables)**
+**Stats table (see also: status variables)**
 
 This table contains internal stats, useful for monitoring/debugging/performance tuning.
 
@@ -153,9 +215,9 @@ example
 	   repacker_ru_utime_per_sec: 0.18041216267348514
 
 
-**Active reports (unfinished)**
+**Active reports**
 
-This table lists all reports/tables known to the engine with additional information about them.
+This table lists all reports known to the engine with additional information about them.
 
 | Field  | Description |
 |:------ |:----------- |
@@ -221,35 +283,52 @@ example
 			  `last_snapshot_merge_duration` double NOT NULL
 			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
-	mysql> select *, packets_received/uptime as packets_per_sec from active\G
+	mysql> select *, packets_received/uptime as packets_per_sec, ru_utime/uptime utime_per_sec from active\G
 	*************************** 1. row ***************************
-	                  table_name: ./pinba/tag_info_pinger_no_pct
-	               internal_name: ./pinba/tag_info_pinger_no_pct
+	                          id: 4
+	                  table_name: ./pinba/tag_info_pinger_call_from_wwwbmamlan
+	               internal_name: ./pinba/tag_info_pinger_call_from_wwwbmamlan
 	                        kind: report_by_timer_data
-	                      uptime: 394.261528572
+	                      uptime: 78719.326400376
 	             time_window_sec: 60
 	                  tick_count: 60
-	            approx_row_count: 26942
-	             approx_mem_used: 81387464
-	            packets_received: 21387077
+	            approx_row_count: 26597
+	             approx_mem_used: 142656964
+	            packets_received: 5722816025
 	                packets_lost: 0
-	                    ru_utime: 16.592
-	                    ru_stime: 5.068
-	              last_tick_time: 1491925145.0092635
-	  last_tick_prepare_duration: 0.006426645000000001
+	          packets_aggregated: 2134622163
+	    packets_dropped_by_bloom: 2861694782
+	  packets_dropped_by_filters: 726499080
+	   packets_dropped_by_rfield: 0
+	     packets_dropped_by_rtag: 0
+	 packets_dropped_by_timertag: 0
+	              timers_scanned: 2134622163
+	           timers_aggregated: 2134622163
+	   timers_skipped_by_filters: 0
+	      timers_skipped_by_tags: 0
+	                    ru_utime: 4693.58
+	                    ru_stime: 581.832
+	              last_tick_time: 1493219654.2556698
+	  last_tick_prepare_duration: 0.011075174
 	last_snapshot_merge_duration: 0
-	             packets_per_sec: 54245.91406994024
+	             packets_per_sec: 72698.99637978438
+	               utime_per_sec: 0.05962423987380031
+	1 row in set (0.01 sec)
 
 
-**Packet reports (like info in tony2001/pinba_engine)**
+**Packet report (like info in tony2001/pinba_engine)**
 
 General information about incoming packets
+
+- just aggregates everything into single item (mostly used to gauge general traffic)
+- Aggregation_key is always empty
+- Aggregated_data is just totals: { req_count, timer_count, hit_count, total_time, ru_utime, ru_stime, traffic_kb, mem_used }
 
 Table comment syntax
 
 	> 'v2/packet/<aggregation_window>/no_keys/<histogram+percentiles>/<filters>';
 
-example
+Example
 
 	mysql> CREATE TABLE `info` (
 			  `req_count` bigint(20) unsigned NOT NULL,
@@ -271,6 +350,11 @@ example
 
 
 **Request data report**
+
+- aggregates at request level, never touching timers at all
+- Aggregation_key is a combination of request_field (host, script, etc.) and request_tags
+- Aggregated_data is request-based
+	- req_count, req_time_total, req_ru_utime, req_ru_stime, traffic_kb, mem_usage
 
 Table comment syntax
 
@@ -312,9 +396,40 @@ example (report by script name only here)
 
 **Timer data report**
 
+This is the one you need for 95% uses
+
+- aggregates at request + timer levels
+- Aggregation_key is a combination of request_field (host, script, etc.), request_tags and timer_tags
+- Aggregated_data is timer-based (aka taken from timer data)
+	- req_count, timer_hit_count, timer_time_total, timer_ru_utime, timer_ru_stime
+
 Table comment syntax
 
 	> 'v2/packet/<aggregation_window>/<key_spec>/<histogram+percentiles>/<filters>';
+
+example (some complex report)
+
+	mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
+			  `pinger_dst_cluster` varchar(64) NOT NULL,
+			  `pinger_src_host` varchar(64) NOT NULL,
+			  `pinger_dst_host` varchar(64) NOT NULL,
+			  `req_count` int(11) NOT NULL,
+			  `req_per_sec` float NOT NULL,
+			  `hit_count` int(11) NOT NULL,
+			  `hit_per_sec` float NOT NULL,
+			  `time_total` float NOT NULL,
+			  `time_per_sec` float NOT NULL,
+			  `ru_utime_total` float NOT NULL,
+			  `ru_utime_per_sec` float NOT NULL,
+			  `ru_stime_total` float NOT NULL,
+			  `ru_stime_per_sec` float NOT NULL,
+			  `p50` float NOT NULL,
+			  `p75` float NOT NULL,
+			  `p95` float NOT NULL,
+			  `p99` float NOT NULL,
+			  `p100` float NOT NULL
+			) ENGINE=PINBA DEFAULT CHARSET=latin1
+			  COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 
 example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 
@@ -333,7 +448,8 @@ example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 			  `ru_utime_per_sec` float NOT NULL,
 			  `ru_stime_total` float NOT NULL,
 			  `ru_stime_per_sec` float NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
+			) ENGINE=PINBA DEFAULT CHARSET=latin1
+			  COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
 
 	mysql> select * from report_host_script_server_tag10; -- skipped some fields for brevity
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
@@ -363,23 +479,7 @@ example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 
 **Status Variables**
 
-The upside for using this, instead of separate (kinda sorta built-in) table is that these are easier to immplement and support :)
-But not by much.
-The downside - it's ugly in selects (to calculate something like packets/sec).
-
-Example (var combo)
-
-	mysql> select
-		(select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_RECV_PACKETS')
-		/ (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UPTIME')
-		as packets_per_sec;
-	+-------------------+
-	| packets_per_sec   |
-	+-------------------+
-	| 54239.48988125529 |
-	+-------------------+
-	1 row in set (0.00 sec)
-
+Same values as in stats table, but 'built-in' (no need to create the table), but uglier to use in selects.
 
 Example (all vars)
 
@@ -418,4 +518,17 @@ Example (all vars)
 	| Pinba_dictionary_mem_used          | 6303104   |
 	+------------------------------------+-----------+
 	29 rows in set (0.00 sec)
+
+Example (var combo)
+
+	mysql> select
+		(select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_RECV_PACKETS')
+		/ (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UPTIME')
+		as packets_per_sec;
+	+-------------------+
+	| packets_per_sec   |
+	+-------------------+
+	| 54239.48988125529 |
+	+-------------------+
+	1 row in set (0.00 sec)
 

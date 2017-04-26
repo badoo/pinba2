@@ -6,24 +6,33 @@
 	- [x] {won't fix, there is no need currently} table listing all open tables and their state
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
-		- [ ] there is a weird memory leak that i'm not sure is mariadb's or mine, or something else (still testing)
-	- [x] docs (well, readme should suffice for now)
-	- [ ] guidelines - how to run mysql with jemalloc
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
+		- [x] test with mysql (tested, still leaks, probably my code)
+		- [x] test with mariadb (tested, still leaks, probably my code)
+		- [x] investigate nanomsg - can silently drop messages even with linger and in req/rep sockets
+- docs
+	- [x] README (well, should suffice for now)
+	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
+	- [x] guidelines - how to run mysql with jemalloc
+	- [ ] internals/tuning guide
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
 	- [ ] log levels support (with runtime change?)
-- [x] tag based filtering (i.e. take only timers with tag:browser=chrome)
-- per-report
+- report data filtering
+	- [x] min/max time
+	- [x] request field/tag based filtering (i.e. take only requests with +browser=chrome)
+	- [x] timer tag based filtering (i.e. take only timers with @group=memcached)
+- per-report stats
 	- [x] rusage
 	- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
 - [x] per-report nanomsg queues instead of pubsub
-	- to track packets dropps, slow reports, etc.
+	- to track packets drops, slow reports, etc.
 	- we actually leak memory if any batches get dropped (due to incrementing ref counts for all present reports)
 - global stats
 	- [x] mysql table
 	- [x] status variables
 	- [x] make stats table the same as status variables, or remove it in favor of the former
+- raw data support
 - [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
 
@@ -71,6 +80,7 @@
 	- runtime: udp readers, coorinator, the features meat
 - [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
 - [ ] split report raw data aggregation and tick repack (i.e. have a few threads doing repack and providing snapshots)
+	- when this is done, we can actually split any report into any number of threads we want (both aggregation and tick-repack parts)
 - percentiles
 	- [x] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
 	- [ ] calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)
