@@ -364,7 +364,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 {
 	report_snapshot_ptr            snapshot_;
 	report_snapshot_t::position_t  pos_;
-	pinba_share_data_t             share_data_; // copied from share
+	pinba_share_data_ptr           share_data_; // copied from share
 
 	static constexpr unsigned const n_data_fields___by_request = 11;
 	static constexpr unsigned const n_data_fields___by_timer   = 10;
@@ -374,18 +374,23 @@ public:
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
+		if (snapshot_)
+			return 0;
+
+		share_data_ = meow::make_unique<pinba_share_data_t>();
+
 		{
 			std::lock_guard<std::mutex> lk_(P_CTX_->lock);
 
 			auto const *share = handler->current_share().get();
-			share_data_ = static_cast<pinba_share_data_t const&>(*share); // a copy
+			*share_data_ = static_cast<pinba_share_data_t const&>(*share); // a copy
 		}
 
-		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_.mysql_name, share_data_.report_name);
+		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
 
 		try
 		{
-			snapshot_ = P_E_->get_report_snapshot(share_data_.report_name);
+			snapshot_ = P_E_->get_report_snapshot(share_data_->report_name);
 		}
 		catch (std::exception const& e)
 		{
@@ -401,7 +406,7 @@ public:
 			unsigned percentile_field_min = 0;
 			unsigned percentile_field_max = 0;
 
-			auto const *view_conf = share_data_.view_conf.get();
+			auto const *view_conf = share_data_->view_conf.get();
 
 			switch (view_conf->kind)
 			{
@@ -456,7 +461,7 @@ public:
 			snapshot_->prepare(ptype);
 
 			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
-				__func__, share_data_.mysql_name,
+				__func__, share_data_->mysql_name,
 				report_snapshot_t::prepare_type::enum_as_str_ref(ptype),
 				sw.stamp(), snapshot_->row_count());
 		}
@@ -468,6 +473,7 @@ public:
 
 	virtual int rnd_end(pinba_handler_t*) override
 	{
+		share_data_.reset();
 		snapshot_.reset();
 		return 0;
 	}
@@ -719,7 +725,7 @@ public:
 			// TODO: calculate all required percentiles in one go
 			//       performance testing shows that for short (~100 items) histograms it gives no effect whatsoever
 			//       need to to test for large ones (10k+ items)
-			auto const& percentiles = share_data_.view_conf->percentiles;
+			auto const& percentiles = share_data_->view_conf->percentiles;
 
 			unsigned const n_percentile_fields = percentiles.size();
 			if (findex < n_percentile_fields)
@@ -871,11 +877,12 @@ pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
 	, share_(nullptr)
 {
-	ff::fmt(stderr, "");
+	LOG_DEBUG(P_L_, "{0}({1}, {2}) -> {3}", __func__, hton, table_arg, this);
 }
 
 pinba_handler_t::~pinba_handler_t()
 {
+	LOG_DEBUG(P_L_, "{0} <- {1}", __func__, this);
 }
 
 TABLE* pinba_handler_t::current_table() const

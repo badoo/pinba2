@@ -4,6 +4,7 @@
 	- [x] report configs (in comments)
 	- [x] table with list of all reports and their data
 	- [x] {won't fix, there is no need currently} table listing all open tables and their state
+	- [ ] raw histogram data tables
 	- [ ] test with 5.7
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )

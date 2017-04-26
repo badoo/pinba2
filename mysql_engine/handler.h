@@ -54,6 +54,7 @@ struct pinba_share_data_t // intentionally copyable
 	bool                   report_active;        // has the report (above) been activated with pinba engine?
 	bool                   report_needs_engine;  // if this report exists in pinba engine
 };
+using pinba_share_data_ptr = std::unique_ptr<pinba_share_data_t>;
 
 struct pinba_share_t
 	: private boost::noncopyable
@@ -126,6 +127,9 @@ public:
 			);
 	}
 
+	/* disable query cache */
+	uint8 table_cache_type() { return HA_CACHE_TBL_NOCACHE; }
+
 	/** @brief
 		This is a bitmap of flags that indicates how the storage engine
 		implements indexes. The current index flags are documented in
@@ -140,6 +144,7 @@ public:
 	{
 		return 0;
 	}
+
 	// ulong index_flags(uint inx, uint part, bool all_parts) const
 	// {
 	// 	return HA_READ_NEXT | HA_READ_PREV | HA_READ_ORDER | HA_ONLY_WHOLE_INDEX;;

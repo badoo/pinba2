@@ -5,7 +5,8 @@ An attempt to rethink internal implementation and some features of excellent htt
 
 - no raw data tables (i.e. requests, timers) support, yet (can be implemented)
 	- raw data tables have VERY high memory usage requirements and uses are limited
-- simpler, more flexible configuration
+- no support for getting raw histogram data (yet)
+- simpler, more flexible report configuration
 	- only 3 kinds of reports (of which you mostly need one: timer), covering all use cases from original pinba
 	- simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
 		- supports 7 keys max at the moment (never seen anyone using more than 5 anyway)
@@ -13,6 +14,9 @@ An attempt to rethink internal implementation and some features of excellent htt
 	- more options can be configured per report now
 		- stats gathering history: i.e. some reports can aggregate over 60sec, while others - over 300sec, as needed
 		- histograms+percentiles: some reports might need very detailed histograms, while others - coarse
+- simpler to maintain
+	- no 'pools' to configure, aka no re-configuration is required when traffic grows
+	- no limits on tag name/value sizes (but keep it reasonable)
 - improved performance, reduced cpu/memory usage
 	- currently handles ~72k simple packets/sec (~200mbps) with 5 medium-complexity reports (4 keys aggregation) @ ~40% overall cpu usage
 	- uses significantly less memory (orders of magnitude) for common cases, since we don't store raw requests by default
@@ -91,7 +95,7 @@ There are 3 kinds of reports: packet, request, timer. Reports differ on how they
 A report is basically a table of key/value pairs: aggregation_key => aggregated_data.
 
 - Aggregation_key is something that you configure (i.e. aggregate incoming stream on ~host,~script,+request_tag).
-- Aggregated_data is report-specific (i.e. structure with fields like: req_count, hit_count, total_time, etc.).
+- Aggregated_data is report-specific (i.e. a structure with fields like: req_count, hit_count, total_time, etc.).
 
 **SQL tables**
 
@@ -358,7 +362,7 @@ Example
 **Request data report**
 
 - aggregates at request level, never touching timers at all
-- Aggregation_key is a combination of request_field (host, script, etc.) and request_tags
+- Aggregation_key is a combination of request_field (host, script, etc.) and request_tags (must NOT have timer_tag keys)
 - Aggregated_data is request-based
 	- req_count, req_time_total, req_ru_utime, req_ru_stime, traffic_kb, mem_usage
 
@@ -405,7 +409,7 @@ example (report by script name only here)
 This is the one you need for 95% uses
 
 - aggregates at request + timer levels
-- Aggregation_key is a combination of request_field (host, script, etc.), request_tags and timer_tags
+- Aggregation_key is a combination of request_field (host, script, etc.), request_tags and timer_tags (must have at least one timer_tag key)
 - Aggregated_data is timer-based (aka taken from timer data)
 	- req_count, timer_hit_count, timer_time_total, timer_ru_utime, timer_ru_stime
 
