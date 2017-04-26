@@ -801,7 +801,6 @@ public:
 	virtual void add(packet_t *packet)
 	{
 		// bloom check
-		// TODO: bloom drops + false positives counters
 		if (packet->timer_bloom)
 		{
 			if (!packet->timer_bloom->contains(this->timer_bloom_))
