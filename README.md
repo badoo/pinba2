@@ -22,6 +22,7 @@ An attempt to rethink internal implementation and some features of excellent htt
 **Same client libraries can be used with this pinba implementation**
 
 **See also**
+
 [TODO](TODO.md)
 
 # Docker
@@ -38,7 +39,7 @@ An attempt to rethink internal implementation and some features of excellent htt
 - nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases, or just pull master)
 - mysql (5.6+) or mariadb (10+)
 	- mysql: need source code, run ./configure, since mysql doesn't install all internal headers we need
-	- mariadb just install from with your favorite package manager, and point pinba to header files
+	- mariadb: just install from with your favorite package manager, and point pinba to header files
 
 **To build, run**
 
@@ -69,6 +70,7 @@ Something like this
 	$ cat scripts/default_reports.sql | mysql
 
 **Jemalloc**
+
 highly recommended to run mysql/mariadb with jemalloc enabled
 
 - mariadb does this automatically (i think) [and has been for quite a while](https://mariadb.org/mariadb-5-5-33-now-available/)
@@ -82,6 +84,26 @@ highly recommended to run mysql/mariadb with jemalloc enabled
 - make sure that you're building pinba with the same mysql/mariadb version that you're going to install built plugin into, or mysterious crashes might happen
 
 # SQL
+
+**Reports**
+
+There are 3 kinds of reports: packet, request, timer. Reports differ on how they aggregate and present data.
+A report is basically a table of key/value pairs: aggregation_key => aggregated_data.
+
+- Aggregation_key is something that you configure (i.e. aggregate incoming stream on ~host,~script,+request_tag).
+- Aggregated_data is report-specific (i.e. structure with fields like: req_count, hit_count, total_time, etc.).
+
+**SQL tables**
+
+All report tables have same simple structure
+
+- Aggregation_key, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
+- Aggregated_data, one field per data field (i.e. packet report needs 7 fields)
+- Percentiles, one field per configured percentile
+
+
+**SQL table comments**
+
 All pinba tables are created with sql comment to tell the engine about table purpose and structure,
 general syntax for comment is as follows (not all reports use all the fields).
 
@@ -121,22 +143,6 @@ general syntax for comment is as follows (not all reports use all the fields).
 		- will accept only requests with request_time in range [0, 1000)ms with request tag 'browser' present and value 'chrome'
 		- there is currently no way to filter timers by their timer_value, can't think of a use case really
 
-**General notes**
-
-*Reports*
-
-- There are 3 kinds of reports: packet, request, timer. Reports differ on how they aggregate and present data.
-- A report is basically a table of key/value pairs: aggregation_key => aggregated_data.
-	- Aggregation_key is something that you configure (i.e. aggregate incoming stream on ~host,~script,+request_tag).
-	- Aggregated_data is report-specific (i.e. structure with fields like: req_count, hit_count, total_time, etc.).
-
-*SQL Tables*
-
-- All report tables have same simple structure
-	- Aggregation_key, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
-	- Aggregated_data, one field per data field (i.e. packet report needs 7 fields)
-	- Percentiles, one field per configured percentile
-
 
 **Stats table (see also: status variables)**
 
@@ -149,36 +155,36 @@ Table comment syntax
 example
 
 	mysql> CREATE TABLE if not exists `stats` (
-			  `uptime` DOUBLE NOT NULL,
-			  `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_recv_bytes` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_packet_decode_err` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
-			  `udp_ru_utime` DOUBLE NOT NULL,
-			  `udp_ru_stime` DOUBLE NOT NULL,
-			  `repacker_poll_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_recv_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_packet_validate_err` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_batch_send_by_timer` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_batch_send_by_size` BIGINT(20) UNSIGNED NOT NULL,
-			  `repacker_ru_utime` DOUBLE NOT NULL,
-			  `repacker_ru_stime` DOUBLE NOT NULL,
-			  `coordinator_batches_received` BIGINT(20) UNSIGNED NOT NULL,
-			  `coordinator_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
-			  `coordinator_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
-			  `coordinator_control_requests` BIGINT(20) UNSIGNED NOT NULL,
-			  `coordinator_ru_utime` DOUBLE NOT NULL,
-			  `coordinator_ru_stime` DOUBLE NOT NULL,
-			  `dictionary_size` BIGINT(20) UNSIGNED NOT NULL,
-			  `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
+		  `uptime` DOUBLE NOT NULL,
+		  `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_recv_bytes` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_packet_decode_err` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+		  `udp_ru_utime` DOUBLE NOT NULL,
+		  `udp_ru_stime` DOUBLE NOT NULL,
+		  `repacker_poll_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_recv_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_recv_packets` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_packet_validate_err` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_batch_send_by_timer` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_batch_send_by_size` BIGINT(20) UNSIGNED NOT NULL,
+		  `repacker_ru_utime` DOUBLE NOT NULL,
+		  `repacker_ru_stime` DOUBLE NOT NULL,
+		  `coordinator_batches_received` BIGINT(20) UNSIGNED NOT NULL,
+		  `coordinator_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
+		  `coordinator_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+		  `coordinator_control_requests` BIGINT(20) UNSIGNED NOT NULL,
+		  `coordinator_ru_utime` DOUBLE NOT NULL,
+		  `coordinator_ru_stime` DOUBLE NOT NULL,
+		  `dictionary_size` BIGINT(20) UNSIGNED NOT NULL,
+		  `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL
+		) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
 
 	mysql> select *, (repacker_ru_utime/uptime) as repacker_ru_utime_per_sec from stats\G
@@ -215,7 +221,7 @@ example
 	   repacker_ru_utime_per_sec: 0.18041216267348514
 
 
-**Active reports**
+**Active reports information table**
 
 This table lists all reports known to the engine with additional information about them.
 
@@ -255,33 +261,33 @@ Table comment syntax
 example
 
 	mysql> CREATE TABLE if not exists `active` (
-			  `id` int unsigned NOT NULL,
-			  `table_name` varchar(128) NOT NULL,
-			  `internal_name` varchar(128) NOT NULL,
-			  `kind` varchar(64) NOT NULL,
-			  `uptime` double unsigned NOT NULL,
-			  `time_window_sec` int(10) unsigned NOT NULL,
-			  `tick_count` int(10) NOT NULL,
-			  `approx_row_count` int(10) unsigned NOT NULL,
-			  `approx_mem_used` bigint(20) unsigned NOT NULL,
-			  `packets_received` bigint(20) unsigned NOT NULL,
-			  `packets_lost` bigint(20) unsigned NOT NULL,
-			  `packets_aggregated` bigint(20) unsigned NOT NULL,
-			  `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
-			  `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
-			  `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
-			  `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
-			  `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
-			  `timers_scanned` bigint(20) unsigned NOT NULL,
-			  `timers_aggregated` bigint(20) unsigned NOT NULL,
-			  `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
-			  `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
-			  `ru_utime` double NOT NULL,
-			  `ru_stime` double NOT NULL,
-			  `last_tick_time` double NOT NULL,
-			  `last_tick_prepare_duration` double NOT NULL,
-			  `last_snapshot_merge_duration` double NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
+		  `id` int unsigned NOT NULL,
+		  `table_name` varchar(128) NOT NULL,
+		  `internal_name` varchar(128) NOT NULL,
+		  `kind` varchar(64) NOT NULL,
+		  `uptime` double unsigned NOT NULL,
+		  `time_window_sec` int(10) unsigned NOT NULL,
+		  `tick_count` int(10) NOT NULL,
+		  `approx_row_count` int(10) unsigned NOT NULL,
+		  `approx_mem_used` bigint(20) unsigned NOT NULL,
+		  `packets_received` bigint(20) unsigned NOT NULL,
+		  `packets_lost` bigint(20) unsigned NOT NULL,
+		  `packets_aggregated` bigint(20) unsigned NOT NULL,
+		  `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
+		  `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
+		  `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
+		  `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
+		  `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
+		  `timers_scanned` bigint(20) unsigned NOT NULL,
+		  `timers_aggregated` bigint(20) unsigned NOT NULL,
+		  `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
+		  `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
+		  `ru_utime` double NOT NULL,
+		  `ru_stime` double NOT NULL,
+		  `last_tick_time` double NOT NULL,
+		  `last_tick_prepare_duration` double NOT NULL,
+		  `last_snapshot_merge_duration` double NOT NULL
+		) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
 	mysql> select *, packets_received/uptime as packets_per_sec, ru_utime/uptime utime_per_sec from active\G
 	*************************** 1. row ***************************
@@ -331,14 +337,14 @@ Table comment syntax
 Example
 
 	mysql> CREATE TABLE `info` (
-			  `req_count` bigint(20) unsigned NOT NULL,
-			  `timer_count` bigint(20) unsigned NOT NULL,
-			  `time_total` double NOT NULL,
-			  `ru_utime_total` double NOT NULL,
-			  `ru_stime_total` double NOT NULL,
-			  `traffic_kb` bigint(20) unsigned NOT NULL,
-			  `memory_usage` bigint(20) unsigned NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
+		  `req_count` bigint(20) unsigned NOT NULL,
+		  `timer_count` bigint(20) unsigned NOT NULL,
+		  `time_total` double NOT NULL,
+		  `ru_utime_total` double NOT NULL,
+		  `ru_stime_total` double NOT NULL,
+		  `traffic_kb` bigint(20) unsigned NOT NULL,
+		  `memory_usage` bigint(20) unsigned NOT NULL
+		) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
 
 	mysql> select * from info;
 	+-----------+-------------+------------+----------------+----------------+------------+--------------+
@@ -363,19 +369,19 @@ Table comment syntax
 example (report by script name only here)
 
 	mysql> CREATE TABLE `report_by_script_name` (
-			  `script` varchar(64) NOT NULL,
-			  `req_count` int(10) unsigned NOT NULL,
-			  `req_per_sec` double NOT NULL,
-			  `req_time_total` double NOT NULL,
-			  `req_time_per_sec` double NOT NULL,
-			  `ru_utime_total` double NOT NULL,
-			  `ru_utime_per_sec` double NOT NULL,
-			  `ru_stime_total` double NOT NULL,
-			  `ru_stime_per_sec` double NOT NULL,
-			  `traffic_total` bigint(20) unsigned NOT NULL,
-			  `traffic_per_sec` double NOT NULL,
-			  `memory_footprint` bigint(20) NOT NULL
-  			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
+		  `script` varchar(64) NOT NULL,
+		  `req_count` int(10) unsigned NOT NULL,
+		  `req_per_sec` double NOT NULL,
+		  `req_time_total` double NOT NULL,
+		  `req_time_per_sec` double NOT NULL,
+		  `ru_utime_total` double NOT NULL,
+		  `ru_utime_per_sec` double NOT NULL,
+		  `ru_stime_total` double NOT NULL,
+		  `ru_stime_per_sec` double NOT NULL,
+		  `traffic_total` bigint(20) unsigned NOT NULL,
+		  `traffic_per_sec` double NOT NULL,
+		  `memory_footprint` bigint(20) NOT NULL
+			) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
 
 	mysql> select * from report_by_script_name; -- skipped some fields for brevity
 	+----------------+-----------+-------------+----------------+------------------+----------------+------------------+-----------------+------------------+
@@ -410,46 +416,46 @@ Table comment syntax
 example (some complex report)
 
 	mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
-			  `pinger_dst_cluster` varchar(64) NOT NULL,
-			  `pinger_src_host` varchar(64) NOT NULL,
-			  `pinger_dst_host` varchar(64) NOT NULL,
-			  `req_count` int(11) NOT NULL,
-			  `req_per_sec` float NOT NULL,
-			  `hit_count` int(11) NOT NULL,
-			  `hit_per_sec` float NOT NULL,
-			  `time_total` float NOT NULL,
-			  `time_per_sec` float NOT NULL,
-			  `ru_utime_total` float NOT NULL,
-			  `ru_utime_per_sec` float NOT NULL,
-			  `ru_stime_total` float NOT NULL,
-			  `ru_stime_per_sec` float NOT NULL,
-			  `p50` float NOT NULL,
-			  `p75` float NOT NULL,
-			  `p95` float NOT NULL,
-			  `p99` float NOT NULL,
-			  `p100` float NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1
-			  COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
+		  `pinger_dst_cluster` varchar(64) NOT NULL,
+		  `pinger_src_host` varchar(64) NOT NULL,
+		  `pinger_dst_host` varchar(64) NOT NULL,
+		  `req_count` int(11) NOT NULL,
+		  `req_per_sec` float NOT NULL,
+		  `hit_count` int(11) NOT NULL,
+		  `hit_per_sec` float NOT NULL,
+		  `time_total` float NOT NULL,
+		  `time_per_sec` float NOT NULL,
+		  `ru_utime_total` float NOT NULL,
+		  `ru_utime_per_sec` float NOT NULL,
+		  `ru_stime_total` float NOT NULL,
+		  `ru_stime_per_sec` float NOT NULL,
+		  `p50` float NOT NULL,
+		  `p75` float NOT NULL,
+		  `p95` float NOT NULL,
+		  `p99` float NOT NULL,
+		  `p100` float NOT NULL
+		) ENGINE=PINBA DEFAULT CHARSET=latin1
+		  COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 
 example (grouped by hostname,scriptname,servername and value timer tag "tag10")
 
 	mysql> CREATE TABLE `report_host_script_server_tag10` (
-			  `host` varchar(64) NOT NULL,
-			  `script` varchar(64) NOT NULL,
-			  `server` varchar(64) NOT NULL,
-			  `tag10` varchar(64) NOT NULL,
-			  `req_count` int(10) unsigned NOT NULL,
-			  `req_per_sec` float NOT NULL,
-			  `hit_count` int(10) unsigned NOT NULL,
-			  `hit_per_sec` float NOT NULL,
-			  `time_total` float NOT NULL,
-			  `time_per_sec` float NOT NULL,
-			  `ru_utime_total` float NOT NULL,
-			  `ru_utime_per_sec` float NOT NULL,
-			  `ru_stime_total` float NOT NULL,
-			  `ru_stime_per_sec` float NOT NULL
-			) ENGINE=PINBA DEFAULT CHARSET=latin1
-			  COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
+		  `host` varchar(64) NOT NULL,
+		  `script` varchar(64) NOT NULL,
+		  `server` varchar(64) NOT NULL,
+		  `tag10` varchar(64) NOT NULL,
+		  `req_count` int(10) unsigned NOT NULL,
+		  `req_per_sec` float NOT NULL,
+		  `hit_count` int(10) unsigned NOT NULL,
+		  `hit_per_sec` float NOT NULL,
+		  `time_total` float NOT NULL,
+		  `time_per_sec` float NOT NULL,
+		  `ru_utime_total` float NOT NULL,
+		  `ru_utime_per_sec` float NOT NULL,
+		  `ru_stime_total` float NOT NULL,
+		  `ru_stime_per_sec` float NOT NULL
+		) ENGINE=PINBA DEFAULT CHARSET=latin1
+		  COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
 
 	mysql> select * from report_host_script_server_tag10; -- skipped some fields for brevity
 	+-----------+----------------+-------------+-----------+-----------+-----------+------------+----------------+----------------+
