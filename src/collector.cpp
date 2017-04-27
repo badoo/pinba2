@@ -323,6 +323,9 @@ namespace { namespace aux {
 			std::unique_ptr<char[]> recv_buffer_p { new char[max_dgrams_to_recv * max_message_size] };
 			char *recv_buffer = recv_buffer_p.get();
 
+			// touch all network memory in advance
+			memset(recv_buffer, 0, max_dgrams_to_recv * max_message_size);
+
 			for (unsigned i = 0; i < max_dgrams_to_recv; i++)
 			{
 				iov[i].iov_base           = recv_buffer + i * max_message_size;

@@ -850,7 +850,7 @@ public:
 		{
 			uint32_t const n_tags_required = out_range.size();
 			uint32_t       n_tags_found = 0;
-			std::fill(out_range.begin(), out_range.end(), 0);
+			std::fill(out_range.begin(), out_range.end(), 0); // FIXME: this is not needed anymore ?
 
 			for (uint32_t i = 0; i < n_tags_required; ++i)
 			{
@@ -876,7 +876,7 @@ public:
 
 			uint32_t const n_tags_required = out_range.size();
 			uint32_t       n_tags_found = 0;
-			std::fill(out_range.begin(), out_range.end(), 0);
+			std::fill(out_range.begin(), out_range.end(), 0); // FIXME: this is not needed anymore ?
 
 			for (uint32_t tag_i = 0; tag_i < n_tags_required; ++tag_i)
 			{
