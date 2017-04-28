@@ -32,7 +32,10 @@ int main(int argc, char const *argv[])
 		.repacker_batch_messages  = 1024,
 		.repacker_batch_timeout   = 100 * d_millisecond,
 
-		.coordinator_input_buffer = 32,
+		.coordinator_input_buffer = 128,
+		.report_input_buffer      = 32,
+
+		.logger                   = {},
 	};
 
 	auto pinba = pinba_engine_init(&options);

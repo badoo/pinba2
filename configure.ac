@@ -37,7 +37,8 @@ CFLAGS=`echo "$CFLAGS" | sed -e 's/ -DNDEBUG//g'`
 changequote([,])
 #CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
 CXXFLAGS="$CXXFLAGS -pthread -DMYSQL_DYNAMIC_PLUGIN"
-CXXFLAGS="$CXXFLAGS -Wall -Wformat-security -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Werror"
+CXXFLAGS="$CXXFLAGS -Wall -Wextra -Wformat-security -Werror "
+CXXFLAGS="$CXXFLAGS -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers "
 CXXFLAGS="$CXXFLAGS -fno-omit-frame-pointer"
 
 AX_CONFIG_NICE([config.nice])

@@ -114,7 +114,7 @@ struct report___by_timer_t : public report_t
 	typedef report_row_data___by_timer_t  data_t;
 
 	struct item_t
-		: private boost::noncopyable
+		// : private boost::noncopyable // bring this back, when we remove copy ctor
 	{
 		// last unique packet we've incremented data from
 		//  this one is used to detect multiple timers being merged from one packet_t
@@ -247,11 +247,7 @@ public: // snapshot
 
 		static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 		{
-			// FIXME: just patch meow::chunk to initialize this nicely
-			report_key_t k;
-			for (auto const& kpart : it->first)
-				k.push_back(kpart);
-			return k;
+			return report_key_t { it->first };
 		}
 
 		static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
@@ -577,6 +573,7 @@ public: // key extraction and transformation
 		key_t remap_key(key_t const& flat_key) const
 		{
 			key_t result = {}; // avoid might-be-unitialized warning
+			assert(split_key_d.size() == result.size());
 
 			for (auto const& d : split_key_d)
 			{

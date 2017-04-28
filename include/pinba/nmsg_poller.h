@@ -262,8 +262,9 @@ public: // utility
 			auto const& poller = pollers_[i];
 
 			pfd[i] = pollfd {
-				.fd     = poller->fd(),
-				.events = poller->ev()
+				.fd      = poller->fd(),
+				.events  = poller->ev(),
+				.revents = 0,
 			};
 		}
 

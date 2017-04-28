@@ -30,7 +30,7 @@ namespace { namespace aux {
 		typedef report_row_data___by_packet_t  data_t;
 
 		struct item_t
-			: private boost::noncopyable
+			// : private boost::noncopyable // bring this back, when we remove copy ctor
 		{
 			data_t      data;
 			histogram_t hv;

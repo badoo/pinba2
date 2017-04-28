@@ -222,7 +222,7 @@ struct report___by_timer_t : public report_t
 	typedef report_row_data___by_timer_t  data_t;
 
 	struct item_t
-		: private boost::noncopyable
+		// : private boost::noncopyable
 	{
 		// last unique packet we've incremented data from
 		//  this one is used to detect multiple timers being merged from one packet_t

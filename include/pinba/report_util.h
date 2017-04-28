@@ -266,6 +266,12 @@ struct ticks_ringbuffer_t : private boost::noncopyable
 			, end_tv({0,0})
 			, data()
 		{
+			// ff::fmt(stderr, "{0}; {1}\n", __func__, this);
+		}
+
+		~tick_t()
+		{
+			// ff::fmt(stderr, "{0}; {1}\n", __func__, this);
 		}
 	};
 
