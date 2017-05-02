@@ -39,7 +39,7 @@ common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS"
 
 AX_CFLAGS="-std=gnu11 $common_flags"
 AX_CXXFLAGS="-std=gnu++11 $common_flags"
-AX_LDFAGS="-flto -lrt"
+AX_LDFLAGS="-flto -lrt"
 
 dnl nonportable pthread expensions
 AC_CHECK_LIB([pthread], [pthread_setname_np], [
@@ -314,6 +314,7 @@ AC_ARG_WITH(boost, [AS_HELP_STRING([--with-boost], [path to boost library])],
 
 AC_SUBST(AX_CFLAGS)
 AC_SUBST(AX_CXXFLAGS)
+AC_SUBST(AX_LDFLAGS)
 
 AC_SUBST(DEPS_CFLAGS)
 AC_SUBST(DEPS_LIBS)
