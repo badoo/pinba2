@@ -1,20 +1,20 @@
-AC_INIT([pinba2], [2.0.0])
+AC_INIT([pinba], [2.0.0])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/globals.cpp])
 AM_INIT_AUTOMAKE([foreign])
-AM_CONFIG_HEADER([src/auto_config.h])
-#AX_PREFIX_CONFIG_H(src/pinba_config.h)
+AM_CONFIG_HEADER([pinba_config.h])
+AX_PREFIX_CONFIG_H([pinba_config.h])
+AX_CONFIG_NICE([config.nice])
 AM_INIT_AUTOMAKE
 
+${CFLAGS=""}
 AC_PROG_CC
+${CXXFLAGS=""}
 AC_PROG_CXX
-AC_PROG_CXXCPP
 
 AC_PROG_LIBTOOL
 LIBTOOL="$LIBTOOL --preserve-dup-deps"
 AC_SUBST(LIBTOOL)
-
-AC_SUBST(MYSQL_INC)
 
 AC_C_CONST
 AC_TYPE_SIZE_T
@@ -23,29 +23,24 @@ AC_CHECK_FUNCS(memcpy memmove)
 AC_CHECK_TYPES([uint16_t])     # defined in C99 systems
 AC_CHECK_TYPES([u_int16_t])    # defined in BSD-derived systems, and gnu
 AC_CHECK_TYPES([long long])    # probably defined everywhere, but...
-AC_CHECK_HEADERS(limits.h syslimits.h string.h strings.h unistd.h stdint.h)
+AC_CHECK_HEADERS(inttypes.h stdint.h unistd.h)
 AC_PROG_SED
 dnl AC_PROG_AWK
 
-AC_CHECK_FUNCS([strndup sysconf recvmmsg])
+AC_CHECK_FUNCS([sysconf recvmmsg])
 
-changequote({,})
-CXXFLAGS=`echo "$CXXFLAGS" | sed -e 's/ -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG//g'`
-CFLAGS=`echo "$CFLAGS" | sed -e 's/ -DNDEBUG//g'`
-#CFLAGS="$CFLAGS -DNDEBUG"
+# compiler flags
+common_flags=" -pthread"
+common_flags="$common_flags -Wall -Wextra -Wformat-security -Werror"
+common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers"
+common_flags="$common_flags -fno-omit-frame-pointer"
+common_flags="$common_flags -fPIC -DPIC"
+common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS"
 
-changequote([,])
-#CXXFLAGS="$CXXFLAGS -DMYSQL_DYNAMIC_PLUGIN -DNDEBUG"
-CXXFLAGS="$CXXFLAGS -pthread -DMYSQL_DYNAMIC_PLUGIN"
-CXXFLAGS="$CXXFLAGS -Wall -Wextra -Wformat-security -Werror "
-CXXFLAGS="$CXXFLAGS -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers "
-CXXFLAGS="$CXXFLAGS -fno-omit-frame-pointer"
+AX_CFLAGS="-std=gnu11 $common_flags"
+AX_CXXFLAGS="-std=gnu++11 $common_flags"
 
-AX_CONFIG_NICE([config.nice])
-
-dnl check for floor and libm
-AC_CHECK_LIB([m], [floor], [LIBS="$LIBS -lm"], [AC_MSG_ERROR([can't continue without libm])])
-
+dnl nonportable pthread expensions
 AC_CHECK_LIB([pthread], [pthread_setname_np], [
 	AC_DEFINE([HAVE_PTHREAD_SETNAME_NP], [1], [Whether pthread_setname_np() is available])
 ], [AC_MSG_NOTICE([can't find pthread_setname_np()])])
@@ -56,7 +51,7 @@ AC_CHECK_LIB([pthread], [pthread_setaffinity_np], [
 
 STANDARD_PREFIXES="/usr /usr/local /opt /local"
 
-dnl autorevision {{{
+# autorevision part
 AUTOREVISION="$srcdir/autorevision.sh"
 
 v=$($AUTOREVISION -t sh)
@@ -69,9 +64,9 @@ if test "$?" = "0"; then
 	AC_DEFINE_UNQUOTED([VCS_SHORT_HASH], "$VCS_SHORT_HASH", [vcs short hash])
 	AC_DEFINE_UNQUOTED([VCS_WC_MODIFIED], "$VCS_WC_MODIFIED", [vcs wc modified])
 fi
-dnl }}}
 
-dir_resolve() dnl {{{
+
+dir_resolve()
 {
 	pwd=`pwd`
 	cd "$1" 2>/dev/null || cd "${pwd}/${1}" 2>/dev/null
@@ -81,27 +76,24 @@ dir_resolve() dnl {{{
 		echo "$1"
 	fi
 }
-dnl }}}
 
-dnl {{{ --with-libdir
+
 AC_ARG_WITH(libdir,
 	[AS_HELP_STRING([--with-libdir],[look for libraries in .../NAME rather than .../lib])
 	],
 	[LIBDIR=$with_libdir],
 	[LIBDIR=lib]
 )
-dnl }}}
 
-dnl {{{ --disable-rpath
+
 AC_ARG_ENABLE(rpath,
 	[AS_HELP_STRING([--disable-rpath],[disable passing additional runtime library search paths])
 	],
 	[PINBA_RPATH=no],
 	[PINBA_RPATH=yes]
 )
-dnl }}}
 
-dnl {{{ check for rpath support
+
 AC_MSG_CHECKING([if compiler supports -R])
 AC_CACHE_VAL(pinba_cv_cc_dashr,[
 	SAVE_LIBS=$LIBS
@@ -128,9 +120,8 @@ fi
 if test "$PINBA_RPATH" = "no"; then
 	ld_runpath_switch=
 fi
-dnl }}}
 
-dnl {{{ --with-mysql
+
 AC_MSG_CHECKING(for MySQL source code)
 AC_ARG_WITH(mysql, [AS_HELP_STRING([--with-mysql], [specify MySQL sources directory])], [],
 [
@@ -231,12 +222,11 @@ else
 
 	CFLAGS="$CFLAGS_old"
 	CXXFLAGS="$CXXFLAGS_old"
+
+	MYSQL_ENGINE_CFLAGS="-DMYSQL_DYNAMIC_PLUGIN -DMYSQL_SERVER=1 $MYSQL_INC"
 fi
 
 
-dnl }}}
-
-dnl {{{ --enable-static-build
 AC_ARG_ENABLE(static-build,
 	[AS_HELP_STRING([--enable-static-build], [link against non-system libs statically])
 	],
@@ -250,9 +240,8 @@ AC_ARG_ENABLE(static-build,
 		AC_MSG_RESULT([$FORCE_STATIC_BUILD])
 	]
 )
-dnl }}}
 
-dnl {{{ --enable-debug
+
 AC_ARG_ENABLE(debug,
 	[AS_HELP_STRING([--enable-debug], [enable debugging symbols and compile flags])
 	],
@@ -266,41 +255,23 @@ AC_ARG_ENABLE(debug,
 )
 
 if test x"$debug" = xyes ; then
-	DEBUG_FLAGS="-DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS -DPINBA_DEBUG -DPINBA_ENGINE_DEBUG_ON"
+	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG"
+	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS"
+	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DPINBA_DEBUG -DPINBA_ENGINE_DEBUG_ON"
 
-	dnl AC_DEFINE([PINBA_ENGINE_DEBUG_ON], [1], [debug is on])
-
-	if test x"$GCC" = xyes; then
-
-		dnl Remove any optimization flags from CFLAGS
-		changequote({,})
-		CXXFLAGS=`echo "$CXXFLAGS" | sed -e 's/-O[0-9s]*//g'`
-		CXXFLAGS=`echo "$CXXFLAGS" | sed -e 's/-g[0-2]\? //g'`
-		CFLAGS=`echo "$CFLAGS" | sed -e 's/-O[0-9s]*//g'`
-		CFLAGS=`echo "$CFLAGS" | sed -e 's/-g[0-2]\? //g'`
-		changequote([,])
-		CXXFLAGS="$CXXFLAGS -g3 -Wall -O0 $DEBUG_FLAGS"
-		CFLAGS="$CFLAGS -g3 -Wall -O0 $DEBUG_FLAGS"
-	fi
-
-	ADD_FLAGS=""
-
-	dnl Do not strip symbols from developer object files.
-	INSTALL_STRIP_FLAG=""
+	DEBUG_FLAGS="-O0 -ggdb3"
+	AX_CFLAGS="$AX_CFLAGS $DEBUG_FLAGS"
+	AX_CXXFLAGS="$AX_CXXFLAGS $DEBUG_FLAGS"
 else
-	dnl AC_DEFINE([PINBA_ENGINE_DEBUG_OFF], [1], [debug is off])
+	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DPINBA_ENGINE_DEBUG_OFF"
 
-	RELEASE_FLAGS="-O3 -ffast-math -g3 -mtune=native -DPINBA_ENGINE_DEBUG_OFF"
-
-	CXXFLAGS="$CXXFLAGS $RELEASE_FLAGS"
-	CFLAGS="$CFLAGS $RELEASE_FLAGS"
-
-	dnl Make sure to strip symbols from non-developer object files.
-	dnl INSTALL_STRIP_FLAG="-s"
+	RELEASE_FLAGS="-O3 -ffast-math -ggdb3 -mtune=native"
+	AX_CFLAGS="$AX_CFLAGS $RELEASE_FLAGS"
+	AX_CXXFLAGS="$AX_CXXFLAGS $RELEASE_FLAGS"
 fi
-dnl }}}
+# AC_MSG_NOTICE([debug = $debug, cflags = $AX_CFLAGS])
 
-dnl {{{ --with-build-string
+
 AC_ARG_WITH(build-string,
 	[AS_HELP_STRING([--with-build-string],[set custom build information here])
 	],
@@ -314,36 +285,39 @@ AC_ARG_WITH(build-string,
 	],
 	[ ]
 )
-dnl }}}
+
 
 AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build it statically)])],
 [
-	CXXFLAGS="$CXXFLAGS -pthread -I$with_nanomsg/include"
+	DEPS_CFLAGS="$DEPS_CFLAGS -pthread -I$with_nanomsg/include"
 	LDFLAGS="$LDFLAGS -lanl"
 	DEPS_LIBS="$DEPS_LIBS $with_nanomsg/lib/libnanomsg.a"
-	#DEPS_LIBS="$DEPS_LIBS -L$with_nanomsg/lib -lnanomsg"
 ])
 
 AC_ARG_WITH(sparsehash, [AS_HELP_STRING([--with-sparsehash], [path to sparsehash library])],
 [
-	CXXFLAGS="$CXXFLAGS -I$with_sparsehash/include" # this one is for sparsehash
-	CXXFLAGS="$CXXFLAGS -I$with_sparsehash/include/google" # this one is for sparsehash-c11
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_sparsehash/include" # this one is for sparsehash
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_sparsehash/include/google" # this one is for sparsehash-c11
 ])
 
 AC_ARG_WITH(meow, [AS_HELP_STRING([--with-meow], [path to meow library])],
 [
-	CXXFLAGS="$CXXFLAGS -I$with_meow"
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_meow"
 ])
 
 AC_ARG_WITH(boost, [AS_HELP_STRING([--with-boost], [path to boost library])],
 [
-	CXXFLAGS="$CXXFLAGS -I$with_boost/include" # installed version
-	CXXFLAGS="$CXXFLAGS -I$with_boost"         # just downloaded source code version
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_boost/include" # installed version
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_boost"         # just downloaded source code version
 ])
 
-AC_SUBST(INSTALL_STRIP_FLAG)
+AC_SUBST(AX_CFLAGS)
+AC_SUBST(AX_CXXFLAGS)
 
-AC_SUBST(DEPS_LIBS)
 AC_SUBST(DEPS_CFLAGS)
+AC_SUBST(DEPS_LIBS)
+
+AC_SUBST(MYSQL_ENGINE_CFLAGS)
+
 
 AC_OUTPUT([Makefile src/Makefile test/Makefile mysql_engine/Makefile])

@@ -1,21 +1,17 @@
 
-cflags = \
-	$(CXXFLAGS) \
-	-D_GNU_SOURCE -DMYSQL_DYNAMIC_PLUGIN -DMYSQL_SERVER=1 \
-	-fPIC -DPIC \
- 	$(MYSQL_INC) \
-	$(DEPS_CFLAGS) \
-	-I.. \
-	-I../include \
-	#
-
 AM_CXXFLAGS = \
-	-std=c++11 \
-	$(cflags) \
+	$(AX_CXXFLAGS) \
+	$(MYSQL_ENGINE_CFLAGS) \
+	$(DEPS_CFLAGS) \
+	-I$(top_srcdir) \
+	-I$(top_srcdir)/include \
 	#
 
-AM_CPPFLAGS = \
-	$(cflags) \
+AM_CFLAGS = \
+	$(AX_CFLAGS) \
+	$(DEPS_CFLAGS) \
+	-I$(top_srcdir) \
+	-I$(top_srcdir)/include \
 	#
 
 # the mysql plugin
@@ -28,7 +24,7 @@ libpinba_engine2_la_SOURCES = \
 	#
 
 libpinba_engine2_la_LDFLAGS = \
-	-module
+	-flto -module
 
 libpinba_engine2_la_LIBADD = \
 	../src/libpinba2.a \

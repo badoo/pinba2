@@ -1,3 +1,5 @@
+#include "pinba_config.h"
+
 #include <thread>
 #include <vector>
 
@@ -254,7 +256,10 @@ namespace { namespace aux {
 		void worker_thread(uint32_t thread_id, nmsg_socket_t& in_sock)
 		{
 			std::string const thr_name = ff::fmt_str("repacker/{0}", thread_id);
+
+		#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
 			pthread_setname_np(pthread_self(), thr_name.c_str());
+		#endif
 
 			MEOW_DEFER(
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);

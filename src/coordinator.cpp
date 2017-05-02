@@ -1,3 +1,5 @@
+#include "pinba_config.h"
+
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -127,7 +129,10 @@ namespace { namespace aux {
 
 			std::thread t([this, tick_interval]()
 			{
+
+			#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
 				pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
+			#endif
 
 				MEOW_DEFER(
 					LOG_DEBUG(globals_->logger(), "{0}; exiting", conf_.thread_name);
@@ -305,7 +310,10 @@ namespace { namespace aux {
 		void worker_thread()
 		{
 			std::string const thr_name = ff::fmt_str("coordinator");
+
+		#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
 			pthread_setname_np(pthread_self(), thr_name.c_str());
+		#endif
 
 			MEOW_DEFER(
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);

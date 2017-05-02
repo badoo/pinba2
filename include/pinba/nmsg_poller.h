@@ -146,7 +146,7 @@ private: // periodic events
 private:
 
 	std::vector<poller_ptr>               pollers_;
-	std::multimap<timeval_t, ticker_ptr>  tickers_;
+	std::multimap<timeval_t, ticker_ptr>  tickers_; // FIXME: std::priority_queue
 
 	std::function<void(timeval_t, duration_t)> before_poll_;
 	bool shutting_down;

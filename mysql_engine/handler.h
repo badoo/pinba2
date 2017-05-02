@@ -70,7 +70,7 @@ struct pinba_share_t
 
 class pinba_handler_t : public handler
 {
-	THR_LOCK_DATA lock_data;     // MySQL lock
+	THR_LOCK_DATA   lock_data;   // MySQL lock
 
 	pinba_share_ptr share_;      // current-table shared info
 	pinba_view_ptr  pinba_view_; // currently open pinba table wrapper

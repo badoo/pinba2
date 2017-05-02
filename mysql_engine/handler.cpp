@@ -25,6 +25,14 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define STORE_FIELD(N, value)     \
+	case N:                       \
+		(*field)->set_notnull();  \
+		(*field)->store(value);   \
+	break;
+/**/
+
+
 struct pinba_view___base_t : public pinba_view_t
 {
 	virtual int  rnd_init(pinba_handler_t*, bool scan) override
@@ -108,48 +116,39 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 			switch(field_index)
 			{
-				#define STORE(N, field_name)                 \
-					case N:                                  \
-						(*field)->set_notnull();             \
-						(*field)->store(vars_->field_name);  \
-					break;
-				/**/
+				STORE_FIELD(0,  vars_->uptime);
 
-				STORE(0,  uptime);
+				STORE_FIELD(1,  vars_->udp_poll_total);
+				STORE_FIELD(2,  vars_->udp_recv_total);
+				STORE_FIELD(3,  vars_->udp_recv_eagain);
+				STORE_FIELD(4,  vars_->udp_recv_bytes);
+				STORE_FIELD(5,  vars_->udp_recv_packets);
+				STORE_FIELD(6,  vars_->udp_packet_decode_err);
+				STORE_FIELD(7,  vars_->udp_batch_send_total);
+				STORE_FIELD(8,  vars_->udp_batch_send_err);
+				STORE_FIELD(9,  vars_->udp_ru_utime);
+				STORE_FIELD(10, vars_->udp_ru_stime);
 
-				STORE(1,  udp_poll_total);
-				STORE(2,  udp_recv_total);
-				STORE(3,  udp_recv_eagain);
-				STORE(4,  udp_recv_bytes);
-				STORE(5,  udp_recv_packets);
-				STORE(6,  udp_packet_decode_err);
-				STORE(7,  udp_batch_send_total);
-				STORE(8,  udp_batch_send_err);
-				STORE(9,  udp_ru_utime);
-				STORE(10, udp_ru_stime);
+				STORE_FIELD(11, vars_->repacker_poll_total);
+				STORE_FIELD(12, vars_->repacker_recv_total);
+				STORE_FIELD(13, vars_->repacker_recv_eagain);
+				STORE_FIELD(14, vars_->repacker_recv_packets);
+				STORE_FIELD(15, vars_->repacker_packet_validate_err);
+				STORE_FIELD(16, vars_->repacker_batch_send_total);
+				STORE_FIELD(17, vars_->repacker_batch_send_by_timer);
+				STORE_FIELD(18, vars_->repacker_batch_send_by_size);
+				STORE_FIELD(19, vars_->repacker_ru_utime);
+				STORE_FIELD(20, vars_->repacker_ru_stime);
 
-				STORE(11, repacker_poll_total);
-				STORE(12, repacker_recv_total);
-				STORE(13, repacker_recv_eagain);
-				STORE(14, repacker_recv_packets);
-				STORE(15, repacker_packet_validate_err);
-				STORE(16, repacker_batch_send_total);
-				STORE(17, repacker_batch_send_by_timer);
-				STORE(18, repacker_batch_send_by_size);
-				STORE(19, repacker_ru_utime);
-				STORE(20, repacker_ru_stime);
+				STORE_FIELD(21, vars_->coordinator_batches_received);
+				STORE_FIELD(22, vars_->coordinator_batch_send_total);
+				STORE_FIELD(23, vars_->coordinator_batch_send_err);
+				STORE_FIELD(24, vars_->coordinator_control_requests);
+				STORE_FIELD(25, vars_->coordinator_ru_utime);
+				STORE_FIELD(26, vars_->coordinator_ru_stime);
 
-				STORE(21, coordinator_batches_received);
-				STORE(22, coordinator_batch_send_total);
-				STORE(23, coordinator_batch_send_err);
-				STORE(24, coordinator_control_requests);
-				STORE(25, coordinator_ru_utime);
-				STORE(26, coordinator_ru_stime);
-
-				STORE(27, dictionary_size);
-				STORE(28, dictionary_mem_used);
-
-				#undef STORE
+				STORE_FIELD(27, vars_->dictionary_size);
+				STORE_FIELD(28, vars_->dictionary_mem_used);
 
 			default:
 				break;
@@ -278,10 +277,6 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			if (!bitmap_is_set(table->read_set, field_index))
 				continue;
 
-			// mark field as writeable to avoid assert() in ::store() calls
-			// got no idea how to do this properly anyway
-			// bitmap_set_bit(table->write_set, field_index);
-
 			switch (field_index)
 			{
 				case 0:
@@ -321,36 +316,27 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				}
 				break;
 
-				#define STORE(N, value)           \
-					case N:                       \
-						(*field)->set_notnull();  \
-						(*field)->store(value);   \
-					break;
-				/**/
-
-				STORE(5,  duration_seconds_as_double(rinfo->time_window));
-				STORE(6,  rinfo->tick_count);
-				STORE(7,  restimates->row_count);
-				STORE(8,  restimates->mem_used);
-				STORE(9,  rstats->packets_recv_total);
-				STORE(10, rstats->packets_send_err);
-				STORE(11, rstats->packets_aggregated);
-				STORE(12, rstats->packets_dropped_by_bloom);
-				STORE(13, rstats->packets_dropped_by_filters);
-				STORE(14, rstats->packets_dropped_by_rfield);
-				STORE(15, rstats->packets_dropped_by_rtag);
-				STORE(16, rstats->packets_dropped_by_timertag);
-				STORE(17, rstats->timers_scanned);
-				STORE(18, rstats->timers_aggregated);
-				STORE(19, rstats->timers_skipped_by_filters);
-				STORE(20, rstats->timers_skipped_by_tags);
-				STORE(21, timeval_to_double(rstats->ru_utime));
-				STORE(22, timeval_to_double(rstats->ru_stime));
-				STORE(23, timeval_to_double(rstats->last_tick_tv));
-				STORE(24, duration_seconds_as_double(rstats->last_tick_prepare_d));
-				STORE(25, duration_seconds_as_double(rstats->last_snapshot_merge_d));
-
-				#undef STORE
+				STORE_FIELD (5,  duration_seconds_as_double(rinfo->time_window));
+				STORE_FIELD (6,  rinfo->tick_count);
+				STORE_FIELD (7,  restimates->row_count);
+				STORE_FIELD (8,  restimates->mem_used);
+				STORE_FIELD (9,  rstats->packets_recv_total);
+				STORE_FIELD (10, rstats->packets_send_err);
+				STORE_FIELD (11, rstats->packets_aggregated);
+				STORE_FIELD (12, rstats->packets_dropped_by_bloom);
+				STORE_FIELD (13, rstats->packets_dropped_by_filters);
+				STORE_FIELD (14, rstats->packets_dropped_by_rfield);
+				STORE_FIELD (15, rstats->packets_dropped_by_rtag);
+				STORE_FIELD (16, rstats->packets_dropped_by_timertag);
+				STORE_FIELD (17, rstats->timers_scanned);
+				STORE_FIELD (18, rstats->timers_aggregated);
+				STORE_FIELD (19, rstats->timers_skipped_by_filters);
+				STORE_FIELD (20, rstats->timers_skipped_by_tags);
+				STORE_FIELD (21, timeval_to_double(rstats->ru_utime));
+				STORE_FIELD (22, timeval_to_double(rstats->ru_stime));
+				STORE_FIELD (23, timeval_to_double(rstats->last_tick_tv));
+				STORE_FIELD (24, duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE_FIELD (25, duration_seconds_as_double(rstats->last_snapshot_merge_d));
 			}
 		} // field for
 
@@ -508,10 +494,6 @@ public:
 			if (!bitmap_is_set(table->read_set, field_index))
 				continue;
 
-			// mark field as writeable to avoid assert() in ::store() calls
-			// got no idea how to do this properly anyway
-			// bitmap_set_bit(table->write_set, field_index);
-
 			// key comes first
 			{
 				if (findex < n_key_fields)
@@ -533,63 +515,17 @@ public:
 
 					switch (findex)
 					{
-					case 0: // req_count
-						(*field)->set_notnull();
-						(*field)->store(row->req_count);
-					break;
-
-					case 1: // req_per_sec
-						(*field)->set_notnull();
-						(*field)->store(double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 2: // time_total
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->time_total));
-					break;
-
-					case 3: // time_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 4: // ru_utime
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_utime));
-					break;
-
-					case 5: // ru_utime_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 6: // ru_stime
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_stime));
-					break;
-
-					case 7: // ru_stime_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 8: // traffic_total
-						(*field)->set_notnull();
-						(*field)->store(row->traffic_kb);
-					break;
-
-					case 9: // traffic_per_sec
-						(*field)->set_notnull();
-						(*field)->store(double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 10: // memory_footprint
-						(*field)->set_notnull();
-						(*field)->store(row->mem_usage);
-					break;
-
-					default:
-						break;
+						STORE_FIELD(0,  row->req_count);
+						STORE_FIELD(1,  double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(2,  duration_seconds_as_double(row->time_total));
+						STORE_FIELD(3,  duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(4,  duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(5,  duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(6,  duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(7,  duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(8,  row->traffic_kb);
+						STORE_FIELD(9,  double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(10, row->mem_usage);
 					}
 
 					continue;
@@ -605,58 +541,16 @@ public:
 
 					switch (findex)
 					{
-					case 0: // req_count
-						(*field)->set_notnull();
-						(*field)->store(row->req_count);
-					break;
-
-					case 1: // req_per_sec
-						(*field)->set_notnull();
-						(*field)->store(double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 2: // hit_count
-						(*field)->set_notnull();
-						(*field)->store(row->hit_count);
-					break;
-
-					case 3: // hit_per_sec
-						(*field)->set_notnull();
-						(*field)->store(double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 4: // time_total
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->time_total));
-					break;
-
-					case 5: // time_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 6: // ru_utime
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_utime));
-					break;
-
-					case 7: // ru_utime_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					case 8: // ru_stime
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_stime));
-					break;
-
-					case 9: // ru_stime_per_sec
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
-					break;
-
-					default:
-						break;
+						STORE_FIELD(0, row->req_count);
+						STORE_FIELD(1, double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(2, row->hit_count);
+						STORE_FIELD(3, double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(4, duration_seconds_as_double(row->time_total));
+						STORE_FIELD(5, duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(6, duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(7, duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(8, duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(9, duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
 					}
 
 					continue;
@@ -672,43 +566,13 @@ public:
 
 					switch (findex)
 					{
-					case 0:
-						(*field)->set_notnull();
-						(*field)->store(row->req_count);
-					break;
-
-					case 1:
-						(*field)->set_notnull();
-						(*field)->store(row->timer_count);
-					break;
-
-					case 2:
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->time_total));
-					break;
-
-					case 3:
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_utime));
-					break;
-
-					case 4:
-						(*field)->set_notnull();
-						(*field)->store(duration_seconds_as_double(row->ru_stime));
-					break;
-
-					case 5:
-						(*field)->set_notnull();
-						(*field)->store(row->traffic_kb);
-					break;
-
-					case 6:
-						(*field)->set_notnull();
-						(*field)->store(row->mem_usage);
-					break;
-
-					default:
-						break;
+						STORE_FIELD(0,  row->req_count);
+						STORE_FIELD(1,  row->timer_count);
+						STORE_FIELD(2, duration_seconds_as_double(row->time_total));
+						STORE_FIELD(3, duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(4, duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(5,  row->traffic_kb);
+						STORE_FIELD(6,  row->mem_usage);
 					}
 
 					continue;
@@ -816,7 +680,7 @@ pinba_report_ptr pinba_view_report_create(pinba_view_conf_t const& vcf)
 pinba_share_t::pinba_share_t(std::string const& table_name)
 {
 	thr_lock_init(&this->lock);
-
+// XXX: this code is subtly NOT exception safe, if mysql_name assignment throws, thr lock will not be destroyed
 	this->mysql_name          = table_name;
 	this->report_active       = false;
 	this->report_needs_engine = false;
@@ -875,7 +739,6 @@ static void share_init_with_table_comment_locked(pinba_share_ptr& share, str_ref
 
 pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
-	, share_(nullptr)
 {
 	LOG_DEBUG(P_L_, "{0}({1}, {2}) -> {3}", __func__, hton, table_arg, this);
 }
@@ -885,14 +748,14 @@ pinba_handler_t::~pinba_handler_t()
 	LOG_DEBUG(P_L_, "{0} <- {1}", __func__, this);
 }
 
-TABLE* pinba_handler_t::current_table() const
-{
-	return this->table;
-}
-
 pinba_share_ptr pinba_handler_t::current_share() const
 {
 	return this->share_;
+}
+
+TABLE* pinba_handler_t::current_table() const
+{
+	return this->table;
 }
 
 int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_INFO *create_info)
@@ -976,7 +839,7 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 		}
 	} // P_CTX_->lock released here
 
-	// don't need to lock for this, view_conf is immutable
+	// don't need to lock for this, view_conf is immutable once created
 	// but allocation can throw
 	this->pinba_view_ = pinba_view_create(*share->view_conf);
 
@@ -1038,7 +901,7 @@ int pinba_handler_t::rnd_init(bool scan)
 			{
 				assert(share_->report);
 
-				pinba_error_t err = P_E_->add_report(share_->report);
+				pinba_error_t const err = P_E_->add_report(share_->report);
 				if (err)
 					throw std::runtime_error(ff::fmt_str("can't activate report: {0}", err.what()));
 

@@ -1,22 +1,20 @@
 
 EXTRA_DIST = include/*.h
 
-cflags = \
-	$(CXXFLAGS) \
-	-D_GNU_SOURCE -fPIC -DPIC \
+AM_CXXFLAGS = \
+	$(AX_CXXFLAGS) \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
 	#
 
-AM_CXXFLAGS = \
-	-std=c++11 \
-	$(cflags) \
+AM_CFLAGS = \
+	$(AX_CFLAGS) \
+	$(DEPS_CFLAGS) \
+	-I$(top_srcdir) \
+	-I$(top_srcdir)/include \
 	#
 
-AM_CPPFLAGS = \
-	$(cflags) \
-	#
 
 # the base library
 lib_LIBRARIES = libpinba2.a
@@ -35,9 +33,8 @@ libpinba2_a_SOURCES = \
 	../proto/pinba.pb-c.c \
 	#
 
-libpinba2_a_CXXFLAGS = \
-	$(AM_CXXFLAGS) \
-	-fPIC -DPIC \
+libpinba2_a_LDFLAGS = \
+	-flto \
 	#
 
 libpinba2_a_LIBADD = \

@@ -1,19 +1,19 @@
 
-cflags = \
-	$(CXXFLAGS) \
- 	-O0 -g3 -mtune=native \
+AM_CXXFLAGS = \
+	$(AX_CXXFLAGS) \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
 	#
 
-AM_CXXFLAGS = \
-	-std=gnu++11 \
-	$(cflags) \
-	#
+# disable optimization for experimental code
+AM_CXXFLAGS+= -O0 -ggdb3
 
-AM_CPPFLAGS = \
-	$(cflags) \
+AM_CFLAGS = \
+	$(AX_CFLAGS) \
+	$(DEPS_CFLAGS) \
+	-I$(top_srcdir) \
+	-I$(top_srcdir)/include \
 	#
 
 AM_LDFLAGS = \

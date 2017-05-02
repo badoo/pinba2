@@ -1,4 +1,4 @@
-#include "auto_config.h"
+#include "pinba_config.h"
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -141,7 +141,10 @@ namespace { namespace aux {
 				std::thread t([this, i, fd]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
+
+				#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
 					pthread_setname_np(pthread_self(), thr_name.c_str());
+				#endif
 
 					MEOW_DEFER(
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
@@ -204,8 +207,11 @@ namespace { namespace aux {
 
 		void eat_udp(uint32_t const thread_id, fd_handle_t const& fd)
 		{
-			// this->eat_udp_recv(thread_id, std::move(fd));
+		#ifdef PINBA_HAVE_RECVMMSG
 			this->eat_udp_recvmmsg(thread_id, std::move(fd));
+		#else
+			this->eat_udp_recv(thread_id, std::move(fd));
+		#endif
 		}
 
 		void eat_udp_recv(uint32_t const thread_id, fd_handle_t const& fd)
@@ -312,6 +318,7 @@ namespace { namespace aux {
 				.loop();
 		}
 
+#ifdef PINBA_HAVE_RECVMMSG
 		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t const& fd)
 		{
 			size_t const max_message_size   = 64 * 1024; // max udp message size
@@ -448,6 +455,7 @@ namespace { namespace aux {
 				})
 				.loop();
 		}
+#endif // PINBA_HAVE_RECVMMSG
 
 	private:
 		os_addrinfo_list_ptr  ai_list_;
