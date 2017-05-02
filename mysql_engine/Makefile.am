@@ -14,6 +14,11 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/include \
 	#
 
+AM_LDFLAGS = \
+	$(AX_LDFAGS) \
+	-flto \
+	#
+
 # the mysql plugin
 lib_LTLIBRARIES = libpinba_engine2.la
 
@@ -24,7 +29,7 @@ libpinba_engine2_la_SOURCES = \
 	#
 
 libpinba_engine2_la_LDFLAGS = \
-	-flto -module
+	-module
 
 libpinba_engine2_la_LIBADD = \
 	../src/libpinba2.a \

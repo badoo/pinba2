@@ -16,6 +16,7 @@ AM_CFLAGS = \
 	#
 
 AM_LDFLAGS = \
+	$(AX_LDFAGS) \
 	-flto \
 	#
 

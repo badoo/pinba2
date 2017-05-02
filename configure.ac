@@ -39,6 +39,7 @@ common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS"
 
 AX_CFLAGS="-std=gnu11 $common_flags"
 AX_CXXFLAGS="-std=gnu++11 $common_flags"
+AX_LDFAGS="-flto -lrt"
 
 dnl nonportable pthread expensions
 AC_CHECK_LIB([pthread], [pthread_setname_np], [
