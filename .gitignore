@@ -17,9 +17,14 @@ Makefile
 perf.data
 .deps
 .libs
-auto_config.h
+_configs.sed
+pinba_config.h
+pinba_config.h~
+pinba_config.h.in
+pinba_config.h.in~
 *.o
 *.in
 *.a
 *.la
 *.lo
+*.sublime-*

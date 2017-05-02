@@ -243,19 +243,9 @@ AC_ARG_ENABLE(static-build,
 )
 
 
-AC_ARG_ENABLE(debug,
-	[AS_HELP_STRING([--enable-debug], [enable debugging symbols and compile flags])
-	],
-	[
-		if test x"$enableval" = xyes ; then
-			debug="yes"
-		else
-			debug="no"
-		fi
-	]
-)
-
-if test x"$debug" = xyes ; then
+AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [enable debugging symbols and compile flags])],
+[
+	#enabled
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG"
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS"
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DPINBA_DEBUG -DPINBA_ENGINE_DEBUG_ON"
@@ -263,15 +253,18 @@ if test x"$debug" = xyes ; then
 	DEBUG_FLAGS="-O0 -ggdb3"
 	AX_CFLAGS="$AX_CFLAGS $DEBUG_FLAGS"
 	AX_CXXFLAGS="$AX_CXXFLAGS $DEBUG_FLAGS"
-else
+],
+[
+	#disabled (default if option not given or != yes)
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DPINBA_ENGINE_DEBUG_OFF"
 
 	RELEASE_FLAGS="-O3 -ffast-math -ggdb3 -mtune=native"
 	AX_CFLAGS="$AX_CFLAGS $RELEASE_FLAGS"
 	AX_CXXFLAGS="$AX_CXXFLAGS $RELEASE_FLAGS"
-fi
-# AC_MSG_NOTICE([debug = $debug, cflags = $AX_CFLAGS])
 
+	dnl strip symbols from non-developer object files
+	INSTALL_STRIP_FLAG="-s"
+])
 
 AC_ARG_WITH(build-string,
 	[AS_HELP_STRING([--with-build-string],[set custom build information here])
@@ -312,6 +305,14 @@ AC_ARG_WITH(boost, [AS_HELP_STRING([--with-boost], [path to boost library])],
 	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_boost"         # just downloaded source code version
 ])
 
+AC_ARG_ENABLE(experiments, [AS_HELP_STRING([--enable-experiments], [enable building experiments code])],
+[
+	EXPERIMENT_DIR="experiments"
+],
+[])
+
+
+
 AC_SUBST(AX_CFLAGS)
 AC_SUBST(AX_CXXFLAGS)
 AC_SUBST(AX_LDFLAGS)
@@ -320,6 +321,8 @@ AC_SUBST(DEPS_CFLAGS)
 AC_SUBST(DEPS_LIBS)
 
 AC_SUBST(MYSQL_ENGINE_CFLAGS)
+AC_SUBST(INSTALL_STRIP_FLAG)
 
+AC_SUBST(EXPERIMENT_DIR)
 
-AC_OUTPUT([Makefile src/Makefile test/Makefile mysql_engine/Makefile])
+AC_OUTPUT([Makefile src/Makefile include/Makefile mysql_engine/Makefile experiments/Makefile])

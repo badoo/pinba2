@@ -41,7 +41,8 @@
 # Performance
 - [ ] develop benchmark harness + learn to use perf like a pro :)
 - [x] recvmmsg() in udp reader (+ settings)
-	- [ ] configure support (or maybe runtime detection with dlsym?)
+	- [x] configure support
+	- [ ] try runtime detection with dlsym
 - [x] {easy} SO_REUSEPORT for udp threads
 	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
 - [ ] {medium} sorted arrays for histograms (almost there)

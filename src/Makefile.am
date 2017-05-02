@@ -1,6 +1,4 @@
 
-EXTRA_DIST = include/*.h
-
 AM_CXXFLAGS = \
 	$(AX_CXXFLAGS) \
 	$(DEPS_CFLAGS) \
