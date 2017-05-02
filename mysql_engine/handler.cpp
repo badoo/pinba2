@@ -35,6 +35,16 @@
 
 struct pinba_view___base_t : public pinba_view_t
 {
+	pinba_view___base_t()
+	{
+		P_CTX_->counters.n_views++;
+	}
+
+	virtual ~pinba_view___base_t() override
+	{
+		P_CTX_->counters.n_views--;
+	}
+
 	virtual int  rnd_init(pinba_handler_t*, bool scan) override
 	{
 		return 0;
@@ -679,6 +689,8 @@ pinba_report_ptr pinba_view_report_create(pinba_view_conf_t const& vcf)
 
 pinba_share_t::pinba_share_t(std::string const& table_name)
 {
+	P_CTX_->counters.n_shares++;
+
 	thr_lock_init(&this->lock);
 // XXX: this code is subtly NOT exception safe, if mysql_name assignment throws, thr lock will not be destroyed
 	this->mysql_name          = table_name;
@@ -689,6 +701,8 @@ pinba_share_t::pinba_share_t(std::string const& table_name)
 pinba_share_t::~pinba_share_t()
 {
 	thr_lock_delete(&this->lock);
+
+	P_CTX_->counters.n_shares--;
 }
 
 static pinba_share_ptr pinba_share_get_or_create_locked(char const *table_name)
@@ -740,12 +754,14 @@ static void share_init_with_table_comment_locked(pinba_share_ptr& share, str_ref
 pinba_handler_t::pinba_handler_t(handlerton *hton, TABLE_SHARE *table_arg)
 	: handler(hton, table_arg)
 {
+	P_CTX_->counters.n_handlers++;
 	LOG_DEBUG(P_L_, "{0}({1}, {2}) -> {3}", __func__, hton, table_arg, this);
 }
 
 pinba_handler_t::~pinba_handler_t()
 {
 	LOG_DEBUG(P_L_, "{0} <- {1}", __func__, this);
+	P_CTX_->counters.n_handlers--;
 }
 
 pinba_share_ptr pinba_handler_t::current_share() const

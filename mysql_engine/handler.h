@@ -63,7 +63,7 @@ struct pinba_share_t
 	THR_LOCK               lock;                 // mysql thread table lock (no idea, mon)
 
 	pinba_share_t(std::string const& table_name);
-	~pinba_share_t();
+	virtual ~pinba_share_t();
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

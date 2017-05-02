@@ -71,6 +71,8 @@ struct pinba_status_variables_t
 
 	unsigned long long  dictionary_size;
 	unsigned long long  dictionary_mem_used;
+
+	char                extra[4096];
 };
 using pinba_status_variables_ptr = std::unique_ptr<pinba_status_variables_t>;
 

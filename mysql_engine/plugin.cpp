@@ -112,6 +112,17 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		vars->dictionary_mem_used = dictionary->memory_used();
 	}
 
+	// extras
+	auto const extra_str = [&]()
+	{
+		std::lock_guard<std::mutex> lk_(P_CTX_->lock);
+
+		auto const& cnt = P_CTX_->counters;
+		return ff::fmt_str("n_handlers: {0}, n_shares: {1}, n_views: {2}", cnt.n_handlers, cnt.n_shares, cnt.n_handlers);
+	}();
+	snprintf(vars->extra, sizeof(vars->extra), "%s", extra_str.c_str());
+
+
 	return std::move(vars);
 }
 
@@ -369,6 +380,7 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 		SVAR(coordinator_ru_stime,              SHOW_DOUBLE)
 		SVAR(dictionary_size,                   SHOW_LONGLONG)
 		SVAR(dictionary_mem_used,               SHOW_LONGLONG)
+		SVAR(extra,                             SHOW_CHAR)
 
 	#undef SVAR
 		{ NullS, NullS, SHOW_LONG }

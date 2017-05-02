@@ -48,9 +48,15 @@ struct pinba_mysql_ctx_t : private boost::noncopyable
 	pinba_open_shares_t open_shares;
 
 	struct {
-		duration_t  time_window;
-		uint32_t    tick_count;
+		duration_t  time_window = {};
+		uint32_t    tick_count  = 0;
 	} settings;
+
+	struct {
+		uint32_t n_handlers = 0;
+		uint32_t n_shares   = 0;
+		uint32_t n_views    = 0;
+	} counters;
 };
 
 // a global singleton for this plugin
