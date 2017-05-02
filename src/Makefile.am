@@ -15,6 +15,10 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/include \
 	#
 
+AM_LDFLAGS = \
+	-flto \
+	#
+
 
 # the base library
 lib_LIBRARIES = libpinba2.a
@@ -31,10 +35,6 @@ libpinba2_a_SOURCES = \
 	../t1ha/t1ha0.c \
 	../t1ha/t1ha1.c \
 	../proto/pinba.pb-c.c \
-	#
-
-libpinba2_a_LDFLAGS = \
-	-flto \
 	#
 
 libpinba2_a_LIBADD = \
