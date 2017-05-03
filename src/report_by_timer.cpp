@@ -145,6 +145,7 @@ struct report___by_timer_t : public report_t
 		}
 
 		item_t(item_t&& other)
+			: item_t()
 		{
 			*this = std::move(other); // operator=()
 		}

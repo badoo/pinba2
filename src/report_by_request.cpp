@@ -53,6 +53,7 @@ namespace { namespace aux {
 			}
 
 			item_t(item_t&& other)
+				: item_t()
 			{
 				*this = std::move(other); // operator=()
 			}

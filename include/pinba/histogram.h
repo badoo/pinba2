@@ -78,6 +78,7 @@ public:
 	}
 
 	histogram_t(histogram_t&& other)
+		: histogram_t()
 	{
 		(*this) = std::move(other); // move assign
 	}

@@ -136,7 +136,7 @@ private:
 
 	virtual bool is_prepared() const override
 	{
-		return ticks_.empty();
+		return !data_.empty();
 	}
 
 	virtual size_t row_count() const override
