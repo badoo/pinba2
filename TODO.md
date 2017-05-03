@@ -6,6 +6,7 @@
 	- [x] {won't fix, there is no need currently} table listing all open tables and their state
 	- [ ] raw histogram data tables
 	- [ ] test with 5.7
+	- [ ] improve report data sorting, by implementing position() and rnd_pos()
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 		- [x] test with mysql (tested, still leaks, probably my code)
@@ -15,6 +16,7 @@
 	- [x] README (well, should suffice for now)
 	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
 	- [x] guidelines - how to run mysql with jemalloc
+	- [ ] describe configuration options in readme
 	- [ ] internals/tuning guide
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice

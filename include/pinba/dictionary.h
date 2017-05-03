@@ -230,11 +230,11 @@ struct snapshot_dictionary_t : private boost::noncopyable
 {
 	using words_t = std::vector<str_ref>;
 
-	mutable words_t  words;
-	dictionary_t     *d;
-	uint32_t         d_words_size;
+	mutable words_t    words;
+	dictionary_t const *d;
+	uint32_t           d_words_size;
 
-	explicit snapshot_dictionary_t(dictionary_t *dict)
+	explicit snapshot_dictionary_t(dictionary_t const *dict)
 		: d(dict)
 	{
 		d_words_size = d->size();

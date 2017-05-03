@@ -387,7 +387,8 @@ namespace { namespace aux {
 							{
 								if (!req)
 								{
-									req = meow::make_intrusive<raw_request_t>(conf_->batch_size, 16 * 1024);
+									constexpr size_t nmpa_block_size = 16 * 1024;
+									req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
 									request_unpack_pba.allocator_data = &req->nmpa;
 								}
 

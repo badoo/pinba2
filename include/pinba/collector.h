@@ -24,7 +24,7 @@ struct raw_request_t
 	{
 		nmpa_init(&nmpa, nmpa_block_sz);
 		request_count = 0;
-		requests = (Pinba__Request**)nmpa_alloc(&nmpa, sizeof(*requests) * max_requests);
+		requests = (Pinba__Request**)nmpa_alloc(&nmpa, sizeof(requests[0]) * max_requests);
 	}
 
 	~raw_request_t()

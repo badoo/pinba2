@@ -51,6 +51,8 @@ CREATE TABLE if not exists `active` (
   `tick_count` int(10) NOT NULL,
   `approx_row_count` int(10) unsigned NOT NULL,
   `approx_mem_used` bigint(20) unsigned NOT NULL,
+  `batches_sent` bigint(20) unsigned NOT NULL,
+  `batches_received` bigint(20) unsigned NOT NULL,
   `packets_received` bigint(20) unsigned NOT NULL,
   `packets_lost` bigint(20) unsigned NOT NULL,
   `packets_aggregated` bigint(20) unsigned NOT NULL,

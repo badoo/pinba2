@@ -369,10 +369,6 @@ namespace { namespace aux {
 							// reset idle batch send interval
 							// to keep batch send ticker *interval* intact
 							poller.reset_ticker(batch_send_tick, now);
-
-							// keep batch send ticker *interval* intact
-							//  but accept some time skew (due to time measurement taking some time by itself)
-							// next_tick_tv = os_unix::clock_monotonic_now() + conf_->batch_timeout;
 						}
 					}
 				}

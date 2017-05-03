@@ -57,6 +57,16 @@ struct pinba_stats_t
 	timeval_t start_tv            = {0,0};  // to calculate uptime
 	timeval_t start_realtime_tv   = {0,0};  // can show to user, etc.
 
+	// struct {
+	// 	std::atomic<uint64_t> n_raw_batches = {0};
+	// 	std::atomic<uint64_t> n_packet_batches = {0};
+	// 	std::atomic<uint64_t> n_reports = {0};
+	// 	std::atomic<uint64_t> n_report_ticks = {0};
+	// 	std::atomic<uint64_t> n_ = {0};
+	// 	std::atomic<uint64_t> n_ = {0};
+	// 	std::atomic<uint64_t> n_ = {0};
+	// } objects;
+
 	struct {
 		std::atomic<uint64_t> poll_total        = {0};      // total poll calls
 		std::atomic<uint64_t> recv_total        = {0};      // total recv* calls

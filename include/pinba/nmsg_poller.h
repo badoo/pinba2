@@ -66,17 +66,17 @@ private: // io pollers
 
 		poller___nn_chan_t(nmsg_channel_t<T>& c, short e, Function const& fn)
 			: chan(c)
+			, sys_fd(-1)
 			, events(e)
 			, func(fn)
 		{
 			nmsg_socket_t tmp_sock { chan.read_sock() };
 			MEOW_DEFER(
-				tmp_sock.release()
+				tmp_sock.release();
 			);
 
 			if (events == NN_POLLIN)
 				this->sys_fd = tmp_sock.get_option_int(NN_SOL_SOCKET, NN_RCVFD);
-
 			if (events == NN_POLLOUT)
 				this->sys_fd = tmp_sock.get_option_int(NN_SOL_SOCKET, NN_SNDFD);
 		}
@@ -146,7 +146,7 @@ private: // periodic events
 private:
 
 	std::vector<poller_ptr>               pollers_;
-	std::multimap<timeval_t, ticker_ptr>  tickers_; // FIXME: std::priority_queue
+	std::multimap<timeval_t, ticker_ptr>  tickers_; // FIXME: need a simpler impl imo
 
 	std::function<void(timeval_t, duration_t)> before_poll_;
 	bool shutting_down;
@@ -225,10 +225,24 @@ public: // tickers
 	{
 		// we're most likely called from inside one of the callbacks
 		// so be careful here! and update the ticker like a baws!
-		// XXX: this is somewhat a copy-paste from ticker processing in loop(), but whatever
 
-		auto const it = tickers_.find(t->when());
-		assert(it != tickers_.end());
+		auto const it = [this, t]()
+		{
+			timeval_t const when = t->when();
+			auto it = tickers_.find(when);
+
+			// we've found just the lower bound, as this is the multimap
+			// look for the real element, comparing pointers
+			while ((it != tickers_.end()) && (it->first == when))
+			{
+				if (it->second.get() == t)
+					break;
+				++it;
+			}
+			assert(it != tickers_.end());
+
+			return it;
+		}();
 
 		ticker_ptr ticker = move(it->second);
 		tickers_.erase(it);

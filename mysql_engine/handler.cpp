@@ -330,23 +330,25 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 				STORE_FIELD (6,  rinfo->tick_count);
 				STORE_FIELD (7,  restimates->row_count);
 				STORE_FIELD (8,  restimates->mem_used);
-				STORE_FIELD (9,  rstats->packets_recv_total);
-				STORE_FIELD (10, rstats->packets_send_err);
-				STORE_FIELD (11, rstats->packets_aggregated);
-				STORE_FIELD (12, rstats->packets_dropped_by_bloom);
-				STORE_FIELD (13, rstats->packets_dropped_by_filters);
-				STORE_FIELD (14, rstats->packets_dropped_by_rfield);
-				STORE_FIELD (15, rstats->packets_dropped_by_rtag);
-				STORE_FIELD (16, rstats->packets_dropped_by_timertag);
-				STORE_FIELD (17, rstats->timers_scanned);
-				STORE_FIELD (18, rstats->timers_aggregated);
-				STORE_FIELD (19, rstats->timers_skipped_by_filters);
-				STORE_FIELD (20, rstats->timers_skipped_by_tags);
-				STORE_FIELD (21, timeval_to_double(rstats->ru_utime));
-				STORE_FIELD (22, timeval_to_double(rstats->ru_stime));
-				STORE_FIELD (23, timeval_to_double(rstats->last_tick_tv));
-				STORE_FIELD (24, duration_seconds_as_double(rstats->last_tick_prepare_d));
-				STORE_FIELD (25, duration_seconds_as_double(rstats->last_snapshot_merge_d));
+				STORE_FIELD (9,  rstats->batches_send_total);
+				STORE_FIELD (10, rstats->batches_recv_total);
+				STORE_FIELD (11, rstats->packets_recv_total);
+				STORE_FIELD (12, rstats->packets_send_err);
+				STORE_FIELD (13, rstats->packets_aggregated);
+				STORE_FIELD (14, rstats->packets_dropped_by_bloom);
+				STORE_FIELD (15, rstats->packets_dropped_by_filters);
+				STORE_FIELD (16, rstats->packets_dropped_by_rfield);
+				STORE_FIELD (17, rstats->packets_dropped_by_rtag);
+				STORE_FIELD (18, rstats->packets_dropped_by_timertag);
+				STORE_FIELD (19, rstats->timers_scanned);
+				STORE_FIELD (20, rstats->timers_aggregated);
+				STORE_FIELD (21, rstats->timers_skipped_by_filters);
+				STORE_FIELD (22, rstats->timers_skipped_by_tags);
+				STORE_FIELD (23, timeval_to_double(rstats->ru_utime));
+				STORE_FIELD (24, timeval_to_double(rstats->ru_stime));
+				STORE_FIELD (25, timeval_to_double(rstats->last_tick_tv));
+				STORE_FIELD (26, duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE_FIELD (27, duration_seconds_as_double(rstats->last_snapshot_merge_d));
 			}
 		} // field for
 
@@ -784,6 +786,7 @@ int pinba_handler_t::create(const char *table_name, TABLE *table_arg, HA_CREATE_
 			throw std::runtime_error("pinba table must have a comment, please see docs");
 
 		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
 		auto share = pinba_share_get_or_create_locked(table_name);
 
 		str_ref const comment = { table_arg->s->comment.str, size_t(table_arg->s->comment.length) };
@@ -824,11 +827,11 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 
 	pinba_share_ptr share;
 
+	try
 	{
-		std::unique_lock<std::mutex> lk_(P_CTX_->lock);
-
-		try
 		{
+			std::unique_lock<std::mutex> lk_(P_CTX_->lock);
+
 			share = pinba_share_get_or_create_locked(table_name);
 
 			// config NOT parsed yet (i.e. existing table after restart)
@@ -842,26 +845,26 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 				str_ref const comment = { table->s->comment.str, size_t(table->s->comment.length) };
 				share_init_with_table_comment_locked(share, comment);
 			}
-		}
-		catch (std::exception const& e) // catch block should run with lock held, since we're reading from share
-		{
-			// this MUST not happen in fact, since all tables should have been created
-			// and we do parse comments on create()
-			// might happen when pinba versions are upgraded or something, i guess?
+		} // P_CTX_->lock released here
 
-			LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, table_name, e.what());
-			my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
-			DBUG_RETURN(HA_WRONG_CREATE_OPTION);
-		}
-	} // P_CTX_->lock released here
+		// don't need to lock for this, view_conf is immutable once created
+		// but allocation can throw
+		this->pinba_view_ = pinba_view_create(*share->view_conf);
 
-	// don't need to lock for this, view_conf is immutable once created
-	// but allocation can throw
-	this->pinba_view_ = pinba_view_create(*share->view_conf);
+		// commit here, nothrow block
+		thr_lock_data_init(&share->lock, &this->lock_data, nullptr);
+		this->share_ = share;
+	}
+	catch (std::exception const& e)
+	{
+		// this SHOULD not happen in fact, since all tables should have been created
+		// and we do parse comments on create()
+		// might happen when pinba versions are upgraded or something, i guess?
 
-	// commit here, nothrow block
-	thr_lock_data_init(&share->lock, &this->lock_data, (void*)this);
-	this->share_ = share;
+		LOG_ERROR(P_L_, "{0}; table: {1}, error: {2}", __func__, table_name, e.what());
+		my_printf_error(ER_CANT_CREATE_TABLE, "[pinba] THIS IS A BUG, report! %s", MYF(0), e.what());
+		DBUG_RETURN(HA_WRONG_CREATE_OPTION);
+	}
 
 	DBUG_RETURN(0);
 }
