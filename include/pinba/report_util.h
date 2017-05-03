@@ -146,21 +146,16 @@ private:
 
 private:
 
-	union real_position_t
+	static_assert(sizeof(iterator_t) <= sizeof(position_t), "position_t must be able to hold iterator contents");
+
+	static inline position_t const& position_from_iterator(iterator_t const& it)
 	{
-		static_assert(sizeof(iterator_t) <= sizeof(position_t), "position_t must be able to hold iterator contents");
+		return reinterpret_cast<position_t const&>(it);
+	}
 
-		real_position_t(iterator_t i) : it(i) {}
-		real_position_t(position_t p) : pos(p) {}
-
-		position_t pos;
-		iterator_t it;
-	};
-
-	position_t position_from_iterator(iterator_t const& it)
+	static inline iterator_t const& iterator_from_position(position_t const& pos)
 	{
-		real_position_t p { it };
-		return p.pos;
+		return reinterpret_cast<iterator_t const&>(pos);
 	}
 
 private:
@@ -177,26 +172,26 @@ private:
 
 	virtual position_t pos_next(position_t const& pos) override
 	{
-		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		auto const& it = iterator_from_position(pos);
 		return position_from_iterator(std::next(it));
 	}
 
 	virtual position_t pos_prev(position_t const& pos) override
 	{
-		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		auto const& it = iterator_from_position(pos);
 		return position_from_iterator(std::prev(it));
 	}
 
-	virtual bool pos_equal(position_t const& l, position_t const& r) const override
+	virtual bool pos_equal(position_t const& l_pos, position_t const& r_pos) const override
 	{
-		auto const& l_it = reinterpret_cast<iterator_t const&>(l);
-		auto const& r_it = reinterpret_cast<iterator_t const&>(r);
+		auto const& l_it = iterator_from_position(l_pos);
+		auto const& r_it = iterator_from_position(r_pos);
 		return (l_it == r_it);
 	}
 
 	virtual report_key_t get_key(position_t const& pos) const override
 	{
-		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		auto const& it = iterator_from_position(pos);
 		return Traits::key_at_position(data_, it);
 	}
 
@@ -221,7 +216,7 @@ private:
 
 	virtual void* get_data(position_t const& pos) override
 	{
-		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		auto const& it = iterator_from_position(pos);
 		return Traits::value_at_position(data_, it);
 	}
 
@@ -235,7 +230,7 @@ private:
 		if (!rinfo_.hv_enabled)
 			return nullptr;
 
-		auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		auto const& it = iterator_from_position(pos);
 		return Traits::hv_at_position(data_, it);
 	}
 
