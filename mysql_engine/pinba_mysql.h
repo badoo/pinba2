@@ -42,10 +42,6 @@ using pinba_open_shares_t = std::unordered_map<std::string, pinba_share_ptr>;
 struct pinba_mysql_ctx_t : private boost::noncopyable
 {
 	std::mutex          lock;
-	pinba_engine_ptr    engine;
-	pinba_logger_ptr    logger;
-
-	pinba_open_shares_t open_shares;
 
 	struct {
 		duration_t  time_window = {};
@@ -57,6 +53,10 @@ struct pinba_mysql_ctx_t : private boost::noncopyable
 		uint32_t n_shares   = 0;
 		uint32_t n_views    = 0;
 	} counters;
+
+	pinba_logger_ptr    logger;
+	pinba_engine_ptr    engine;
+	pinba_open_shares_t open_shares;
 };
 
 // a global singleton for this plugin

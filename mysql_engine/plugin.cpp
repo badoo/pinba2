@@ -201,8 +201,7 @@ static int pinba_engine_shutdown(void *p)
 {
 	DBUG_ENTER(__func__);
 
-	// FIXME: this is very likely to cause a segfault
-	//  since pinba internals shutdown is not implemented well, if at all
+	pinba_MYSQL__instance->open_shares.clear();
 	pinba_MYSQL__instance->engine->shutdown();
 	pinba_MYSQL__instance.reset();
 
