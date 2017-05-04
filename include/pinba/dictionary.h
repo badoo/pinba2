@@ -115,11 +115,13 @@ struct dictionary_t
 	words_t  words;
 	hash_t   hash;
 
+	uint64_t mem_used_by_word_strings;
 	uint64_t lookup_count;
 	uint64_t insert_count;
 
 	dictionary_t()
 		: hash(64 * 1024)
+		, mem_used_by_word_strings(0)
 		, lookup_count(0)
 		, insert_count(0)
 	{
@@ -146,7 +148,7 @@ struct dictionary_t
 		uint64_t const words_mem_sz = sz * sizeof(words_t::value_type);
 		uint64_t const hash_mem_sz  = n_buckets * sizeof(hash_t::value_type);
 
-		return words_mem_sz + hash_mem_sz;
+		return mem_used_by_word_strings + words_mem_sz + hash_mem_sz;
 	}
 
 	str_ref get_word(uint32_t word_id) const
@@ -206,6 +208,8 @@ private:
 		auto const it = hash.find(word);
 		if (hash.end() != it)
 			return it->second;
+
+		mem_used_by_word_strings += word.size();
 
 		// insert new element
 		words.push_back(word.str());
