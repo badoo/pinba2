@@ -505,11 +505,11 @@ public: // snapshot
 			return position_from_iterator(std::next(it));
 		}
 
-		virtual position_t pos_prev(position_t const& pos) override
-		{
-			auto const& it = reinterpret_cast<iterator_t const&>(pos);
-			return position_from_iterator(std::prev(it));
-		}
+		// virtual position_t pos_prev(position_t const& pos) override
+		// {
+		// 	auto const& it = reinterpret_cast<iterator_t const&>(pos);
+		// 	return position_from_iterator(std::prev(it));
+		// }
 
 		virtual bool pos_equal(position_t const& l, position_t const& r) const override
 		{

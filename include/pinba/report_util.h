@@ -172,15 +172,25 @@ private:
 
 	virtual position_t pos_next(position_t const& pos) override
 	{
+		static_assert(std::is_base_of<
+				std::forward_iterator_tag,
+				typename std::iterator_traits<iterator_t>::iterator_category>::value,
+			"forward iteration support");
+
 		auto const& it = iterator_from_position(pos);
 		return position_from_iterator(std::next(it));
 	}
 
-	virtual position_t pos_prev(position_t const& pos) override
-	{
-		auto const& it = iterator_from_position(pos);
-		return position_from_iterator(std::prev(it));
-	}
+	// virtual position_t pos_prev(position_t const& pos) override
+	// {
+	// 	static_assert(std::is_base_of<
+	// 			std::bidirectional_iterator_tag,
+	// 			typename std::iterator_traits<iterator_t>::iterator_category>::value,
+	// 		"backward iteration support");
+
+	// 	auto const& it = iterator_from_position(pos);
+	// 	return position_from_iterator(std::prev(it));
+	// }
 
 	virtual bool pos_equal(position_t const& l_pos, position_t const& r_pos) const override
 	{

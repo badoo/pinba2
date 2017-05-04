@@ -132,7 +132,9 @@ struct report_snapshot_t
 	virtual position_t pos_first() = 0;
 	virtual position_t pos_last() = 0;
 	virtual position_t pos_next(position_t const&) = 0;
-	virtual position_t pos_prev(position_t const&) = 0;
+	// commented out, since current impls do not support backward iteration
+	// as google::dense_hash_map has forward iterators only
+	// virtual position_t pos_prev(position_t const&) = 0;
 	virtual bool       pos_equal(position_t const&, position_t const&) const = 0;
 
 	// key handling

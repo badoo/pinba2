@@ -57,6 +57,8 @@
 	- [ ] repacker affinity + config support
 	- [ ] udp collector affinity + config support
 	- [ ] doc, how to assign interrupts to cores + numa nodes (links at least)
+- [ ] {easy} check dense_hash_map impls
+	- [ ] https://github.com/tbricks/sparsehash-c11/commits/development (c++11 move + performance)
 - [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
 - [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
