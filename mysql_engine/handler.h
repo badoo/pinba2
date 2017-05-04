@@ -22,6 +22,8 @@ struct pinba_view_t : private boost::noncopyable
 {
 	virtual ~pinba_view_t() {}
 
+	virtual unsigned ref_length() const = 0;
+
 	virtual int  rnd_init(pinba_handler_t*, bool scan) = 0;
 	virtual int  rnd_end(pinba_handler_t*) = 0;
 	virtual int  rnd_next(pinba_handler_t*, uchar *buf) = 0;
@@ -122,7 +124,7 @@ public:
 		return (
 			  HA_NO_AUTO_INCREMENT
 			| HA_NO_TRANSACTIONS
-			| HA_REC_NOT_IN_SEQ // unsure
+			| HA_REC_NOT_IN_SEQ // must have if position() is implemented
 			| HA_NO_BLOBS
 			);
 	}

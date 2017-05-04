@@ -1,3 +1,5 @@
+#include <type_traits>
+
 #include "mysql_engine/handler.h"
 #include "mysql_engine/plugin.h"
 
@@ -22,6 +24,7 @@
 
 #include <meow/defer.hpp>
 #include <meow/stopwatch.hpp>
+#include <meow/format/inserter/hex_string.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -43,6 +46,11 @@ struct pinba_view___base_t : public pinba_view_t
 	virtual ~pinba_view___base_t() override
 	{
 		P_CTX_->counters.n_views--;
+	}
+
+	virtual unsigned ref_length() const override
+	{
+		return 0;
 	}
 
 	virtual int  rnd_init(pinba_handler_t*, bool scan) override
@@ -167,6 +175,12 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 		return 0;
 	}
+
+	virtual int  info(pinba_handler_t *handler, uint) const override
+	{
+		handler->stats.records = 1;
+		return 0;
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -178,10 +192,12 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		pinba_share_data_t  share_data;
 		report_state_ptr    report_state;
 	};
-	using view_t = std::vector<view_row_t>;
+	using view_t     = std::vector<view_row_t>;
+	using position_t = view_t::const_iterator;
 
-	view_t            data_;
-	view_t::iterator  pos_;
+	view_t      data_;
+	position_t  next_pos_; // to read NEXT row, aka rnd_next()
+	position_t  curr_pos_; // last returned row pos, for position()
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
@@ -240,7 +256,8 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			}
 		}
 
-		pos_ = data_.begin();
+		curr_pos_ = data_.begin();
+		next_pos_ = curr_pos_;
 
 		return 0;
 	}
@@ -253,14 +270,45 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
-		if (pos_ == data_.end())
+		if (next_pos_ == data_.end())
 			return HA_ERR_END_OF_FILE;
 
 		MEOW_DEFER(
-			pos_ = std::next(pos_);
+			curr_pos_ = next_pos_;
+			next_pos_ = std::next(curr_pos_);
 		);
 
-		auto const *row   = &(*pos_);
+		return this->fill_row(handler, next_pos_);
+	}
+
+	virtual unsigned ref_length() const override
+	{
+		return (unsigned)sizeof(curr_pos_);
+	}
+
+	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
+	{
+		auto const& pos = *(reinterpret_cast<position_t const*>(pos_bytes));
+		LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
+		return this->fill_row(handler, pos);
+	}
+
+	virtual void position(pinba_handler_t *handler, const uchar *record) const override
+	{
+		LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
+		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
+		// static_assert(std::is_trivially_copyable<decltype(pos_)>::value, "must be able to memcpy pos");
+		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
+		return;
+	}
+
+private:
+
+	int fill_row(pinba_handler_t *handler, position_t const& row_pos) const
+	{
+		LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
+
+		auto const *row   = &(*row_pos);
 		auto const *sdata = &row->share_data;
 		auto       *table = handler->current_table();
 
@@ -354,15 +402,18 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 		return 0;
 	}
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct pinba_view___report_snapshot_t : public pinba_view___base_t
 {
-	report_snapshot_ptr            snapshot_;
-	report_snapshot_t::position_t  pos_;
 	pinba_share_data_ptr           share_data_; // copied from share
+	report_snapshot_ptr            snapshot_;
+	report_snapshot_t::position_t  next_pos_; // to read NEXT row, aka rnd_next()
+	report_snapshot_t::position_t  curr_pos_; // last returned row pos, for position()
+
 
 	static constexpr unsigned const n_data_fields___by_request = 11;
 	static constexpr unsigned const n_data_fields___by_timer   = 10;
@@ -464,7 +515,8 @@ public:
 				sw.stamp(), snapshot_->row_count());
 		}
 
-		pos_ = snapshot_->pos_first();
+		curr_pos_ = snapshot_->pos_first();
+		next_pos_ = curr_pos_;
 
 		return 0;
 	}
@@ -478,16 +530,47 @@ public:
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
-		if (snapshot_->pos_equal(pos_, snapshot_->pos_last()))
+		if (snapshot_->pos_equal(next_pos_, snapshot_->pos_last()))
 			return HA_ERR_END_OF_FILE;
 
 		MEOW_DEFER(
-			pos_ = snapshot_->pos_next(pos_);
+			curr_pos_ = next_pos_;
+			next_pos_ = snapshot_->pos_next(curr_pos_);
 		);
+
+		return this->fill_row(handler, next_pos_);
+	}
+
+	virtual unsigned ref_length() const override
+	{
+		return (unsigned)sizeof(curr_pos_);
+	}
+
+	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
+	{
+		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
+		LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
+		return this->fill_row(handler, pos);
+	}
+
+	virtual void position(pinba_handler_t *handler, const uchar *record) const override
+	{
+		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
+		// static_assert(std::is_trivially_copyable<decltype(curr_pos_)>::value, "must be able to memcpy pos");
+		LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
+		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
+		return;
+	}
+
+private:
+
+	int fill_row(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
+	{
+		LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
 
 		auto *table       = handler->current_table();
 		auto const *rinfo = snapshot_->report_info();
-		auto const key    = snapshot_->get_key_str(pos_);
+		auto const key    = snapshot_->get_key_str(row_pos);
 
 		unsigned const n_key_fields = rinfo->n_key_parts;
 
@@ -523,7 +606,7 @@ public:
 				constexpr unsigned const n_data_fields = n_data_fields___by_request;
 				if (findex < n_data_fields)
 				{
-					auto const *row = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(pos_));
+					auto const *row = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(row_pos));
 
 					switch (findex)
 					{
@@ -549,7 +632,7 @@ public:
 				static unsigned const n_data_fields = n_data_fields___by_timer;
 				if (findex < n_data_fields)
 				{
-					auto const *row = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(pos_));
+					auto const *row = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(row_pos));
 
 					switch (findex)
 					{
@@ -574,7 +657,7 @@ public:
 				static unsigned const n_data_fields = n_data_fields___by_packet;
 				if (findex < n_data_fields)
 				{
-					auto const *row = reinterpret_cast<report_row_data___by_packet_t*>(snapshot_->get_data(pos_));
+					auto const *row = reinterpret_cast<report_row_data___by_packet_t*>(snapshot_->get_data(row_pos));
 
 					switch (findex)
 					{
@@ -606,7 +689,7 @@ public:
 			unsigned const n_percentile_fields = percentiles.size();
 			if (findex < n_percentile_fields)
 			{
-				auto const *histogram = snapshot_->get_histogram(pos_);
+				auto const *histogram = snapshot_->get_histogram(row_pos);
 
 				// protect against percentile field in report without percentiles
 				if (histogram != nullptr)
@@ -640,6 +723,7 @@ public:
 
 		return 0;
 	}
+
 };
 
 pinba_view_ptr pinba_view_create(pinba_view_conf_t const& vcf)
@@ -849,7 +933,11 @@ int pinba_handler_t::open(const char *table_name, int mode, uint test_if_locked)
 
 		// don't need to lock for this, view_conf is immutable once created
 		// but allocation can throw
-		this->pinba_view_ = pinba_view_create(*share->view_conf);
+		auto view = pinba_view_create(*share->view_conf);
+		this->ref_length = view->ref_length();
+		this->pinba_view_ = std::move(view);
+
+		LOG_DEBUG(P_L_, "{0}; table: {1} opened, ref_length: {2}", __func__, table_name, this->ref_length);
 
 		// commit here, nothrow block
 		thr_lock_data_init(&share->lock, &this->lock_data, nullptr);
