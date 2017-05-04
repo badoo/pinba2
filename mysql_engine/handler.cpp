@@ -289,13 +289,13 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
 	{
 		auto const& pos = *(reinterpret_cast<position_t const*>(pos_bytes));
-		LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
+		// LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
 		return this->fill_row(handler, pos);
 	}
 
 	virtual void position(pinba_handler_t *handler, const uchar *record) const override
 	{
-		LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
+		// LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
 		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
 		// static_assert(std::is_trivially_copyable<decltype(pos_)>::value, "must be able to memcpy pos");
 		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
@@ -306,7 +306,7 @@ private:
 
 	int fill_row(pinba_handler_t *handler, position_t const& row_pos) const
 	{
-		LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
+		// LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
 
 		auto const *row   = &(*row_pos);
 		auto const *sdata = &row->share_data;
@@ -549,7 +549,7 @@ public:
 	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
 	{
 		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
-		LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
+		// LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
 		return this->fill_row(handler, pos);
 	}
 
@@ -557,7 +557,7 @@ public:
 	{
 		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
 		// static_assert(std::is_trivially_copyable<decltype(curr_pos_)>::value, "must be able to memcpy pos");
-		LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
+		// LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
 		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
 		return;
 	}
@@ -566,7 +566,7 @@ private:
 
 	int fill_row(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
 	{
-		LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
+		// LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
 
 		auto *table       = handler->current_table();
 		auto const *rinfo = snapshot_->report_info();
