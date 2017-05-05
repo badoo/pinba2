@@ -55,6 +55,7 @@ Basics
 ------
 
 **Requests**
+
 We get these over UDP, each request contains metrics data gathered by your application (like serving pages to users, or performing db queries).
 
 
@@ -66,14 +67,18 @@ Data comes in three forms
     - `servername`: name of the logical host (like "example.com")
     - `schema`: usually "http" or "https"
     - `status`: usually http status (this one is 32-bit integer)
-    - `request_time`: time it took to execute the whole request
+    - `request_time`: wall-clock time it took to execute the whole request
+    - `rusage_user`: rusage in user space for this request
+    - `rusage_system`: rusage in kernel space for this request
     - `document_size`: size of result doc
     - `memory_footprint`: amount of memory used
 - **request tags** - this is just a bunch of `key -> value` pairs attached to request as a whole
     - ex. in pseudocode `[ 'application' -> 'my_cool_app', 'environment' -> 'production' ]`
 - **timers** - a bunch is sub-action measurements, for example: time it took to execute some db query, or process some user input.
     - number of timers is not limited, track all db/memcached queries
-    - each timer can also have tags! for example: `[ 'group' -> 'db', 'server' -> 'db1.lan', 'op_type' -> 'update' ]`
+    - each timer can also have tags!
+        - ex. `[ 'group' -> 'db', 'server' -> 'db1.lan', 'op_type' -> 'update' ]`
+        - ex. `[ 'group' -> 'memcache', 'server' -> 'mmc1.lan', 'op_type' -> 'get' ]`
 
 
 **Reports**
@@ -110,13 +115,13 @@ All report tables have same simple structure
 
 ASCII art!
 
-                              ----------------           -------------------------------------------------------------------------
-                              | key -> value |           (row 1) | key_field_1 | ... | value_field_1 | .... | percentile_1 | ... |
-    ------------              ----------------           -------------------------------------------------------------------------
-    | Requests |  aggregate>  |  .........   |  select>  |    ...............................................................    |
-    ------------              ----------------           -------------------------------------------------------------------------
-                              | key -> value |           (row N) | key_field_1 | ... | value_field_1 | .... | percentile_1 | ... |
-                              ----------------           -------------------------------------------------------------------------
+                              ----------------           -------------------------------------------------------------
+                              | key -> value |           | key_part_1 | ... | data_part_1 | ... | percentile_1 | ... |
+    ------------              ----------------           -------------------------------------------------------------
+    | Requests |  aggregate>  |  .........   |  select>  |    ...................................................    |
+    ------------              ----------------           -------------------------------------------------------------
+                              | key -> value |           | key_part_1 | ... | data_part_1 | ... | percentile_1 | ... |
+                              ----------------           -------------------------------------------------------------
 
 
 **SQL table comments**
