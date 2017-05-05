@@ -278,9 +278,9 @@ static MYSQL_SYSVAR_UINT(repacker_input_buffer,
 	"Buffer for X message for udp-reader -> packet-repack threads",
 	NULL,
 	NULL,
-	4 * 1024, // def: 4096 udp batches, 256 pinba requests each ~= 1M packets, per each repacker thread
+	512, // def: 256 udp batches, 256 pinba requests each ~= 128K packets, per each repacker thread
 	128,
-	128 * 1024,
+	16 * 1024,
 	0);
 
 static MYSQL_SYSVAR_UINT(repacker_batch_messages,
