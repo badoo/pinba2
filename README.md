@@ -36,6 +36,16 @@ Client libraries
 ----------------------------------------------------------------
 Same client libraries can be used with this pinba implementation
 
+list from http://pinba.org/
+
+- PHP: https://github.com/tony2001/pinba_extension
+- Nginx: https://github.com/tony2001/ngx_http_pinba_module
+- NodeJS: https://github.com/Sannis/node-pinba
+- Ruby: https://github.com/prepor/pinbo
+- Python: https://github.com/IsCoolEntertainment/pynba
+- Java: https://github.com/alex-krash/jpinba
+- Go: https://github.com/mkevac/gopinba
+
 
 More Info
 --------
