@@ -35,7 +35,7 @@ common_flags="$common_flags -Wall -Wextra -Wformat-security -Werror"
 common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers"
 common_flags="$common_flags -fno-omit-frame-pointer"
 common_flags="$common_flags -fPIC -DPIC"
-common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS"
+common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS -D_POSIX_SOURCE"
 common_flags="$common_flags -maes -msse4 -msse4.2" # for clang t1ha
 
 AX_CFLAGS="-std=gnu11 $common_flags"

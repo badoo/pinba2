@@ -1,13 +1,14 @@
 #include "mysql_engine/plugin.h"
 #include "mysql_engine/handler.h"
 
-#ifdef PINBA_USE_MYSQL_SOURCE
-#include <sql/log.h>
-#else
-#include <mysql/private/log.h>
-#endif // PINBA_USE_MYSQL_SOURCE
-
 #include "pinba/dictionary.h"
+
+#include <time.h>
+
+#include <meow/format/format.hpp>
+#include <meow/format/inserter/as_printf.hpp>
+#include <meow/format/sink/char_buffer.hpp>
+#include <meow/format/sink/fd.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -141,75 +142,102 @@ static int pinba_engine_init(void *p)
 		return new (mem_root) pinba_handler_t(hton, table);
 	};
 
+	auto const log_level = meow::logging::log_level::enum_from_str_ref(pinba_variables()->log_level);
+	assert(log_level != meow::logging::log_level::_none); // checked in mysql sysvar check function
+
+	auto logger = [&]()
+	{
+		using namespace meow;
+		using namespace meow::logging;
+		namespace ff = meow::format;
+
+		struct mysql_logger_t : public logger_t
+		{
+		private:
+			ff::fd_sink_t  sink_;
+			log_level_t    level_;
+
+		public:
+
+			explicit mysql_logger_t(int fd, log_level_t lvl = log_level::debug)
+				: sink_(fd)
+				, level_(lvl)
+			{
+			}
+
+			virtual log_level_t level() const override { return level_; }
+			virtual log_level_t set_level(log_level_t l) override { return level_ = l; }
+			virtual bool        does_accept(log_level_t l) const override { return l <= level_; }
+
+			virtual void write(
+							  log_level_t 	lvl
+							, line_mode_t 	lmode
+							, size_t 		total_len
+							, str_t const 	*slices
+							, size_t 		n_slices
+							)
+							override
+			{
+				// concat everything to one stack buffer
+				// to write everything in one go (stderr is usually unbuffered, so multiple writes might interleave)
+				constexpr size_t const prefix_buf_size = 256;
+				char *buf = (char*)alloca(prefix_buf_size + total_len);
+
+				ff::char_buffer_sink_t tmp_sink { buf, prefix_buf_size + total_len };
+
+				{
+					struct tm curr_tm;
+					time_t const curr_ts = my_time(0);
+					localtime_r(&curr_ts, &curr_tm); // why localtime? don't ask, mysql does that
+
+					// transform our log level to mysql's
+					str_ref const level_str = [lvl]()
+					{
+						if (lvl >= log_level::notice)
+							return meow::ref_lit("Note");
+
+						if (lvl >= log_level::warn)
+							return meow::ref_lit("Warning");
+
+						return meow::ref_lit("ERROR");
+					}();
+
+					// write in mysql format, mildly copy-pasted from log.cc print_buffer_to_file()
+					ff::fmt(tmp_sink,
+						"{0} [{1}] PINBA: ",
+						ff::as_printf("%d-%02d-%02d %02d:%02d:%02d %lu",
+							curr_tm.tm_year + 1900,
+							curr_tm.tm_mon + 1,
+							curr_tm.tm_mday,
+							curr_tm.tm_hour,
+							curr_tm.tm_min,
+							curr_tm.tm_sec,
+							current_pid /* this is some mysql global */),
+						level_str);
+
+					// append message
+					ff::write_to_sink(tmp_sink, total_len, slices, n_slices);
+
+					// maybe append newline - as needed
+					if (meow::line_mode::suffix & lmode)
+						ff::write(tmp_sink, "\n");
+				}
+
+				// now write to stderr
+				ff::write(sink_, str_ref{tmp_sink.buf(), tmp_sink.size()});
+
+				// and flush just in case
+				fflush(stderr);
+			}
+		};
+
+		// don't care about std::bad_alloc exception here, let's crash!
+		// need logger to be initialized to log real engine init errors
+		return std::make_shared<mysql_logger_t>(STDERR_FILENO, log_level);
+	}();
+
 	try
 	{
-		auto const log_level = [&]()
-		{
-			using meow::logging::log_level;
-
-			auto const lvl = log_level::enum_from_str_ref(pinba_variables()->log_level);
-			if (lvl == log_level::_none)
-				throw std::runtime_error(ff::fmt_str("unknown pinba_log_level = '{0}'", pinba_variables()->log_level));
-			return lvl;
-		}();
-
-		auto logger = [&]()
-		{
-			using namespace meow;
-			using namespace meow::logging;
-
-			struct mysql_logger_t : public logger_t
-			{
-				log_level_t level_;
-
-				virtual log_level_t level() const override { return level_; }
-				virtual log_level_t set_level(log_level_t l) override { return level_ = l; }
-				virtual bool        does_accept(log_level_t l) const override { return l <= level_; }
-
-				virtual void write(
-								  log_level_t 	lvl
-								, line_mode_t 	lmode
-								, size_t 		total_len
-								, str_t const 	*slices
-								, size_t 		n_slices
-								)
-								override
-				{
-					// concat everything to one stack buffer
-					char *buf = (char*)alloca(total_len);
-					int n = 0;
-					for (size_t i = 0; i < n_slices; i++)
-					{
-						memcpy(buf + n, slices[i].data(), slices[i].c_length());
-						n += slices[i].c_length();
-					}
-
-					#define MYSQL_LOG(name) sql_print_##name("PINBA: %.*s", n, buf)
-
-					// use direct mysql api to print to log, a little annoying the public interface is
-					if (lvl >= meow::logging::log_level::notice)
-					{
-						MYSQL_LOG(information);
-					}
-					else if (lvl >= meow::logging::log_level::warn)
-					{
-						MYSQL_LOG(warning);
-					}
-					else
-					{
-						MYSQL_LOG(error);
-					}
-
-					#undef P
-				}
-			};
-
-			auto logger = std::make_shared<mysql_logger_t>();
-			logger->set_level(log_level);
-
-			return logger;
-		}();
-
 		// TODO: take more values from global mysql config (aka pinba_variables)
 		static pinba_options_t options = {
 			.net_address              = pinba_variables()->address,
@@ -250,8 +278,7 @@ static int pinba_engine_init(void *p)
 	}
 	catch (std::exception const& e)
 	{
-		sql_print_error("PINBA: engine initialization failed: %s", e.what());
-		// LOG_NOTICE(logger, "engine initialization failed: {0}", e.what());
+		LOG_ERROR(logger, "engine initialization failed: {0}", e.what());
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
 

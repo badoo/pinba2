@@ -348,7 +348,7 @@ namespace { namespace aux {
 						if (vr != request_validate_result::okay)
 						{
 							++stats_->repacker.packet_validate_err;
-							LOG_DEBUG(globals_->logger(), "request validation failed: {0}: {1}\n", vr, enum_as_str_ref(vr));
+							LOG_DEBUG(globals_->logger(), "request validation failed: {0}: {1}", vr, enum_as_str_ref(vr));
 							continue;
 						}
 
