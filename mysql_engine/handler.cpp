@@ -1061,6 +1061,11 @@ int pinba_handler_t::rnd_next(uchar *buf)
 
 	int const r = pinba_view_->rnd_next(this, buf);
 
+	if (r != 0)
+	{
+		current_table()->status = STATUS_NOT_FOUND;
+	}
+
 	DBUG_RETURN(r);
 }
 
@@ -1082,6 +1087,11 @@ int pinba_handler_t::rnd_pos(uchar *buf, uchar *pos)
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
 	int const r = pinba_view_->rnd_pos(this, buf, pos);
+
+	if (r != 0)
+	{
+		current_table()->status = STATUS_NOT_FOUND;
+	}
 
 	DBUG_RETURN(r);
 }
