@@ -64,7 +64,7 @@ namespace pinba {
 		size_t       result_length = 0;
 		size_t const input_size = std::distance(begin, end);
 
-		merge_item_t heap[input_size]; // VLA, yo
+		merge_item_t *heap = (merge_item_t*)alloca(input_size * sizeof(merge_item_t));
 		merge_item_t *heap_end = heap + input_size;
 
 		{
@@ -82,7 +82,7 @@ namespace pinba {
 				result_length += detail::maybe_calculate_size(curr_b, curr_e);
 				// heap[offset++] = { .seq = sequence, .iter = curr_b };
 				heap[offset].seq = sequence;
-				heap[offset].iter = curr_b;
+				heap[offset].iter = curr_b; // XXX: potentially fucks up the iterator in operator=(), since it has not been initialized
 				offset++;
 			}
 

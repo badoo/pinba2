@@ -123,7 +123,7 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 	snprintf(vars->extra, sizeof(vars->extra), "%s", extra_str.c_str());
 
 
-	return std::move(vars);
+	return vars;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -185,7 +185,7 @@ static int pinba_engine_init(void *p)
 			PM->engine = pinba_engine_init(&options); // construct objects, validate things
 			PM->engine->startup();                    // start kicking ass
 
-			return move(PM);
+			return PM;
 		}();
 	}
 	catch (std::exception const& e)

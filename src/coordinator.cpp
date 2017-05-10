@@ -148,7 +148,7 @@ namespace { namespace aux {
 					{
 						report_->tick_now(now);
 
-						timeval_t const curr_tv         = os_unix::clock_monotonic_now();
+						timeval_t const curr_tv    = os_unix::clock_monotonic_now();
 						timeval_t const curr_rt_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
 
 						std::unique_lock<std::mutex> lk_(stats_.lock);
@@ -214,7 +214,7 @@ namespace { namespace aux {
 			return report_.get();
 		}
 
-		virtual report_stats_t* stats()
+		virtual report_stats_t* stats() override
 		{
 			return &stats_;
 		}

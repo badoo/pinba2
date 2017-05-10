@@ -190,7 +190,7 @@ namespace { namespace aux {
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);
 			os_unix::bind_ex(*fd, ai->ai_addr, ai->ai_addrlen);
 
-			return std::move(fd);
+			return fd;
 		}
 
 	private: // per-thread stuff
@@ -324,13 +324,18 @@ namespace { namespace aux {
 			size_t const max_message_size   = 64 * 1024; // max udp message size
 			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this
 
-			struct mmsghdr hdr[max_dgrams_to_recv];  memset(&hdr, 0, sizeof(hdr));
-			struct iovec   iov[max_dgrams_to_recv];  memset(&iov, 0, sizeof(iov));
+			std::unique_ptr<struct mmsghdr[]> hdr_p { new struct mmsghdr[max_dgrams_to_recv] };
+			struct mmsghdr *hdr = hdr_p.get();
+
+			std::unique_ptr<struct iovec[]> iov_p { new struct iovec[max_dgrams_to_recv] };
+			struct iovec *iov = iov_p.get();
 
 			std::unique_ptr<char[]> recv_buffer_p { new char[max_dgrams_to_recv * max_message_size] };
 			char *recv_buffer = recv_buffer_p.get();
 
 			// touch all network memory in advance
+			memset(hdr, 0, max_dgrams_to_recv * sizeof(*hdr));
+			memset(iov, 0, max_dgrams_to_recv * sizeof(*iov));
 			memset(recv_buffer, 0, max_dgrams_to_recv * max_message_size);
 
 			for (unsigned i = 0; i < max_dgrams_to_recv; i++)

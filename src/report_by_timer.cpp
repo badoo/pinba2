@@ -796,7 +796,7 @@ public:
 
 public:
 
-	virtual void add(packet_t *packet)
+	virtual void add(packet_t *packet) override
 	{
 		// bloom check
 		if (packet->timer_bloom)

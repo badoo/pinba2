@@ -96,7 +96,7 @@ try
 	{
 		std::vector<std::string> const endpoints = { endpoint_1, endpoint_2 };
 		size_t const n_endpoints = endpoints.size();
-		struct nn_pollfd pfd[n_endpoints] = {};
+		struct nn_pollfd pfd[n_endpoints];
 
 		try
 		{
@@ -112,8 +112,9 @@ try
 					throw std::runtime_error(ff::fmt_str("nn_connect failed; {0}:{1}", errno, strerror(errno)));
 
 				pfd[i] = nn_pollfd {
-					.fd = sock,
-					.events = NN_POLLIN,
+					.fd      = sock,
+					.events  = NN_POLLIN,
+					.revents = 0,
 				};
 			}
 

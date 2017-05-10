@@ -193,7 +193,7 @@ static inline void multi_merge(ResultContainer& result, Iterator begin, Iterator
 	size_t           result_length = 0; // initialized later
 	size_t const     input_size = std::distance(begin, end);
 
-	merge_item_t tmp[input_size];
+	merge_item_t *tmp = (merge_item_t*)alloca(input_size * sizeof(merge_item_t));
 	merge_item_t *tmp_end = tmp + input_size;
 
 	// init

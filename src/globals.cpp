@@ -91,7 +91,7 @@ namespace { namespace aux {
 
 	private:
 
-		virtual void startup()
+		virtual void startup() override
 		{
 			auto const *options = this->options();
 
@@ -147,7 +147,7 @@ namespace { namespace aux {
 			return globals_->options();
 		}
 
-		virtual pinba_error_t add_report(report_ptr report)
+		virtual pinba_error_t add_report(report_ptr report) override
 		{
 			auto req = meow::make_intrusive<coordinator_request___add_report_t>();
 			req->report = report;
