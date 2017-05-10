@@ -7,6 +7,8 @@
 	- [ ] raw histogram data tables
 	- [ ] test with 5.7
 	- [ ] improve report data sorting, by implementing position() and rnd_pos()
+		- [x] position() and rnd_pos() implemeted - this doesn't help at all, 300ms to sort 30k rows is too slow, suspicious
+		- [ ] find a way! explain shows 0 rows and ref = NULL, what the f
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 		- [x] test with mysql (tested, still leaks, probably my code)
@@ -16,11 +18,11 @@
 	- [x] README (well, should suffice for now)
 	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
 	- [x] guidelines - how to run mysql with jemalloc
-	- [ ] describe configuration options in readme
+	- [x] describe configuration options in readme
 	- [ ] internals/tuning guide
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
-	- [ ] log levels support (with runtime change?)
+	- [x] log levels support (with runtime change?)
 - report data filtering
 	- [x] min/max time
 	- [x] request field/tag based filtering (i.e. take only requests with +browser=chrome)

@@ -1,10 +1,13 @@
 #include "mysql_engine/plugin.h"
 #include "mysql_engine/handler.h"
 
-#include "pinba/dictionary.h"
+#ifdef PINBA_USE_MYSQL_SOURCE
+#include <sql/log.h>
+#else
+#include <mysql/private/log.h>
+#endif // PINBA_USE_MYSQL_SOURCE
 
-#define MEOW_FORMAT_FD_SINK_NO_WRITEV 1
-#include <meow/logging/fd_logger.hpp>
+#include "pinba/dictionary.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -138,40 +141,95 @@ static int pinba_engine_init(void *p)
 		return new (mem_root) pinba_handler_t(hton, table);
 	};
 
-	auto logger = [&]()
-	{
-		// TODO: this will suffice for now, but improve logger to look like mysql native thing
-		auto logger = std::make_shared<meow::logging::fd_logger_t<meow::logging::default_prefix_t>>(STDERR_FILENO);
-
-		logger->set_level(meow::logging::log_level::debug);
-		logger->prefix().set_fields(meow::logging::prefix_field::_all);
-		logger->prefix().set_log_name("pinba");
-
-		return logger;
-	}();
-
-	// TODO: take more values from global mysql config (aka pinba_variables)
-	static pinba_options_t options = {
-		.net_address              = pinba_variables()->address,
-		.net_port                 = ff::write_str(pinba_variables()->port),
-
-		.udp_threads              = pinba_variables()->udp_reader_threads,
-		.udp_batch_messages       = 256,
-		.udp_batch_timeout        = 10 * d_millisecond,
-
-		.repacker_threads         = pinba_variables()->repacker_threads,
-		.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
-		.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
-		.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
-
-		.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
-		.report_input_buffer      = pinba_variables()->report_input_buffer,
-
-		.logger                   = logger,
-	};
-
 	try
 	{
+		auto const log_level = [&]()
+		{
+			using meow::logging::log_level;
+
+			auto const lvl = log_level::enum_from_str_ref(pinba_variables()->log_level);
+			if (lvl == log_level::_none)
+				throw std::runtime_error(ff::fmt_str("unknown pinba_log_level = '{0}'", pinba_variables()->log_level));
+			return lvl;
+		}();
+
+		auto logger = [&]()
+		{
+			using namespace meow;
+			using namespace meow::logging;
+
+			struct mysql_logger_t : public logger_t
+			{
+				log_level_t level_;
+
+				virtual log_level_t level() const override { return level_; }
+				virtual log_level_t set_level(log_level_t l) override { return level_ = l; }
+				virtual bool        does_accept(log_level_t l) const override { return l <= level_; }
+
+				virtual void write(
+								  log_level_t 	lvl
+								, line_mode_t 	lmode
+								, size_t 		total_len
+								, str_t const 	*slices
+								, size_t 		n_slices
+								)
+								override
+				{
+					// concat everything to one stack buffer
+					char *buf = (char*)alloca(total_len);
+					int n = 0;
+					for (size_t i = 0; i < n_slices; i++)
+					{
+						memcpy(buf + n, slices[i].data(), slices[i].c_length());
+						n += slices[i].c_length();
+					}
+
+					#define MYSQL_LOG(name) sql_print_##name("PINBA: %.*s", n, buf)
+
+					// use direct mysql api to print to log, a little annoying the public interface is
+					if (lvl >= meow::logging::log_level::notice)
+					{
+						MYSQL_LOG(information);
+					}
+					else if (lvl >= meow::logging::log_level::warn)
+					{
+						MYSQL_LOG(warning);
+					}
+					else
+					{
+						MYSQL_LOG(error);
+					}
+
+					#undef P
+				}
+			};
+
+			auto logger = std::make_shared<mysql_logger_t>();
+			logger->set_level(log_level);
+
+			return logger;
+		}();
+
+		// TODO: take more values from global mysql config (aka pinba_variables)
+		static pinba_options_t options = {
+			.net_address              = pinba_variables()->address,
+			.net_port                 = ff::write_str(pinba_variables()->port),
+
+			.udp_threads              = pinba_variables()->udp_reader_threads,
+			.udp_batch_messages       = 256,
+			.udp_batch_timeout        = 10 * d_millisecond,
+
+			.repacker_threads         = pinba_variables()->repacker_threads,
+			.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
+			.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
+			.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
+
+			.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
+			.report_input_buffer      = pinba_variables()->report_input_buffer,
+
+			.logger                   = logger,
+		};
+
 		pinba_MYSQL__instance = [&]()
 		{
 			auto PM = meow::make_unique<pinba_mysql_ctx_t>();
@@ -187,10 +245,13 @@ static int pinba_engine_init(void *p)
 
 			return PM;
 		}();
+
+		LOG_NOTICE(logger, "engine initialized");
 	}
 	catch (std::exception const& e)
 	{
-		LOG_ALERT(logger, "init failed: {0}\n", e.what());
+		sql_print_error("PINBA: engine initialization failed: %s", e.what());
+		// LOG_NOTICE(logger, "engine initialization failed: {0}", e.what());
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
 
@@ -214,7 +275,7 @@ static int pinba_engine_shutdown(void *p)
 static MYSQL_SYSVAR_INT(port,
 	pinba_variables()->port,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-	"UDP port to listen at",
+	"UDP port to listen at, default: 3002",
 	NULL,
 	NULL,
 	3002,  // def
@@ -238,6 +299,38 @@ static MYSQL_SYSVAR_STR(address,
 	},
 	NULL,
 	"0.0.0.0");
+
+static MYSQL_SYSVAR_STR(log_level,
+	pinba_variables()->log_level,
+	PLUGIN_VAR_RQCMDARG,
+	"log level, default: 'info'",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
+	{
+		// disallow empty
+		char tmp[128];
+		int sz = sizeof(tmp);
+		char const *str = value->val_str(value, tmp, &sz);
+		if (!str || *str == '\0' || sz == 0)
+			return 1;
+
+		auto const lvl = meow::logging::log_level::enum_from_str_ref(str_ref{str, size_t(sz)});
+		if (meow::logging::log_level::_none == lvl)
+			return 1;
+
+		*static_cast<int*>(res_for_update) = (int)lvl;
+
+		return 0;
+	},
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
+	{
+		// FIXME: unsure if this is always called after module init?
+		//        if not - going to segfault
+
+		auto const lvl = *(meow::logging::log_level_t*)saved_from_update;
+		*static_cast<char const**>(out_to_mysql) = meow::logging::log_level::enum_as_str_ref(lvl).data();
+		P_CTX_->logger->set_level(lvl);
+	},
+	"info");
 
 static MYSQL_SYSVAR_UINT(default_history_time_sec,
 	pinba_variables()->default_history_time_sec,
@@ -330,6 +423,7 @@ static MYSQL_SYSVAR_UINT(report_input_buffer,
 static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(port),
 	MYSQL_SYSVAR(address),
+	MYSQL_SYSVAR(log_level),
 	MYSQL_SYSVAR(default_history_time_sec),
 	MYSQL_SYSVAR(udp_reader_threads),
 	MYSQL_SYSVAR(repacker_threads),

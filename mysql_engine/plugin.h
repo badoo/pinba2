@@ -18,6 +18,7 @@ struct pinba_variables_t
 {
 	char      *address                  = nullptr;
 	int       port                      = 0;
+	char      *log_level                = nullptr;
 	unsigned  default_history_time_sec  = 0;
 	unsigned  udp_reader_threads        = 0;
 	unsigned  repacker_threads          = 0;
