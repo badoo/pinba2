@@ -17,6 +17,7 @@ Default: 3002
 Logging level, one of: debug, info, notice, warn, error, crit, alert<br>
 Use 'debug' for debugging :)<br>
 Use 'warn' or 'error' for production, should be enough <br>
+This value can be changed at runtime with query like `set global pinba_log_level='debug';`
 
 ## pinba_default_history_time_sec
 Default aggregation time_window for all reports. This value is used if you use "default_history_time" as time window in report configuration.<br>

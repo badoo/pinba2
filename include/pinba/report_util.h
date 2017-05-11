@@ -104,6 +104,7 @@ public:
 
 	report_snapshot__impl_t(pinba_globals_t *globals, src_ticks_t const& ticks, report_info_t const& rinfo)
 		: data_()
+		, prepared_(false)
 		, ticks_(ticks)
 		, rinfo_(rinfo)
 		, globals_(globals)
@@ -130,13 +131,15 @@ private:
 
 		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_, ptype);
 
+		prepared_ = true;
+
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();
 	}
 
 	virtual bool is_prepared() const override
 	{
-		return !data_.empty();
+		return prepared_;
 	}
 
 	virtual size_t row_count() const override
@@ -246,6 +249,7 @@ private:
 
 private:
 	hashtable_t      data_;      // real data we iterate over
+	bool             prepared_;  // has data been prepared?
 	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
 	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
 	pinba_globals_t  *globals_;  // globals for logging / dictionary
