@@ -227,23 +227,25 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((negative_float_request_time,    "negative_float_request_time"))
 
 					((bad_float_ru_utime,             "bad_float_ru_utime"))
-					((negative_float_ru_utime,        "negative_float_ru_utime"))
+					// ((negative_float_ru_utime,        "negative_float_ru_utime"))
 
 					((bad_float_ru_stime,             "bad_float_ru_stime"))
-					((negative_float_ru_stime,        "negative_float_ru_stime"))
+					// ((negative_float_ru_stime,        "negative_float_ru_stime"))
 
 					((bad_float_timer_value,          "bad_float_timer_value"))
 					((zero_float_timer_value,         "zero_float_timer_value"))
 					((negative_float_timer_value,     "negative_float_timer_value"))
 
 					((bad_float_timer_ru_utime,       "bad_float_timer_ru_utime"))
-					((negative_float_timer_ru_utime,  "negative_float_timer_ru_utime"))
+					// ((negative_float_timer_ru_utime,  "negative_float_timer_ru_utime"))
 
 					((bad_float_timer_ru_stime,       "bad_float_timer_ru_stime"))
-					((negative_float_timer_ru_stime,  "negative_float_timer_ru_stime"))
+					// ((negative_float_timer_ru_stime,  "negative_float_timer_ru_stime"))
 					);
 
-request_validate_result_t pinba_validate_request(Pinba__Request const *r);
+// this function might change request slightly
+// sometimes it's easier to do it here, than in pinba_request_to_packet()
+request_validate_result_t pinba_validate_request(Pinba__Request *r);
 
 struct dictionary_t;
 struct repacker_dictionary_t;

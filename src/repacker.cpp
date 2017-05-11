@@ -340,10 +340,9 @@ namespace { namespace aux {
 
 					for (uint32_t i = 0; i < req->request_count; i++)
 					{
-						auto const *pb_req = req->requests[i];
-
 						++stats_->repacker.recv_packets;
 
+						auto *pb_req = req->requests[i]; // non-const here
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)
 						{

@@ -9,13 +9,15 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-request_validate_result_t pinba_validate_request(Pinba__Request const *r)
+request_validate_result_t pinba_validate_request(Pinba__Request *r)
 {
 	if (r->n_timer_value != r->n_timer_hit_count) // all timers have hit counts
 		return request_validate_result::bad_hit_count;
 
 	if (r->n_timer_value != r->n_timer_tag_count) // all timers have tag counts
 		return request_validate_result::bad_tag_count;
+
+	// NOTE(antoxa): some clients don't send rusage at all, let them
 
 	// if (r->n_timer_value != r->n_timer_ru_utime)
 	// 	return request_validate_result::bad_timer_ru_utime_count;
@@ -44,49 +46,82 @@ request_validate_result_t pinba_validate_request(Pinba__Request const *r)
 	if (total_tag_count != r->n_timer_tag_value) // all tags have values
 		return request_validate_result::not_enough_tag_values;
 
-#define VALIDATE_FLOAT_V(value, name)                                            \
-	do {                                                                         \
-		switch (std::fpclassify(value)) {                                        \
-			case FP_ZERO:    break;                                              \
-			case FP_NORMAL:	 break;                                              \
-			default:         return request_validate_result::bad_float_##name;   \
-		}                                                                        \
-		if (std::signbit(value))                                                 \
-			return request_validate_result::negative_float_##name;               \
-	} while(0)                                                                   \
-/**/
 
-#define VALIDATE_FLOAT_NONZERO_V(value, name)                                    \
-	do {                                                                         \
-		switch (std::fpclassify(value)) {                                        \
-			case FP_ZERO:    return request_validate_result::zero_float_##name;  \
-			case FP_NORMAL:	 break;                                              \
-			default:         return request_validate_result::bad_float_##name;   \
-		}                                                                        \
-		if (std::signbit(value))                                                 \
-			return request_validate_result::negative_float_##name;               \
-	} while(0)                                                                   \
-/**/
 
-#define VALIDATE_FLOAT_ARRAY(array_name)                 \
-	for (unsigned i = 0; i < r->n_##array_name; i++) {   \
-		VALIDATE_FLOAT_V(r->array_name[i], array_name);  \
-	}                                                    \
-/**/
+	// request_time must be > 0, be strict here to avoid crazy data
+	{
+		switch (std::fpclassify(r->request_time))
+		{
+			case FP_ZERO:    return request_validate_result::zero_float_request_time;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_request_time;
+		}
+		if (std::signbit(r->request_time))
+			r->request_time = 0;
+	}
 
-#define VALIDATE_FLOAT_NONZERO_ARRAY(array_name)                \
-	for (unsigned i = 0; i < r->n_##array_name; i++) {          \
-		VALIDATE_FLOAT_NONZERO_V(r->array_name[i], array_name); \
-	}                                                           \
-/**/
+	// NOTE(antoxa): this should not happen, but happens A LOT
+	//               so just reset them to zero if negative
+	{
+		switch (std::fpclassify(r->ru_utime))
+		{
+			case FP_ZERO:    break;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_ru_utime;
+		}
+		if (std::signbit(r->ru_utime))
+			r->ru_utime = 0;
+	}
 
-	VALIDATE_FLOAT_NONZERO_V(r->request_time, request_time);
-	VALIDATE_FLOAT_V(r->ru_utime, ru_utime);
-	VALIDATE_FLOAT_V(r->ru_stime, ru_stime);
+	{
+		switch (std::fpclassify(r->ru_stime))
+		{
+			case FP_ZERO:    break;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_ru_stime;
+		}
+		if (std::signbit(r->ru_stime))
+			r->ru_stime = 0;
+	}
 
-	VALIDATE_FLOAT_ARRAY(timer_value);
-	VALIDATE_FLOAT_ARRAY(timer_ru_utime);
-	VALIDATE_FLOAT_ARRAY(timer_ru_stime);
+	// timer values must be >= 0
+	for (unsigned i = 0; i < r->n_timer_value; i++)
+	{
+		switch (std::fpclassify(r->timer_value[i]))
+		{
+			case FP_ZERO:    break;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_timer_value;
+		}
+		if (std::signbit(r->timer_value[i]))
+			return request_validate_result::negative_float_timer_value;
+	}
+
+	// NOTE(antoxa): same as r->ru_utime, r->ru_stime
+	//               negative values happen, just make them zero
+	for (unsigned i = 0; i < r->n_timer_ru_utime; i++)
+	{
+		switch (std::fpclassify(r->timer_ru_utime[i]))
+		{
+			case FP_ZERO:    break;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_timer_ru_utime;
+		}
+		if (std::signbit(r->timer_ru_utime[i]))
+			r->timer_ru_utime[i] = 0;
+	}
+
+	for (unsigned i = 0; i < r->n_timer_ru_stime; i++)
+	{
+		switch (std::fpclassify(r->timer_ru_stime[i]))
+		{
+			case FP_ZERO:    break;
+			case FP_NORMAL:	 break;
+			default:         return request_validate_result::bad_float_timer_ru_stime;
+		}
+		if (std::signbit(r->timer_ru_stime[i]))
+			r->timer_ru_stime[i] = 0;
+	}
 
 	return request_validate_result::okay;
 }

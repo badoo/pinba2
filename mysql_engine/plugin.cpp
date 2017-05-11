@@ -178,8 +178,8 @@ static int pinba_engine_init(void *p)
 							)
 							override
 			{
-				// concat everything to one stack buffer
-				// to write everything in one go (stderr is usually unbuffered, so multiple writes might interleave)
+				// as stderr is usually unbuffered -> writing one line in multiple write()-s might produce garbage in logs
+				// try avoid that - by concatenating everything to one stack buffer to write everything in one go and avoid interleaves in log
 				constexpr size_t const prefix_buf_size = 256;
 				char *buf = (char*)alloca(prefix_buf_size + total_len);
 
