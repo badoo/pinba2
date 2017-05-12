@@ -201,13 +201,24 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		// TODO:
-		// mysql code comments say that this fuction might get called twice in a row
-		// i have no idea why or when
-		// so just hack around the fact for now
-		if (!data_.empty())
-			return 0;
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, scan: {2}, got_data: {3}", __func__, handler, scan, !data_.empty());
 
+		if (data_.empty())
+		{
+			int const r = this->init_internal(handler);
+			if (r != 0)
+				return r;
+		}
+
+		curr_pos_ = data_.begin();
+		next_pos_ = curr_pos_;
+
+		return 0;
+	}
+
+	int init_internal(pinba_handler_t *handler)
+	try
+	{
 		// copy whatever we need from share and release the lock
 		view_t tmp_data = []()
 		{
@@ -256,20 +267,25 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			}
 		}
 
-		curr_pos_ = data_.begin();
-		next_pos_ = curr_pos_;
-
 		return 0;
 	}
-
-	virtual int rnd_end(pinba_handler_t*) override
+	catch (std::exception const& e)
 	{
+		LOG_WARN(P_L_, "{0}; internal error: {1}", __PRETTY_FUNCTION__, e.what());
+		return HA_ERR_INTERNAL_ERROR;
+	}
+
+	virtual int rnd_end(pinba_handler_t *handler) override
+	{
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, got_data: {2}", __func__, handler, !data_.empty());
 		data_.clear();
 		return 0;
 	}
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, next_pos: {2}, next_max: {3}", __func__, handler, std::distance(data_.cbegin(), next_pos_), data_.size());
+
 		if (next_pos_ == data_.end())
 			return HA_ERR_END_OF_FILE;
 
@@ -289,13 +305,13 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
 	{
 		auto const& pos = *(reinterpret_cast<position_t const*>(pos_bytes));
-		// LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
+		LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
 		return this->fill_row(handler, pos);
 	}
 
 	virtual void position(pinba_handler_t *handler, const uchar *record) const override
 	{
-		// LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
+		LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
 		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
 		// static_assert(std::is_trivially_copyable<decltype(pos_)>::value, "must be able to memcpy pos");
 		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
@@ -306,7 +322,7 @@ private:
 
 	int fill_row(pinba_handler_t *handler, position_t const& row_pos) const
 	{
-		// LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
+		LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
 
 		auto const *row   = &(*row_pos);
 		auto const *sdata = &row->share_data;
@@ -423,9 +439,24 @@ public:
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		if (snapshot_)
-			return 0;
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, scan: {2}, snapshot: {3}", __func__, handler, scan, snapshot_.get());
 
+		if (!snapshot_)
+		{
+			int const r = this->init_internal(handler);
+			if (r != 0)
+				return r;
+		}
+
+		curr_pos_ = snapshot_->pos_first();
+		next_pos_ = curr_pos_;
+
+		return 0;
+	}
+
+	int init_internal(pinba_handler_t *handler)
+	try
+	{
 		share_data_ = meow::make_unique<pinba_share_data_t>();
 
 		{
@@ -437,16 +468,7 @@ public:
 
 		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
 
-		try
-		{
-			snapshot_ = P_E_->get_report_snapshot(share_data_->report_name);
-		}
-		catch (std::exception const& e)
-		{
-			LOG_WARN(P_L_, "{0}; internal error: {1}", __func__, e.what());
-			my_printf_error(ER_INTERNAL_ERROR, "[pinba] %s", MYF(0), e.what());
-			return HA_ERR_INTERNAL_ERROR;
-		}
+		snapshot_ = P_E_->get_report_snapshot(share_data_->report_name);
 
 		// check if percentile fields are being requested and do not merge histograms if not
 
@@ -515,14 +537,19 @@ public:
 				sw.stamp(), snapshot_->row_count());
 		}
 
-		curr_pos_ = snapshot_->pos_first();
-		next_pos_ = curr_pos_;
-
 		return 0;
 	}
-
-	virtual int rnd_end(pinba_handler_t*) override
+	catch (std::exception const& e)
 	{
+		LOG_WARN(P_L_, "{0}; internal error: {1}", __PRETTY_FUNCTION__, e.what());
+		my_printf_error(ER_INTERNAL_ERROR, "[pinba] %s", MYF(0), e.what());
+		return HA_ERR_INTERNAL_ERROR;
+	}
+
+	virtual int rnd_end(pinba_handler_t *handler) override
+	{
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}", __func__, handler, snapshot_.get());
+
 		share_data_.reset();
 		snapshot_.reset();
 		return 0;
@@ -530,6 +557,8 @@ public:
 
 	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
 	{
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, next_pos: {2}", __func__, handler, ff::as_hex_string(str_ref{(char*)&next_pos_, sizeof(next_pos_)}));
+
 		if (snapshot_->pos_equal(next_pos_, snapshot_->pos_last()))
 			return HA_ERR_END_OF_FILE;
 
@@ -549,7 +578,7 @@ public:
 	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
 	{
 		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
-		// LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
+		LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
 		return this->fill_row(handler, pos);
 	}
 
@@ -557,16 +586,28 @@ public:
 	{
 		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
 		// static_assert(std::is_trivially_copyable<decltype(curr_pos_)>::value, "must be able to memcpy pos");
-		// LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
+		LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
 		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
 		return;
+	}
+
+	virtual int  info(pinba_handler_t *handler, uint arg) const override
+	{
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}, arg: {3}", __func__, handler, snapshot_.get(), arg);
+		return 0;
+	}
+
+	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) const override
+	{
+		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
+		return 0;
 	}
 
 private:
 
 	int fill_row(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
 	{
-		// LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
+		LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
 
 		auto *table       = handler->current_table();
 		auto const *rinfo = snapshot_->report_info();
