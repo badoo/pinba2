@@ -79,20 +79,6 @@ namespace { namespace aux {
 			{
 				hv.increment({hv_bucket_count, hv_bucket_d}, packet->request_time);
 			}
-
-			void merge_other(item_t const& other)
-			{
-				// data
-				data.req_count  += other.data.req_count;
-				data.time_total += other.data.time_total;
-				data.ru_utime   += other.data.ru_utime;
-				data.ru_stime   += other.data.ru_stime;
-				data.traffic_kb += other.data.traffic_kb;
-				data.mem_usage  += other.data.mem_usage;
-
-				// hv
-				hv.merge_other(other.hv);
-			}
 		};
 
 	public: // ticks
