@@ -148,8 +148,8 @@ namespace { namespace aux {
 				// please not that we're also saving pointers to flat_histogram_t::values
 				// and will restore full structs on merge
 				// this a 'limitation' of multi_merge() function
-				std::vector<histogram_values_t const*> saved_hv;
-				flat_histogram_t merged_hv;
+				std::vector<histogram_values_t const*>  saved_hv;
+				flat_histogram_t                        merged_hv;
 			};
 
 			struct hashtable_t
@@ -404,7 +404,10 @@ namespace { namespace aux {
 				// since histogram merger uses raw pointers to tick_data_t::hvs[]::values
 				// and those need to be alive while this snapshot is alive
 				if (!need_histograms)
+				{
 					ticks.clear();
+					ticks.shrink_to_fit();
+				}
 			}
 		};
 

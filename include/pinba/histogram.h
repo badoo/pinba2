@@ -142,16 +142,10 @@ public:
 		items_total_ += increment_by;
 	}
 
-	void increment_bucket(uint32_t bucket_id, uint32_t increment_by)
+	void clear()
 	{
-		map_[bucket_id] += increment_by;
-		items_total_ += increment_by;
-	}
-
-	void increment_inf(uint32_t increment_by)
-	{
-		items_total_ += increment_by;
-		inf_value_ += increment_by;
+		map_.clear();
+		map_.resize(0);
 	}
 };
 

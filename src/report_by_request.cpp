@@ -96,7 +96,8 @@ namespace { namespace aux {
 			struct row_t
 			{
 				report_row_data___by_request_t  data;
-				histogram_t                     hv;
+				histogram_t                     tmp_hv; // temporary, used while merging only
+				flat_histogram_t                hv;
 			};
 
 			struct hashtable_t
@@ -115,7 +116,7 @@ namespace { namespace aux {
 				return (void*)&it->second;
 			}
 
-			static histogram_t* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
+			static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 			{
 				return &it->second.hv;
 			}
@@ -128,9 +129,7 @@ namespace { namespace aux {
 				, hashtable_t& to
 				, report_snapshot_t::prepare_type_t ptype)
 			{
-				MEOW_DEFER(
-					ticks.clear();
-				);
+				bool const need_histograms = (rinfo.hv_enabled && ptype != report_snapshot_t::prepare_type::no_histograms);
 
 				uint64_t key_lookups = 0;
 				uint64_t hv_lookups = 0;
@@ -152,9 +151,9 @@ namespace { namespace aux {
 						dst.data.traffic_kb += src.data.traffic_kb;
 						dst.data.mem_usage  += src.data.mem_usage;
 
-						if (rinfo.hv_enabled)
+						if (need_histograms)
 						{
-							dst.hv.merge_other(src.hv);
+							dst.tmp_hv.merge_other(src.hv);
 							hv_lookups += src.hv.map_cref().size();
 						}
 					}
@@ -162,8 +161,26 @@ namespace { namespace aux {
 					key_lookups += tick->data.size();
 				}
 
+				// compact histograms from hashtable to flat
+				for (auto& ht_pair : to)
+				{
+					histogram_t&      tmp_hv = ht_pair.second.tmp_hv;
+					flat_histogram_t& hv     = ht_pair.second.hv;
+
+					histogram___convert_ht_to_flat(tmp_hv, &hv);
+
+					tmp_hv.clear();
+				}
+
 				LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
 					rinfo.name, ticks.size(), key_lookups, hv_lookups);
+
+				// can clean ticks only if histograms were not merged
+				// if (!need_histograms) // yes we can, since merge goes through a temporary ht
+				{
+					ticks.clear();
+					ticks.shrink_to_fit();
+				}
 			}
 		};
 
@@ -184,7 +201,8 @@ namespace { namespace aux {
 				.tick_count      = conf_.tick_count,
 				.n_key_parts     = (uint32_t)conf_.keys.size(),
 				.hv_enabled      = (conf_.hv_bucket_count > 0),
-				.hv_kind         = HISTOGRAM_KIND__HASHTABLE,
+				// .hv_kind         = HISTOGRAM_KIND__HASHTABLE,
+				.hv_kind         = HISTOGRAM_KIND__FLAT,
 				.hv_bucket_count = conf_.hv_bucket_count,
 				.hv_bucket_d     = conf_.hv_bucket_d,
 			};
