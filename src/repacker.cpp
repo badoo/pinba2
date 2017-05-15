@@ -212,10 +212,11 @@ namespace { namespace aux {
 				.open(AF_SP, NN_PULL)
 				.bind(conf_->nn_shutdown);
 
+
+			stats_->repacker_threads.resize(conf_->n_threads);
+
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
-				stats_->repacker_threads.push_back({});
-
 				// open and connect to producer in main thread, to make exceptions catch-able easily
 				nmsg_socket_t in_sock;
 				in_sock.open(AF_SP, NN_PULL);

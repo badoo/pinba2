@@ -128,10 +128,10 @@ namespace { namespace aux {
 			if (!threads_.empty())
 				throw std::logic_error("collector_t::startup(): already started");
 
+			stats_->collector_threads.resize(conf_->n_threads);
+
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
-				stats_->collector_threads.push_back({});
-
 				// per-thread SO_REUSEPORT bind
 				fd_handle_t fd_h = this->try_bind_to_addr(ai_);
 
