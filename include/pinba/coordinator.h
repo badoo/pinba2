@@ -32,7 +32,14 @@ struct coordinator_request__with_id_t : public coordinator_request_t
 {
 	coordinator_request__with_id_t()
 	{
+		PINBA_STATS_(objects).n_coord_requests++;
+
 		this->type = ID;
+	}
+
+	~coordinator_request__with_id_t()
+	{
+		PINBA_STATS_(objects).n_coord_requests--;
 	}
 };
 

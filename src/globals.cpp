@@ -72,6 +72,16 @@ namespace { namespace aux {
 		std::unique_ptr<dictionary_t>  dictionary_;
 	};
 
+
+
+	static std::unique_ptr<pinba_globals_impl_t> pinba_globals_;
+
+	pinba_globals_t* pinba_globals_init___impl(pinba_options_t *options)
+	{
+		pinba_globals_ = meow::make_unique<pinba_globals_impl_t>(options);
+		return pinba_globals_.get();
+	}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 	struct pinba_engine_impl_t : public pinba_engine_t
@@ -131,7 +141,7 @@ namespace { namespace aux {
 
 		virtual pinba_globals_t* globals() const override
 		{
-			return globals_.get();
+			return globals_;
 		}
 
 		virtual pinba_options_t const* options() const override
@@ -226,7 +236,8 @@ namespace { namespace aux {
 		}
 
 	private:
-		std::unique_ptr<pinba_globals_t>  globals_;
+		// std::unique_ptr<pinba_globals_t>  globals_;
+		pinba_globals_t                   *globals_;
 		std::unique_ptr<collector_t>      collector_;
 		std::unique_ptr<repacker_t>       repacker_;
 		std::unique_ptr<coordinator_t>    coordinator_;
@@ -236,9 +247,14 @@ namespace { namespace aux {
 }} // namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-pinba_globals_ptr pinba_globals_init(pinba_options_t *options)
+pinba_globals_t* pinba_globals()
 {
-	return meow::make_unique<aux::pinba_globals_impl_t>(options);
+	return aux::pinba_globals_.get();
+}
+
+pinba_globals_t* pinba_globals_init(pinba_options_t *options)
+{
+	return aux::pinba_globals_init___impl(options);
 }
 
 pinba_engine_ptr pinba_engine_init(pinba_options_t *options)

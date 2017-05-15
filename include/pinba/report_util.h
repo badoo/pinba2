@@ -348,17 +348,17 @@ struct ticks_ringbuffer_t : private boost::noncopyable
 		timeval_t   end_tv;
 		value_type  data;
 
-		tick_t(timeval_t curr_tv)
+		explicit tick_t(timeval_t curr_tv)
 			: start_tv(curr_tv)
 			, end_tv({0,0})
 			, data()
 		{
-			// ff::fmt(stderr, "{0}; {1}\n", __func__, this);
+			PINBA_STATS_(objects).n_report_ticks++;
 		}
 
 		~tick_t()
 		{
-			// ff::fmt(stderr, "{0}; {1}\n", __func__, this);
+			PINBA_STATS_(objects).n_report_ticks--;
 		}
 	};
 

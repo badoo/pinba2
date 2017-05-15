@@ -22,6 +22,8 @@ struct raw_request_t
 
 	raw_request_t(uint32_t max_requests, size_t nmpa_block_sz)
 	{
+		PINBA_STATS_(objects).n_raw_batches++;
+
 		nmpa_init(&nmpa, nmpa_block_sz);
 		request_count = 0;
 		requests = (Pinba__Request**)nmpa_alloc(&nmpa, sizeof(requests[0]) * max_requests);
@@ -30,6 +32,8 @@ struct raw_request_t
 	~raw_request_t()
 	{
 		nmpa_free(&nmpa);
+
+		PINBA_STATS_(objects).n_raw_batches--;
 	}
 };
 using raw_request_ptr = boost::intrusive_ptr<raw_request_t>;

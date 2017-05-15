@@ -30,7 +30,7 @@ int main(int argc, char const *argv[])
 try
 {
 	pinba_options_t options = {};
-	pinba_globals_ptr globals = pinba_globals_init(&options);
+	pinba_globals_t *globals = pinba_globals_init(&options);
 
 	auto packet_data = packet_t {
 		.host_id = 1,
@@ -109,7 +109,7 @@ try
 
 	report_stats_t rstats_timer;
 
-	auto report = create_report_by_timer(globals.get(), rconf_timer);
+	auto report = create_report_by_timer(globals, rconf_timer);
 	report->stats_init(&rstats_timer);
 	report->ticks_init(os_unix::clock_monotonic_now());
 

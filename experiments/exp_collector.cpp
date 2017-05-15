@@ -52,7 +52,7 @@ try
 		.batch_size    = 128,
 		.batch_timeout = 10 * d_millisecond,
 	};
-	auto collector = create_collector(globals.get(), &collector_conf);
+	auto collector = create_collector(globals, &collector_conf);
 
 	repacker_conf_t repacker_conf = {
 		.nn_input        = collector_conf.nn_output,
@@ -63,7 +63,7 @@ try
 		.batch_size      = 1024,
 		.batch_timeout   = 100 * d_millisecond,
 	};
-	auto repacker = create_repacker(globals.get(), &repacker_conf);
+	auto repacker = create_repacker(globals, &repacker_conf);
 
 	coordinator_conf_t coordinator_conf = {
 		.nn_input                = repacker_conf.nn_output,
@@ -71,7 +71,7 @@ try
 		.nn_control              = "inproc://coordinator/control",
 		.nn_report_input_buffer  = 16,
 	};
-	auto coordinator = create_coordinator(globals.get(), &coordinator_conf);
+	auto coordinator = create_coordinator(globals, &coordinator_conf);
 
 	coordinator->startup();
 	repacker->startup();
@@ -95,7 +95,7 @@ try
 		};
 
 		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-		req->report = create_report_by_request(globals.get(), conf);
+		req->report = create_report_by_request(globals, conf);
 
 		auto const result = coordinator->request(req);
 

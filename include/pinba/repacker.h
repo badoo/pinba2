@@ -37,6 +37,8 @@ struct packet_batch_t : public nmsg_message_ex_t<packet_batch_t>
 	packet_batch_t(size_t max_packets, size_t nmpa_block_sz)
 		: packet_count{0}
 	{
+		PINBA_STATS_(objects).n_packet_batches++;
+
 		nmpa_init(&nmpa, nmpa_block_sz);
 		packets = (packet_t**)nmpa_alloc(&nmpa, sizeof(packets[0]) * max_packets);
 	}
@@ -44,6 +46,8 @@ struct packet_batch_t : public nmsg_message_ex_t<packet_batch_t>
 	~packet_batch_t()
 	{
 		nmpa_free(&nmpa);
+
+		PINBA_STATS_(objects).n_packet_batches--;
 	}
 };
 typedef boost::intrusive_ptr<packet_batch_t> packet_batch_ptr;
