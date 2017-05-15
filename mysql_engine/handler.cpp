@@ -24,6 +24,7 @@
 
 #include <meow/defer.hpp>
 #include <meow/stopwatch.hpp>
+#include <meow/smart_enum.hpp>
 #include <meow/format/inserter/hex_string.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +84,7 @@ struct pinba_view___base_t : public pinba_view_t
 		return 0;
 	}
 
-	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const override
+	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) override
 	{
 		return 0;
 	}
@@ -430,20 +431,70 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 	report_snapshot_t::position_t  next_pos_; // to read NEXT row, aka rnd_next()
 	report_snapshot_t::position_t  curr_pos_; // last returned row pos, for position()
 
-
 	static constexpr unsigned const n_data_fields___by_request = 11;
 	static constexpr unsigned const n_data_fields___by_timer   = 10;
 	static constexpr unsigned const n_data_fields___by_packet  = 7;
 
 public:
 
+	// with 'order by' mysql calls us like this:
+	// XXX: rnd_init is basically called twice and we merge snapshot data twice (and DIFFERENT snapshot data!)
+	//
+	// 1. get the table data for filesort
+	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
+	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
+	//      extra(HA_EXTRA_ADD_CHILDREN_LIST)
+	//      rnd_init(scan = 1)
+	//      extra(HA_EXTRA_CACHE)
+	//      rnd_next() + position() [...multiple...]
+	//      extra(HA_EXTRA_NO_CACHE)
+	//      rnd_end()
+	//
+	// 2. grab data from the table, using refs (depends on cache size, if it happens at all?)
+	//      rnd_init(scan = 0)
+	//      rnd_end()
+	//      extra(HA_EXTRA_NO_CACHE)
+	//      extra(HA_EXTRA_DETACH_CHILDREN)
+	//      extra(HA_EXTRA_DETACH_CHILDREN)
+
+	// for basic table scan (aka without 'order by'):
+	// 1. just one step here
+	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
+	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
+	//      extra(HA_EXTRA_ADD_CHILDREN_LIST)
+	//      rnd_init(scan = 1)
+	//      extra(HA_EXTRA_CACHE)
+	//      rnd_next() [...multiple...], there are no calls to position()
+	//      rnd_end()
+	//      extra(HA_EXTRA_NO_CACHE), aka - stop caching comes after ending the scan!
+	//      extra(HA_EXTRA_DETACH_CHILDREN)
+	//      extra(HA_EXTRA_DETACH_CHILDREN)
+
+	// XXX: so the idea here, is to avoid getting report snapshot twice when sorting/grouping
+	//      AND to avoid deallocating snapshot on rnd_end() if it came from filesort()
+	//      since we store refs to rows (in position()) and later mysql is supposed to use those
+	//      to call rnd_pos() if it needs the data again and it's not in 'mysql memory' (though i've got no idea how to force that to test)
+	//
+	//      to implement
+	//      we're going to rely on extra(HA_EXTRA_ADD_CHILDREN_LIST) being called first, and
+	//      allocate in subsequent rnd_init() and only deallocate in extra(HA_EXTRA_DETACH_CHILDREN)
+	//      that will get called at the end.
+	//
+	//      need to be careful, since extra(HA_EXTRA_ADD_CHILDREN_LIST) and extra(HA_EXTRA_DETACH_CHILDREN)
+	//      are also called in other contexts
+	//
+	//      WARNING: all of this might change with new mysql versions
+	//
+
+public:
+
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, scan: {2}, snapshot: {3}", __func__, handler, scan, snapshot_.get());
+		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, scan: {2}, snapshot: {3}", __func__, handler, scan, snapshot_.get());
 
 		if (!snapshot_)
 		{
-			int const r = this->init_internal(handler);
+			int const r = this->init_for_new_select(handler);
 			if (r != 0)
 				return r;
 		}
@@ -454,7 +505,70 @@ public:
 		return 0;
 	}
 
-	int init_internal(pinba_handler_t *handler)
+	virtual int rnd_end(pinba_handler_t *handler) override
+	{
+		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}", __func__, handler, snapshot_.get());
+		// nothing to see here, see cleanup()
+		return 0;
+	}
+
+	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
+	{
+		// LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, next_pos: {2}", __func__, handler, ff::as_hex_string(str_ref{(char*)&next_pos_, sizeof(next_pos_)}));
+
+		if (snapshot_->pos_equal(next_pos_, snapshot_->pos_last()))
+			return HA_ERR_END_OF_FILE;
+
+		MEOW_DEFER(
+			curr_pos_ = next_pos_;
+			next_pos_ = snapshot_->pos_next(curr_pos_);
+		);
+
+		return this->fill_row_at_position(handler, next_pos_);
+	}
+
+	virtual unsigned ref_length() const override
+	{
+		return (unsigned)sizeof(curr_pos_);
+	}
+
+	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
+	{
+		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
+		LOG_DEBUG(P_L_, "snaphot::{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
+		return this->fill_row_at_position(handler, pos);
+	}
+
+	virtual void position(pinba_handler_t *handler, const uchar *record) const override
+	{
+		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
+		// static_assert(std::is_trivially_copyable<decltype(curr_pos_)>::value, "must be able to memcpy pos");
+		// LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
+		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
+		return;
+	}
+
+	virtual int  info(pinba_handler_t *handler, uint arg) const override
+	{
+		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}, arg: {3}", __func__, handler, snapshot_.get(), arg);
+		return 0;
+	}
+
+	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) override
+	{
+		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
+
+		if (operation == HA_EXTRA_DETACH_CHILDREN)
+		{
+			this->cleanup();
+		}
+
+		return 0;
+	}
+
+private:
+
+	int init_for_new_select(pinba_handler_t *handler)
 	try
 	{
 		share_data_ = meow::make_unique<pinba_share_data_t>();
@@ -466,7 +580,7 @@ public:
 			*share_data_ = static_cast<pinba_share_data_t const&>(*share); // a copy
 		}
 
-		LOG_DEBUG(P_L_, "{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
+		LOG_DEBUG(P_L_, "snaphot::{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
 
 		snapshot_ = P_E_->get_report_snapshot(share_data_->report_name);
 
@@ -531,7 +645,7 @@ public:
 								: report_snapshot_t::prepare_type::no_histograms;
 			snapshot_->prepare(ptype);
 
-			LOG_DEBUG(P_L_, "{0}; report_snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
+			LOG_DEBUG(P_L_, "snaphot::{0}; snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
 				__func__, share_data_->mysql_name,
 				report_snapshot_t::prepare_type::enum_as_str_ref(ptype),
 				sw.stamp(), snapshot_->row_count());
@@ -541,73 +655,20 @@ public:
 	}
 	catch (std::exception const& e)
 	{
-		LOG_WARN(P_L_, "{0}; internal error: {1}", __PRETTY_FUNCTION__, e.what());
+		LOG_WARN(P_L_, "snaphot::{0}; internal error: {1}", __func__, e.what());
 		my_printf_error(ER_INTERNAL_ERROR, "[pinba] %s", MYF(0), e.what());
 		return HA_ERR_INTERNAL_ERROR;
 	}
 
-	virtual int rnd_end(pinba_handler_t *handler) override
+	void cleanup()
 	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}", __func__, handler, snapshot_.get());
-
 		share_data_.reset();
 		snapshot_.reset();
-		return 0;
 	}
 
-	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
+	int fill_row_at_position(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
 	{
-		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, next_pos: {2}", __func__, handler, ff::as_hex_string(str_ref{(char*)&next_pos_, sizeof(next_pos_)}));
-
-		if (snapshot_->pos_equal(next_pos_, snapshot_->pos_last()))
-			return HA_ERR_END_OF_FILE;
-
-		MEOW_DEFER(
-			curr_pos_ = next_pos_;
-			next_pos_ = snapshot_->pos_next(curr_pos_);
-		);
-
-		return this->fill_row(handler, next_pos_);
-	}
-
-	virtual unsigned ref_length() const override
-	{
-		return (unsigned)sizeof(curr_pos_);
-	}
-
-	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
-	{
-		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
-		LOG_DEBUG(P_L_, "{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
-		return this->fill_row(handler, pos);
-	}
-
-	virtual void position(pinba_handler_t *handler, const uchar *record) const override
-	{
-		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
-		// static_assert(std::is_trivially_copyable<decltype(curr_pos_)>::value, "must be able to memcpy pos");
-		LOG_DEBUG(P_L_, "{0}; snapshot; storing {1}", __func__, ff::as_hex_string(str_ref{(char*)&curr_pos_, sizeof(curr_pos_)}));
-		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
-		return;
-	}
-
-	virtual int  info(pinba_handler_t *handler, uint arg) const override
-	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}, arg: {3}", __func__, handler, snapshot_.get(), arg);
-		return 0;
-	}
-
-	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) const override
-	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
-		return 0;
-	}
-
-private:
-
-	int fill_row(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
-	{
-		LOG_DEBUG(P_L_, "{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
+		// LOG_DEBUG(P_L_, "snaphot::{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
 
 		auto *table       = handler->current_table();
 		auto const *rinfo = snapshot_->report_info();
@@ -717,7 +778,7 @@ private:
 			}
 			else
 			{
-				LOG_ERROR(P_L_, "{0}; unknown report snapshot data_kind: {1}", __func__, rinfo->kind);
+				LOG_ERROR(P_L_, "snaphot::{0}; unknown report snapshot data_kind: {1}", __func__, rinfo->kind);
 				// XXX: should we assert here or something?
 			}
 

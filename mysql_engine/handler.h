@@ -30,7 +30,7 @@ struct pinba_view_t : private boost::noncopyable
 	virtual int  rnd_pos(pinba_handler_t*, uchar *buf, uchar *pos) const = 0;
 	virtual void position(pinba_handler_t*, const uchar *record) const = 0;
 	virtual int  info(pinba_handler_t*, uint) const = 0;
-	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) const = 0;
+	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) = 0;
 };
 using pinba_view_ptr = std::unique_ptr<pinba_view_t>;
 
