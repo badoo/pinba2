@@ -490,7 +490,7 @@ public:
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, scan: {2}, snapshot: {3}", __func__, handler, scan, snapshot_.get());
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, scan: {2}, snapshot: {3}", __func__, handler, scan, snapshot_.get());
 
 		if (!snapshot_)
 		{
@@ -507,8 +507,8 @@ public:
 
 	virtual int rnd_end(pinba_handler_t *handler) override
 	{
-		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}", __func__, handler, snapshot_.get());
-		// nothing to see here, see cleanup()
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, snapshot: {2}", __func__, handler, snapshot_.get());
+		// nothing to see here, see cleanup_select_data()
 		return 0;
 	}
 
@@ -535,7 +535,7 @@ public:
 	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
 	{
 		auto const& pos = *(reinterpret_cast<decltype(curr_pos_) const*>(pos_bytes));
-		LOG_DEBUG(P_L_, "snaphot::{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
+		LOG_DEBUG(P_L_, "snapshot::{0}; snapshot; got {1}", __func__, ff::as_hex_string(str_ref{(char*)&pos, sizeof(pos)}));
 		return this->fill_row_at_position(handler, pos);
 	}
 
@@ -550,17 +550,17 @@ public:
 
 	virtual int  info(pinba_handler_t *handler, uint arg) const override
 	{
-		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}, arg: {3}", __func__, handler, snapshot_.get(), arg);
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, snapshot: {2}, arg: {3}", __func__, handler, snapshot_.get(), arg);
 		return 0;
 	}
 
 	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) override
 	{
-		LOG_DEBUG(P_L_, "snaphot::{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
 
 		if (operation == HA_EXTRA_DETACH_CHILDREN)
 		{
-			this->cleanup();
+			this->cleanup_select_data();
 		}
 
 		return 0;
@@ -580,7 +580,7 @@ private:
 			*share_data_ = static_cast<pinba_share_data_t const&>(*share); // a copy
 		}
 
-		LOG_DEBUG(P_L_, "snaphot::{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
+		LOG_DEBUG(P_L_, "snapshot::{0}; getting snapshot for t: {1}, r: {2}", __func__, share_data_->mysql_name, share_data_->report_name);
 
 		snapshot_ = P_E_->get_report_snapshot(share_data_->report_name);
 
@@ -645,7 +645,7 @@ private:
 								: report_snapshot_t::prepare_type::no_histograms;
 			snapshot_->prepare(ptype);
 
-			LOG_DEBUG(P_L_, "snaphot::{0}; snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
+			LOG_DEBUG(P_L_, "snapshot::{0}; snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
 				__func__, share_data_->mysql_name,
 				report_snapshot_t::prepare_type::enum_as_str_ref(ptype),
 				sw.stamp(), snapshot_->row_count());
@@ -655,12 +655,12 @@ private:
 	}
 	catch (std::exception const& e)
 	{
-		LOG_WARN(P_L_, "snaphot::{0}; internal error: {1}", __func__, e.what());
+		LOG_WARN(P_L_, "snapshot::{0}; internal error: {1}", __func__, e.what());
 		my_printf_error(ER_INTERNAL_ERROR, "[pinba] %s", MYF(0), e.what());
 		return HA_ERR_INTERNAL_ERROR;
 	}
 
-	void cleanup()
+	void cleanup_select_data()
 	{
 		share_data_.reset();
 		snapshot_.reset();
@@ -668,7 +668,7 @@ private:
 
 	int fill_row_at_position(pinba_handler_t *handler, report_snapshot_t::position_t const& row_pos) const
 	{
-		// LOG_DEBUG(P_L_, "snaphot::{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
+		// LOG_DEBUG(P_L_, "snapshot::{0}; snapshot, pos: {1}", __func__, ff::as_hex_string(str_ref{(char*)&row_pos, sizeof(row_pos)}));
 
 		auto *table       = handler->current_table();
 		auto const *rinfo = snapshot_->report_info();
@@ -778,7 +778,7 @@ private:
 			}
 			else
 			{
-				LOG_ERROR(P_L_, "snaphot::{0}; unknown report snapshot data_kind: {1}", __func__, rinfo->kind);
+				LOG_ERROR(P_L_, "snapshot::{0}; unknown report snapshot data_kind: {1}", __func__, rinfo->kind);
 				// XXX: should we assert here or something?
 			}
 
