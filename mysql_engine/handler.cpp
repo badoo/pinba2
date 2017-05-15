@@ -202,11 +202,11 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 
 	virtual int rnd_init(pinba_handler_t *handler, bool scan) override
 	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, scan: {2}, got_data: {3}", __func__, handler, scan, !data_.empty());
+		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, scan: {2}, got_data: {3}", __func__, handler, scan, !data_.empty());
 
 		if (data_.empty())
 		{
-			int const r = this->init_internal(handler);
+			int const r = this->init_for_new_select(handler);
 			if (r != 0)
 				return r;
 		}
@@ -217,7 +217,66 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 		return 0;
 	}
 
-	int init_internal(pinba_handler_t *handler)
+	virtual int rnd_end(pinba_handler_t *handler) override
+	{
+		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, got_data: {2}", __func__, handler, !data_.empty());
+		// no cleanup here, see extra() call and comments in pinba_view___report_snapshot_t
+		// data_.clear();
+		return 0;
+	}
+
+	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
+	{
+		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, next_pos: {2}, next_max: {3}"
+			, __func__, handler, std::distance(data_.cbegin(), next_pos_), data_.size());
+
+		if (next_pos_ == data_.end())
+			return HA_ERR_END_OF_FILE;
+
+		MEOW_DEFER(
+			curr_pos_ = next_pos_;
+			next_pos_ = std::next(curr_pos_);
+		);
+
+		return this->fill_row_at_position(handler, next_pos_);
+	}
+
+	virtual unsigned ref_length() const override
+	{
+		return (unsigned)sizeof(curr_pos_);
+	}
+
+	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
+	{
+		auto const& pos = *(reinterpret_cast<position_t const*>(pos_bytes));
+		LOG_DEBUG(P_L_, "active::{0}; got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
+		return this->fill_row_at_position(handler, pos);
+	}
+
+	virtual void position(pinba_handler_t *handler, const uchar *record) const override
+	{
+		LOG_DEBUG(P_L_, "active::{0}; storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
+		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
+		// static_assert(std::is_trivially_copyable<decltype(pos_)>::value, "must be able to memcpy pos");
+		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
+		return;
+	}
+
+	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) override
+	{
+		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, got_data: {2}, operation: {3}", __func__, handler, !data_.empty(), operation);
+
+		if (operation == HA_EXTRA_DETACH_CHILDREN)
+		{
+			this->cleanup_select_data();
+		}
+
+		return 0;
+	}
+
+private:
+
+	int init_for_new_select(pinba_handler_t *handler)
 	try
 	{
 		// copy whatever we need from share and release the lock
@@ -263,7 +322,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 			}
 			catch (std::exception const& e)
 			{
-				LOG_DEBUG(P_L_, "get_report_state for {0} failed (skipping), err: {1}", row.share_data.report_name, e.what());
+				LOG_DEBUG(P_L_, "active::{0}; get_report_state for {1} failed (skipping), err: {1}", __func__, row.share_data.report_name, e.what());
 				continue;
 			}
 		}
@@ -272,58 +331,19 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 	}
 	catch (std::exception const& e)
 	{
-		LOG_WARN(P_L_, "{0}; internal error: {1}", __PRETTY_FUNCTION__, e.what());
+		LOG_WARN(P_L_, "active::{0}; internal error: {1}", __func__, e.what());
 		return HA_ERR_INTERNAL_ERROR;
 	}
 
-	virtual int rnd_end(pinba_handler_t *handler) override
+	void cleanup_select_data()
 	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, got_data: {2}", __func__, handler, !data_.empty());
 		data_.clear();
-		return 0;
+		data_.shrink_to_fit();
 	}
 
-	virtual int rnd_next(pinba_handler_t *handler, uchar *buf) override
+	int fill_row_at_position(pinba_handler_t *handler, position_t const& row_pos) const
 	{
-		LOG_DEBUG(P_L_, "{0}; handler: {1}, next_pos: {2}, next_max: {3}", __func__, handler, std::distance(data_.cbegin(), next_pos_), data_.size());
-
-		if (next_pos_ == data_.end())
-			return HA_ERR_END_OF_FILE;
-
-		MEOW_DEFER(
-			curr_pos_ = next_pos_;
-			next_pos_ = std::next(curr_pos_);
-		);
-
-		return this->fill_row(handler, next_pos_);
-	}
-
-	virtual unsigned ref_length() const override
-	{
-		return (unsigned)sizeof(curr_pos_);
-	}
-
-	virtual int  rnd_pos(pinba_handler_t *handler, uchar *buf, uchar *pos_bytes) const override
-	{
-		auto const& pos = *(reinterpret_cast<position_t const*>(pos_bytes));
-		LOG_DEBUG(P_L_, "{0}; active, got {1}:{2}", __func__, &(*pos), std::distance(data_.begin(), pos));
-		return this->fill_row(handler, pos);
-	}
-
-	virtual void position(pinba_handler_t *handler, const uchar *record) const override
-	{
-		LOG_DEBUG(P_L_, "{0}; active, storing {1}:{2}", __func__, &(*curr_pos_), std::distance(data_.begin(), curr_pos_));
-		// FIXME: gcc 4.9 doesn't support std::is_trivially_copyable
-		// static_assert(std::is_trivially_copyable<decltype(pos_)>::value, "must be able to memcpy pos");
-		memcpy(handler->ref, &curr_pos_, sizeof(curr_pos_));
-		return;
-	}
-
-private:
-
-	int fill_row(pinba_handler_t *handler, position_t const& row_pos) const
-	{
-		LOG_DEBUG(P_L_, "{0}; active, pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
+		LOG_DEBUG(P_L_, "active::{0}; pos: {1}:{2}", __func__, &(*row_pos), std::distance(data_.begin(), row_pos));
 
 		auto const *row   = &(*row_pos);
 		auto const *sdata = &row->share_data;
