@@ -23,9 +23,10 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+	template<size_t NKeys>
 	struct report___by_request_t : public report_t
 	{
-		typedef report_key_t                    key_t;
+		typedef report_key_impl_t<NKeys>        key_t;
 		typedef report_row_data___by_request_t  data_t;
 
 		struct item_t
@@ -96,17 +97,18 @@ namespace { namespace aux {
 
 	public: // ticks
 
-		struct raw_hashtable_t : public google::dense_hash_map<key_t, item_t, report_key__hasher_t, report_key__equal_t>
+		struct raw_hashtable_t
+			: public google::dense_hash_map<key_t, item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			raw_hashtable_t()
 			{
-				this->set_empty_key(key_t{});
+				this->set_empty_key(report_key_impl___make_empty<NKeys>());
 			}
 		};
 
 		using ticks_t       = ticks_ringbuffer_t<raw_hashtable_t>;
-		using tick_t        = ticks_t::tick_t;
-		using ticks_list_t  = ticks_t::ringbuffer_t;
+		using tick_t        = typename ticks_t::tick_t;
+		using ticks_list_t  = typename ticks_t::ringbuffer_t;
 
 	public: // snapshot
 
@@ -114,26 +116,23 @@ namespace { namespace aux {
 		{
 			using src_ticks_t = ticks_list_t;
 
-			struct hashtable_t : public google::dense_hash_map<
-												  key_t
-												, report_row___by_request_t
-												, report_key__hasher_t
-												, report_key__equal_t>
+			struct hashtable_t
+				: public google::dense_hash_map<key_t, report_row___by_request_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 			{
 				hashtable_t() { this->set_empty_key(key_t{}); }
 			};
 
-			static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+			static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 			{
-				return it->first;
+				return report_key_t { it->first };
 			}
 
-			static void* value_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+			static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 			{
 				return (void*)&it->second;
 			}
 
-			static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)
+			static histogram_t* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 			{
 				return &it->second.hv;
 			}
@@ -195,13 +194,6 @@ namespace { namespace aux {
 			, conf_(conf)
 			, ticks_(conf.tick_count)
 		{
-			// validate config
-			if (conf_.keys.size() > key_t::static_size)
-			{
-				throw std::runtime_error(ff::fmt_str(
-					"required keys ({0}) > supported keys ({1})", conf_.keys.size(), key_t::static_size));
-			}
-
 			info_ = report_info_t {
 				.name            = conf_.name,
 				.kind            = REPORT_KIND__BY_REQUEST_DATA,
@@ -306,7 +298,7 @@ namespace { namespace aux {
 					return;
 				}
 
-				k.push_back(r.key_value);
+				k[i] = r.key_value;
 			}
 
 			// finally - find and update item
@@ -344,5 +336,28 @@ namespace { namespace aux {
 
 report_ptr create_report_by_request(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 {
-	return std::make_shared<aux::report___by_request_t>(globals, conf);
+	constexpr size_t max_keys = 8;
+	size_t const n_keys = conf.keys.size();
+
+	switch (n_keys)
+	{
+		case 0:
+			throw std::logic_error(ff::fmt_str("report_by_request doesn't support 0 keys aggregation"));
+		default:
+			throw std::logic_error(ff::fmt_str("report_by_request supports up to {0} keys, {1} given", max_keys, n_keys));
+
+	#define CASE(N) \
+		case N: return std::make_shared<aux::report___by_request_t<N>>(globals, conf);
+
+		CASE(1);
+		CASE(2);
+		CASE(3);
+		CASE(4);
+		CASE(5);
+		CASE(6);
+		CASE(7);
+		CASE(8);
+
+	#undef CASE
+	}
 }

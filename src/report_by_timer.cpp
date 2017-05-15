@@ -21,84 +21,6 @@
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<size_t N>
-using key_base_t = std::array<uint32_t, N>;
-
-struct key__hasher_t
-{
-	// TODO(antoxa):
-	//    std::hash seems to be ~20% faster on uint32_t/uint64_t keys that t1ha
-	//    need better benchmarks here
-	//    (but also see key__equal_t below)
-
-	// inline size_t operator()(key_base_t<1> const& key) const
-	// {
-	// 	static std::hash<uint32_t> hasher;
-	// 	return hasher(*reinterpret_cast<uint32_t const*>(key.data()));
-	// }
-
-	// inline size_t operator()(key_base_t<2> const& key) const
-	// {
-	// 	static std::hash<uint64_t> hasher;
-	// 	return hasher(*reinterpret_cast<uint64_t const*>(key.data()));
-	// }
-
-	template<size_t N>
-	inline size_t operator()(key_base_t<N> const& key) const
-	{
-		return t1ha0(key.data(), key.size() * sizeof(key[0]), 0);
-	}
-};
-
-struct key__equal_t
-{
-	// XXX(antoxa):  leaving it here, but do NOT uncomment code below as it causes ~10x slowdown on hash lookups/merges
-	// TODO(antoxa): need another experiment, when key_base_t<1> IS uint32_t and key_base_t<2> IS uint64_t
-
-	// inline bool operator()(key_base_t<1> const& l, key_base_t<1> const& r) const
-	// {
-	// 	auto const lv = *reinterpret_cast<uint32_t const*>(l.data());
-	// 	auto const rv = *reinterpret_cast<uint32_t const*>(r.data());
-	// 	return lv == rv;
-	// }
-
-	// inline bool operator()(key_base_t<2> const& l, key_base_t<2> const& r) const
-	// {
-	// 	auto const lv = *reinterpret_cast<uint64_t const*>(l.data());
-	// 	auto const rv = *reinterpret_cast<uint64_t const*>(r.data());
-	// 	return lv == rv;
-	// }
-
-	template<size_t N>
-	inline bool operator()(key_base_t<N> const& l, key_base_t<N> const& r) const
-	{
-		return l == r;
-	}
-};
-
-template<size_t N>
-inline key_base_t<N> key__make_empty()
-{
-	key_base_t<N> result;
-	result.fill(0);
-	return result;
-}
-
-template<size_t N>
-std::string key_to_string(key_base_t<N> const& k)
-{
-	std::string result;
-
-	for (size_t i = 0; i < k.size(); ++i)
-	{
-		ff::write(result, (i == 0) ? "" : "|", k[i]);
-	}
-
-	return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
 struct report_row___by_timer_t
 {
 	report_row_data___by_timer_t  data;
@@ -110,7 +32,7 @@ struct report_row___by_timer_t
 template<size_t NKeys>
 struct report___by_timer_t : public report_t
 {
-	typedef key_base_t<NKeys>             key_t;
+	typedef report_key_impl_t<NKeys>      key_t;
 	typedef report_row_data___by_timer_t  data_t;
 
 	struct item_t
@@ -197,11 +119,11 @@ struct report___by_timer_t : public report_t
 private: // raw data
 
 	struct raw_hashtable_t
-		: public google::dense_hash_map<key_t, item_t, key__hasher_t, key__equal_t>
+		: public google::dense_hash_map<key_t, item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 	{
 		raw_hashtable_t()
 		{
-			this->set_empty_key(key__make_empty<NKeys>());
+			this->set_empty_key(report_key_impl___make_empty<NKeys>());
 		}
 	};
 
@@ -238,11 +160,12 @@ public: // snapshot
 			flat_histogram_t merged_hv;
 		};
 
-		struct hashtable_t : public google::dense_hash_map<key_t, row_t, key__hasher_t, key__equal_t>
+		struct hashtable_t
+			: public google::dense_hash_map<key_t, row_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			hashtable_t()
 			{
-				this->set_empty_key(key__make_empty<NKeys>());
+				this->set_empty_key(report_key_impl___make_empty<NKeys>());
 			}
 		};
 
