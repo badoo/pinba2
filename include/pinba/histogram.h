@@ -77,30 +77,30 @@ public:
 	{
 	}
 
-	histogram_t(histogram_t&& other)
+	histogram_t(histogram_t&& other) noexcept
 		: histogram_t()
 	{
 		(*this) = std::move(other); // move assign
 	}
 
-	void operator=(histogram_t&& other)
+	void operator=(histogram_t&& other) noexcept
 	{
 		map_.swap(other.map_);
 		std::swap(items_total_, other.items_total_);
 		std::swap(inf_value_, other.inf_value_);
 	}
 
-	map_t const& map_cref() const
+	map_t const& map_cref() const noexcept
 	{
 		return map_;
 	}
 
-	uint32_t items_total() const
+	uint32_t items_total() const noexcept
 	{
 		return items_total_;
 	}
 
-	uint32_t bucket_value(uint32_t id) const
+	uint32_t bucket_value(uint32_t id) const noexcept
 	{
 		auto const it = map_.find(id);
 		return (it == map_.end())
@@ -108,7 +108,7 @@ public:
 				: it->second;
 	}
 
-	uint32_t inf_value() const
+	uint32_t inf_value() const noexcept
 	{
 		return inf_value_;
 	}

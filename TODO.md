@@ -51,7 +51,7 @@
 	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
 - [ ] {medium} sorted arrays for histograms (almost there)
 	- [x] timer reports
-	- [ ] request reports
+	- [x] request reports
 	- [ ] packet reports
 	- [ ] performance numbers
 - [ ] {medium} thread cpu + numa affinity

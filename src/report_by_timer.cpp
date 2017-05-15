@@ -27,91 +27,29 @@ namespace { namespace aux {
 		typedef report_key_impl_t<NKeys>      key_t;
 		typedef report_row_data___by_timer_t  data_t;
 
-		struct item_t
-			// : private boost::noncopyable // bring this back, when we remove copy ctor
-		{
-			// last unique packet we've incremented data from
-			//  this one is used to detect multiple timers being merged from one packet_t
-			//  and we need to increment data.req_count only once per add() call
-			//
-			uint64_t    last_unique;
-
-			data_t      data;
-			histogram_t hv;
-
-			item_t()
-				: last_unique(0)
-				, data()
-				, hv()
-			{
-			}
-
-			// FIXME: only used by dense_hash_map for set_empty_key()
-			//        should not be called often with huge histograms, so expect it to be ok :(
-			//        sparsehash with c++11 support (https://github.com/sparsehash/sparsehash-c11) fixes this
-			//        but gcc 4.9.4 doesn't support the type_traits it requires
-			//        so live this is for now, but probably - move to gcc6 or something
-			item_t(item_t const& other)
-				: last_unique(other.last_unique)
-				, data(other.data)
-				, hv(other.hv)
-			{
-			}
-
-			item_t(item_t&& other)
-				: item_t()
-			{
-				*this = std::move(other); // operator=()
-			}
-
-			void operator=(item_t&& other)
-			{
-				last_unique = other.last_unique;    // a copy
-				data        = other.data;           // a copy
-				hv          = std::move(other.hv);  // real move
-			}
-
-			void data_increment(packed_timer_t const *timer)
-			{
-				data.hit_count  += timer->hit_count;
-				data.time_total += timer->value;
-				data.ru_utime   += timer->ru_utime;
-				data.ru_stime   += timer->ru_stime;
-			}
-
-			void packet_increment(packet_t *packet, uint64_t unique)
-			{
-				if (unique == last_unique)
-					return;
-
-				data.req_count  += 1;
-
-				last_unique     = unique;
-			}
-
-			void hv_increment(packed_timer_t const *timer, uint32_t hv_bucket_count, duration_t hv_bucket_d)
-			{
-				hv.increment({hv_bucket_count, hv_bucket_d}, (timer->value / timer->hit_count));
-			}
-
-			void merge_other(item_t const& other)
-			{
-				// data
-				data.req_count  += other.data.req_count;
-				data.hit_count  += other.data.hit_count;
-				data.time_total += other.data.time_total;
-				data.ru_utime   += other.data.ru_utime;
-				data.ru_stime   += other.data.ru_stime;
-
-				// hv
-				hv.merge_other(other.hv);
-			}
-		};
-
 	private: // raw data
 
+		// uint32_t with UINT_MAX as default value, since we use default-constructed values in raw_hash_
+		struct raw_offset_t
+		{
+			uint32_t offset;
+
+			static constexpr uint32_t const invalid_offset = UINT_MAX;
+
+			raw_offset_t()
+				: offset(invalid_offset)
+			{
+			}
+
+			bool      is_valid() const   { return offset != invalid_offset; }
+			uint32_t  get() const        { return offset; }
+			void      set(uint32_t off)  { offset = off; }
+		};
+		static_assert(sizeof(raw_offset_t) == sizeof(uint32_t), "no padding expected");
+
+		// map: key -> offset in raw_items_ and raw_hvs_
 		struct raw_hashtable_t
-			: public google::dense_hash_map<key_t, item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+			: public google::dense_hash_map<key_t, raw_offset_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			raw_hashtable_t()
 			{
@@ -119,14 +57,71 @@ namespace { namespace aux {
 			}
 		};
 
-		raw_hashtable_t raw_data_;
+		// keep this struct clean and trivially copyable
+		struct raw_item_t
+		{
+			uint64_t last_unique;
+
+			key_t    key;
+			data_t   data;
+		};
+		// static_assert(std::is_trivially_copyable<raw_item_t>::value, "");
+
+		uint32_t raw_item_offset_get(key_t const& k)
+		{
+			raw_offset_t& off = raw_hash_[k];
+
+			// mapping exists, item exists, just return
+			if (off.is_valid())
+				return off.get();
+
+			// slowpath - create item and maybe hvs
+
+			raw_items_.emplace_back();
+
+			raw_item_t& item = raw_items_.back();
+			item.last_unique = 0;
+			item.key = k;
+
+			if (info_.hv_enabled)
+				raw_hvs_.emplace_back();
+
+			assert(raw_items_.size() < size_t(INT_MAX));
+			uint32_t const new_off = static_cast<uint32_t>(raw_items_.size() - 1);
+
+			off.set(new_off);
+			return new_off;
+		}
+
+		void raw_item_increment(key_t const& k, packet_t const *packet, packed_timer_t const *timer)
+		{
+			uint32_t const offset = this->raw_item_offset_get(k);
+
+			raw_item_t& item = raw_items_[offset];
+
+			item.data.hit_count  += timer->hit_count;
+			item.data.time_total += timer->value;
+			item.data.ru_utime   += timer->ru_utime;
+			item.data.ru_stime   += timer->ru_stime;
+
+			if (item.last_unique != packet_unqiue_)
+			{
+				item.data.req_count += 1;
+				item.last_unique    = packet_unqiue_;
+			}
+
+			if (info_.hv_enabled)
+			{
+				histogram_t& hv = raw_hvs_[offset];
+				hv.increment({info_.hv_bucket_count, info_.hv_bucket_d}, (timer->value / timer->hit_count));
+			}
+		}
 
 	private: // tick data
 
 		struct tick_data_t
 		{
-			std::vector<key_t>             keys;
-			std::vector<data_t>            datas;
+			std::vector<raw_item_t>        items;
 			std::vector<flat_histogram_t>  hvs;
 		};
 
@@ -246,117 +241,6 @@ namespace { namespace aux {
 				, hashtable_t& to
 				, report_snapshot_t::prepare_type_t ptype)
 			{
-#if 0
-				struct merger_t
-				{
-					hashtable_t     *to;
-					report_info_t   *rinfo;
-					pinba_globals_t *globals;
-
-					uint64_t n_compare_calls;
-
-					inline bool compare(key_t const& l, key_t const& r)
-					{
-						// static_assert(sizeof(key_t::value_type) == sizeof(wchar_t), "wmemchr operates on whcar_t, and we pass key data there");
-
-						// assert(l.size() == r.size());
-
-						++n_compare_calls;
-						// return wmemcmp((wchar_t*)l.data(), (wchar_t*)r.data(), l.size());
-						// return std::lexicographical_compare(l.begin(), l.end(), r.begin(), r.end());
-						return l < r;
-					}
-
-					inline bool equal(key_t const& l, key_t const& r)
-					{
-						// assert(l.size() == r.size());
-						// return std::equal(l.begin(), l.end(), r.begin());
-						return l == r;
-					}
-
-					inline void reserve(size_t const sz)
-					{
-						to->reserve(sz);
-					}
-
-					inline void push_back(std::vector<key_t> const *seq, key_t const& v)
-					{
-						tick_data_t *td = MEOW_SELF_FROM_MEMBER(tick_data_t, keys, seq);
-						size_t v_offset = &v - &((*seq)[0]);
-
-						auto const should_insert = [&]()
-						{
-							if (to->empty())
-								return true;
-
-							// return (0 != compare(to->back().key, v));
-							return !equal(to->back().key, v);
-						}();
-
-						if (should_insert)
-						{
-							row_t row;
-							row.key  = v;
-							row.data = td->datas[v_offset];
-
-							if (rinfo->hv_enabled)
-							{
-								row.hv.merge_other(td->hvs[v_offset]);
-							}
-
-							// LOG_DEBUG(globals->logger(), "prev empty, adding {0}", report_key_to_string(v));
-
-							to->push_back(row);
-
-							return;
-						}
-
-						row_t& prev_row = to->back();
-
-						data_t      & dst_data = prev_row.data;
-						data_t const& src_data = td->datas[v_offset];
-
-						dst_data.req_count  += src_data.req_count;
-						dst_data.hit_count  += src_data.hit_count;
-						dst_data.time_total += src_data.time_total;
-						dst_data.ru_utime   += src_data.ru_utime;
-						dst_data.ru_stime   += src_data.ru_stime;
-
-						if (rinfo->hv_enabled)
-						{
-							prev_row.hv.merge_other(td->hvs[v_offset]);
-						}
-
-						// LOG_DEBUG(globals->logger(), "prev is equal, merging {0}", report_key_to_string(v));
-					}
-				};
-
-				// merge input
-				std::vector<key_t> const*  td[ticks.size()];
-				std::vector<key_t> const** td_end = td;
-
-				for (auto& tick : ticks)
-				{
-					if (!tick)
-						continue;
-
-					*td_end++ = &tick->data.keys;
-				}
-
-				// merge destination
-				merger_t merger = {
-					.to      = &to,
-					.rinfo   = &rinfo,
-					.globals = globals,
-					.n_compare_calls = 0,
-				};
-
-				pinba::multi_merge(&merger, td, td_end);
-
-				LOG_DEBUG(globals->logger(), "{0} done; n_ticks: {1}, n_compare_calls: {2}, result_length: {3}",
-					__func__, (td_end - td), merger.n_compare_calls, merger.to->size());
-#endif
-
 				bool const need_histograms = (rinfo.hv_enabled && ptype != report_snapshot_t::prepare_type::no_histograms);
 
 				uint64_t n_ticks = 0;
@@ -370,10 +254,10 @@ namespace { namespace aux {
 
 					n_ticks++;
 
-					for (size_t i = 0; i < tick->data.keys.size(); i++)
+					for (size_t i = 0; i < tick->data.items.size(); i++)
 					{
-						row_t       & dst      = to[tick->data.keys[i]];
-						data_t const& src_data = tick->data.datas[i];
+						row_t       & dst      = to[tick->data.items[i].key];
+						data_t const& src_data = tick->data.items[i].data;
 
 						dst.data.req_count  += src_data.req_count;
 						dst.data.hit_count  += src_data.hit_count;
@@ -394,7 +278,7 @@ namespace { namespace aux {
 						}
 					}
 
-					key_lookups += tick->data.keys.size();
+					key_lookups += tick->data.items.size();
 				}
 
 				LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
@@ -511,6 +395,10 @@ namespace { namespace aux {
 		report_info_t             info_;
 		key_info_t                ki_;
 
+		raw_hashtable_t           raw_hash_;
+		std::vector<raw_item_t>   raw_items_;
+		std::vector<histogram_t>  raw_hvs_;
+
 		ticks_t                   ticks_;
 
 		uint64_t                  packet_unqiue_;
@@ -535,7 +423,6 @@ namespace { namespace aux {
 				.tick_count      = conf_.tick_count,
 				.n_key_parts     = (uint32_t)conf_.keys.size(),
 				.hv_enabled      = (conf_.hv_bucket_count > 0),
-				// .hv_kind         = HISTOGRAM_KIND__HASHTABLE,
 				.hv_kind         = HISTOGRAM_KIND__FLAT,
 				.hv_bucket_count = conf_.hv_bucket_count,
 				.hv_bucket_d     = conf_.hv_bucket_d,
@@ -585,68 +472,38 @@ namespace { namespace aux {
 			tick_t *tick = &ticks_.current();
 			tick_data_t& td = tick->data;
 
-			meow::stopwatch_t sw;
-
-			// NOTE: since we're using hash based merger for main keys, there is no need to sort anything
-
-			// this builds an array of pointers to raw_data_ hashtable values (aka std::pair<key_t, item_t>*)
-			// then sorts pointers, according to keys, inside the hash
-			// and then we're going to copy full values to destination already sorted
-			// struct sort_elt_t
-			// {
-			// 	typename raw_hashtable_t::value_type const *ptr;
-			// };
-
-			// // fill
-			// std::vector<sort_elt_t> raw_data_pointers;
-			// raw_data_pointers.reserve(raw_data_.size());
-
-			// for (auto const& raw_pair : raw_data_)
-			// 	raw_data_pointers.push_back({&raw_pair});
-
-			// assert(raw_data_pointers.size() == raw_data_.size());
-
-			// LOG_DEBUG(globals_->logger(), "{0}/{1} tick sort data prepared, elapsed: {2}", name(), curr_tv, sw.stamp());
-
-			// // sort
-			// sw.reset();
-
-			// std::sort(raw_data_pointers.begin(), raw_data_pointers.end(),
-			// 	[](sort_elt_t const& l, sort_elt_t const& r) { return l.ptr->first < r.ptr->first; });
-
-			// LOG_DEBUG(globals_->logger(), "{0}/{1} tick data sorted, elapsed: {2}", name(), curr_tv, sw.stamp());
-
-			// can copy now
-			sw.reset();
-
-			// reserve memory in advance, since we know the final size
-			// this is really fast (as we haven't touched this memory yet), not worth measuring generally
+			// move data to history
 			{
-				td.keys.reserve(raw_data_.size());
-				td.datas.reserve(raw_data_.size());
+				meow::stopwatch_t sw;
 
-				if (info_.hv_enabled)
-					td.hvs.reserve(raw_data_.size());
-			}
+				// just MOVE the data from raw to tick, since format is (intentionally) the same
+				td.items = std::move(raw_items_);
 
-			// copy, according to pointers
-			// for (auto const& sort_elt : raw_data_pointers)
-
-			for (auto const& raw_pair : raw_data_)
-			{
-				td.keys.push_back(raw_pair.first);
-				td.datas.push_back(raw_pair.second.data);
-
+				// migrate histograms, converting them from hashtable to flat
 				if (info_.hv_enabled)
 				{
-					histogram_t const& src_hv = raw_pair.second.hv;
-					td.hvs.push_back(histogram___convert_ht_to_flat(src_hv));
+					td.hvs.reserve(raw_hvs_.size()); // we know the size in advance, mon
+
+					for (auto const& src_hv : raw_hvs_)
+					{
+						td.hvs.push_back(histogram___convert_ht_to_flat(src_hv));
+					}
+
+					// sanity
+					assert(td.items.size() == td.hvs.size());
 				}
+
+				// LOG_DEBUG(globals_->logger(), "{0}/{1} tick finished, {2} entries, copy elapsed: {3}", name(), curr_tv, td.keys.size(), sw.stamp());
 			}
 
-			// LOG_DEBUG(globals_->logger(), "{0}/{1} tick finished, {2} entries, copy elapsed: {3}", name(), curr_tv, td.keys.size(), sw.stamp());
+			raw_hash_.clear();
+			raw_hash_.resize(0);
 
-			raw_data_.clear();
+			raw_items_.clear();
+			raw_items_.shrink_to_fit();
+
+			raw_hvs_.clear();
+			raw_hvs_.shrink_to_fit();
 
 			ticks_.tick(curr_tv);
 		}
@@ -656,35 +513,38 @@ namespace { namespace aux {
 			report_estimates_t result = {};
 
 			if (tick_t *tick = ticks_.last())
-				result.row_count = tick->data.keys.size();
+				result.row_count = tick->data.items.size();
 			else
-				result.row_count = raw_data_.size();
+				result.row_count = raw_items_.size();
 
 
-			result.mem_used += sizeof(raw_data_);
-			result.mem_used += raw_data_.bucket_count() * sizeof(*raw_data_.begin());
+			result.mem_used += sizeof(raw_hash_);
+			result.mem_used += raw_hash_.bucket_count() * sizeof(*raw_hash_.begin());
 
-			for (auto const& raw_pair : raw_data_)
-			{
-				auto const& hv_map = raw_pair.second.hv.map_cref();
-				result.mem_used += hv_map.bucket_count() * sizeof(*hv_map.begin());
-			}
+			result.mem_used += sizeof(raw_items_);
+			result.mem_used += raw_items_.capacity() * sizeof(*raw_items_.begin());
+
+			result.mem_used += sizeof(raw_hvs_);
+			result.mem_used += raw_hvs_.capacity() * sizeof(*raw_hvs_.begin());
+
+			for (auto const& hv : raw_hvs_)
+				result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
 
 			for (auto const& tick : ticks_.get_internal_buffer())
 			{
 				if (!tick)
 					continue;
 
-				tick_data_t *td = &tick->data;
+				tick_data_t const& td = tick->data;
 
-				result.mem_used += td->keys.size() * sizeof(td->keys[0]);
-				result.mem_used += td->datas.size() * sizeof(td->datas[0]);
-				result.mem_used += td->hvs.size() * sizeof(td->hvs[0]);
+				result.mem_used += sizeof(td.items);
+				result.mem_used += td.items.capacity() * sizeof(*td.items.begin());
 
-				for (auto const& hvs : td->hvs)
-				{
-					result.mem_used += hvs.values.size() * sizeof(*hvs.values.begin());
-				}
+				result.mem_used += sizeof(td.hvs);
+				result.mem_used += td.hvs.capacity() * sizeof(*td.hvs.begin());
+
+				for (auto const& hv : td.hvs)
+					result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
 			}
 
 			return result;
@@ -865,15 +725,7 @@ namespace { namespace aux {
 					// LOG_DEBUG(globals_->logger(), "remapped key '{0}'", key_to_string(k));
 
 					// finally - find and update item
-					item_t& item = raw_data_[k];
-					item.data_increment(timer);
-
-					item.packet_increment(packet, packet_unqiue_);
-
-					if (info_.hv_enabled)
-					{
-						item.hv_increment(timer, conf_.hv_bucket_count, conf_.hv_bucket_d);
-					}
+					this->raw_item_increment(k, packet, timer);
 				}
 			}
 
