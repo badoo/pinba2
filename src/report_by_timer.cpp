@@ -637,24 +637,7 @@ namespace { namespace aux {
 				if (info_.hv_enabled)
 				{
 					histogram_t const& src_hv = raw_pair.second.hv;
-
-					flat_histogram_t dst_hv = {
-						.values      = {},
-						.total_value = src_hv.items_total(),
-						.inf_value   = src_hv.inf_value(),
-					};
-
-					dst_hv.values.reserve(src_hv.map_cref().size());
-
-					for (auto const& hv_pair : src_hv.map_cref())
-					{
-						dst_hv.values.push_back(histogram_value_t { .bucket_id = hv_pair.first, .value = hv_pair.second });
-					}
-
-					// sort here, as we can't sort on merge, since data must be immutable
-					std::sort(dst_hv.values.begin(), dst_hv.values.end());
-
-					td.hvs.push_back(std::move(dst_hv));
+					td.hvs.push_back(histogram___convert_ht_to_flat(src_hv));
 				}
 			}
 

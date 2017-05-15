@@ -151,7 +151,7 @@ struct report_snapshot_t
 };
 typedef std::unique_ptr<report_snapshot_t> report_snapshot_ptr;
 
-void debug_dump_report_snapshot(FILE*, report_snapshot_t*);
+void debug_dump_report_snapshot(FILE*, report_snapshot_t*, str_ref name = {});
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

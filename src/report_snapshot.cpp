@@ -15,7 +15,7 @@ inline double operator/(T const& value, duration_t d)
 	return ((double)value / d.nsec) * nsec_in_sec;
 }
 
-void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
+void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref name)
 {
 	auto const write_hv = [&](report_snapshot_t::position_t const& pos)
 	{
@@ -47,6 +47,8 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot)
 
 		ff::fmt(sink, "]");
 	};
+
+	ff::fmt(sink, ">-------------- {0} ------->>\n", name);
 
 	for (auto pos = snapshot->pos_first(), end = snapshot->pos_last(); !snapshot->pos_equal(pos, end); pos = snapshot->pos_next(pos))
 	{

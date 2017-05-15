@@ -162,19 +162,13 @@ struct histogram_value_t
 {
 	uint32_t bucket_id;
 	uint32_t value;
-
-	// histogram_value_t()
-	// 	: bucket_id(0)
-	// 	, value(0)
-	// {
-	// }
-
-	inline bool operator<(histogram_value_t const& other) const
-	{
-		return bucket_id < other.bucket_id;
-	}
 };
 static_assert(sizeof(histogram_value_t) == sizeof(uint64_t), "histogram_value_t must have no padding");
+
+inline constexpr bool operator<(histogram_value_t const& l, histogram_value_t const& r)
+{
+	return l.bucket_id < r.bucket_id;
+}
 
 typedef std::vector<histogram_value_t> histogram_values_t;
 
@@ -185,6 +179,27 @@ struct flat_histogram_t
 	uint32_t            inf_value;
 };
 static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+2*sizeof(uint32_t)), "flat_histogram_t must have no padding");
+
+inline void histogram___convert_ht_to_flat(histogram_t const& ht, flat_histogram_t *flat)
+{
+	flat->total_value = ht.items_total();
+	flat->inf_value   = ht.inf_value();
+
+	flat->values.clear();
+	flat->values.reserve(ht.map_cref().size());
+
+	for (auto const& ht_pair : ht.map_cref())
+		flat->values.push_back({ .bucket_id = ht_pair.first, .value = ht_pair.second });
+
+	std::sort(flat->values.begin(), flat->values.end());
+}
+
+inline flat_histogram_t histogram___convert_ht_to_flat(histogram_t const& ht)
+{
+	flat_histogram_t result;
+	histogram___convert_ht_to_flat(ht, &result);
+	return result;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
