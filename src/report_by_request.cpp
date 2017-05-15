@@ -14,15 +14,6 @@
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-	// this is the data we return from report___by_request_t snapshot
-	struct report_row___by_request_t
-	{
-		report_row_data___by_request_t  data;
-		histogram_t                     hv;
-	};
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
 	template<size_t NKeys>
 	struct report___by_request_t : public report_t
 	{
@@ -102,10 +93,16 @@ namespace { namespace aux {
 		{
 			using src_ticks_t = ticks_list_t;
 
-			struct hashtable_t
-				: public google::dense_hash_map<key_t, report_row___by_request_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+			struct row_t
 			{
-				hashtable_t() { this->set_empty_key(key_t{}); }
+				report_row_data___by_request_t  data;
+				histogram_t                     hv;
+			};
+
+			struct hashtable_t
+				: public google::dense_hash_map<key_t, row_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+			{
+				hashtable_t() { this->set_empty_key(report_key_impl___make_empty<NKeys>()); }
 			};
 
 			static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
