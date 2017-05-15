@@ -138,6 +138,7 @@ static int pinba_engine_init(void *p)
 
 	auto *h = static_cast<handlerton*>(p);
 	h->state = SHOW_OPTION_YES;
+	h->flags = HTON_ALTER_NOT_SUPPORTED | HTON_NO_PARTITION | HTON_TEMPORARY_NOT_SUPPORTED;
 	h->create = [](handlerton *hton, TABLE_SHARE *table, MEM_ROOT *mem_root) -> handler* {
 		return new (mem_root) pinba_handler_t(hton, table);
 	};
@@ -550,6 +551,6 @@ mysql_declare_plugin(pinba)
 	status_variables_export,                      /* status variables */
 	system_variables,                             /* system variables */
 	NULL,                                         /* config options */
-	HTON_ALTER_NOT_SUPPORTED,                     /* flags */
+	0,                                            /* flags */
 }
 mysql_declare_plugin_end;

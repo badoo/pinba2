@@ -31,6 +31,7 @@ struct pinba_view_t : private boost::noncopyable
 	virtual void position(pinba_handler_t*, const uchar *record) const = 0;
 	virtual int  info(pinba_handler_t*, uint) const = 0;
 	virtual int  extra(pinba_handler_t*, enum ha_extra_function operation) = 0;
+	virtual int  external_lock(pinba_handler_t*, int) = 0;
 };
 using pinba_view_ptr = std::unique_ptr<pinba_view_t>;
 
@@ -238,7 +239,7 @@ public:
 
 	int info(uint);                                               ///< required
 	int extra(enum ha_extra_function operation);
-	// int external_lock(THD *thd, int lock_type);                   ///< required
+	int external_lock(THD *thd, int lock_type);                   ///< required
 	// int delete_all_rows(void);
 	// int truncate();
 	// ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key);

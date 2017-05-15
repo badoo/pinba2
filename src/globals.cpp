@@ -16,8 +16,6 @@
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 
-#include "pinba/nmsg_ticker.h"
-
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,11 +59,6 @@ namespace { namespace aux {
 			return options_;
 		}
 
-		// virtual nmsg_ticker_t* ticker() const override
-		// {
-		// 	return ticker_.get();
-		// }
-
 		virtual dictionary_t*  dictionary() const override
 		{
 			return dictionary_.get();
@@ -76,7 +69,6 @@ namespace { namespace aux {
 
 		pinba_logger_ptr               logger_;
 		pinba_stats_t                  stats_;
-		// std::unique_ptr<nmsg_ticker_t> ticker_;
 		std::unique_ptr<dictionary_t>  dictionary_;
 	};
 

@@ -14,7 +14,6 @@
 
 #include "pinba/nmsg_socket.h"
 #include "pinba/nmsg_poller.h"
-#include "pinba/nmsg_ticker.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace { namespace aux {

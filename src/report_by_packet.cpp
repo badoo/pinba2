@@ -80,21 +80,6 @@ namespace { namespace aux {
 			{
 				hv.increment({hv_bucket_count, hv_bucket_d}, packet->request_time);
 			}
-
-			void merge_other(item_t const& other)
-			{
-				// data
-				data.req_count   += other.data.req_count;
-				data.timer_count += other.data.timer_count;
-				data.time_total  += other.data.time_total;
-				data.ru_utime    += other.data.ru_utime;
-				data.ru_stime    += other.data.ru_stime;
-				data.traffic_kb  += other.data.traffic_kb;
-				data.mem_usage   += other.data.mem_usage;
-
-				// hv
-				hv.merge_other(other.hv);
-			}
 		};
 
 	public: // ticks
@@ -112,7 +97,7 @@ namespace { namespace aux {
 
 			static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)    { return {}; }
 			static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
-			static histogram_t* hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
+			static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
 
 			// merge from src ringbuffer to snapshot data
 			static void merge_ticks_into_data(

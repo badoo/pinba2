@@ -88,6 +88,11 @@ struct pinba_view___base_t : public pinba_view_t
 	{
 		return 0;
 	}
+
+	virtual int  external_lock(pinba_handler_t*, int lock_type) override
+	{
+		return 0;
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -265,8 +270,14 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) override
 	{
 		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, got_data: {2}, operation: {3}", __func__, handler, !data_.empty(), operation);
+		return 0;
+	}
 
-		if (operation == HA_EXTRA_DETACH_CHILDREN)
+	virtual int  external_lock(pinba_handler_t *handler, int lock_type) override
+	{
+		LOG_DEBUG(P_L_, "active::{0}; handler: {1}, got_data: {2}, lock_type: {3}", __func__, handler, !data_.empty(), lock_type);
+
+		if (lock_type == F_UNLCK)
 		{
 			this->cleanup_select_data();
 		}
@@ -464,6 +475,8 @@ public:
 	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
 	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
 	//      extra(HA_EXTRA_ADD_CHILDREN_LIST)
+	//      external_lock(F_RDLCK)
+	//      info()
 	//      rnd_init(scan = 1)
 	//      extra(HA_EXTRA_CACHE)
 	//      rnd_next() + position() [...multiple...]
@@ -475,6 +488,7 @@ public:
 	//      rnd_end()
 	//      extra(HA_EXTRA_NO_CACHE)
 	//      extra(HA_EXTRA_DETACH_CHILDREN)
+	//      external_lock(F_UNLCK)
 	//      extra(HA_EXTRA_DETACH_CHILDREN)
 
 	// for basic table scan (aka without 'order by'):
@@ -482,12 +496,15 @@ public:
 	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
 	//      extra(HA_EXTRA_IS_ATTACHED_CHILDREN)
 	//      extra(HA_EXTRA_ADD_CHILDREN_LIST)
+	//      external_lock(F_RDLCK)
+	//      info()
 	//      rnd_init(scan = 1)
 	//      extra(HA_EXTRA_CACHE)
 	//      rnd_next() [...multiple...], there are no calls to position()
 	//      rnd_end()
 	//      extra(HA_EXTRA_NO_CACHE), aka - stop caching comes after ending the scan!
 	//      extra(HA_EXTRA_DETACH_CHILDREN)
+	//      external_lock(F_UNLCK)
 	//      extra(HA_EXTRA_DETACH_CHILDREN)
 
 	// XXX: so the idea here, is to avoid getting report snapshot twice when sorting/grouping
@@ -496,14 +513,9 @@ public:
 	//      to call rnd_pos() if it needs the data again and it's not in 'mysql memory' (though i've got no idea how to force that to test)
 	//
 	//      to implement
-	//      we're going to rely on extra(HA_EXTRA_ADD_CHILDREN_LIST) being called first, and
-	//      allocate in subsequent rnd_init() and only deallocate in extra(HA_EXTRA_DETACH_CHILDREN)
-	//      that will get called at the end.
+	//      we're going to rely on external_lock(F_UNLCK) coming at the absolute end of select, after all scans/sorts/etc.
 	//
-	//      need to be careful, since extra(HA_EXTRA_ADD_CHILDREN_LIST) and extra(HA_EXTRA_DETACH_CHILDREN)
-	//      are also called in other contexts
-	//
-	//      WARNING: all of this might change with new mysql versions
+	//      there was also an implementation, relying on HA_EXTRA_DETACH_CHILDREN, but this seems simpler
 	//
 
 public:
@@ -577,8 +589,14 @@ public:
 	virtual int  extra(pinba_handler_t *handler, enum ha_extra_function operation) override
 	{
 		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, snapshot: {2}, operation: {3}", __func__, handler, snapshot_.get(), operation);
+		return 0;
+	}
 
-		if (operation == HA_EXTRA_DETACH_CHILDREN)
+	virtual int  external_lock(pinba_handler_t *handler, int lock_type) override
+	{
+		LOG_DEBUG(P_L_, "snapshot::{0}; handler: {1}, snapshot: {2}, lock_type: {3}", __func__, handler, snapshot_.get(), lock_type);
+
+		if (lock_type == F_UNLCK)
 		{
 			this->cleanup_select_data();
 		}
@@ -1303,6 +1321,33 @@ int pinba_handler_t::extra(enum ha_extra_function operation)
 
 	DBUG_RETURN(r);
 }
+
+/**
+  @brief
+  This create a lock on the table. If you are implementing a storage engine
+  that can handle transacations look at ha_berkely.cc to see how you will
+  want to go about doing this. Otherwise you should consider calling flock()
+  here. Hint: Read the section "locking functions for mysql" in lock.cc to understand
+  this.
+
+  @details
+  Called from lock.cc by lock_external() and unlock_external(). Also called
+  from sql_table.cc by copy_data_between_tables().
+
+  @see
+  lock.cc by lock_external() and unlock_external() in lock.cc;
+  the section "locking functions for mysql" in lock.cc;
+  copy_data_between_tables() in sql_table.cc.
+*/
+int pinba_handler_t::external_lock(THD*, int lock_type)
+{
+	DBUG_ENTER(__PRETTY_FUNCTION__);
+
+	int const r = pinba_view_->external_lock(this, lock_type);
+
+	DBUG_RETURN(r);
+}
+
 
 /*
   Called by the database to lock the table. Keep in mind that this
