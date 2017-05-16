@@ -1302,6 +1302,9 @@ int pinba_handler_t::info(uint flag)
 {
 	DBUG_ENTER(__PRETTY_FUNCTION__);
 
+	// just in case
+	stats.records = 2;
+
 	int const r = pinba_view_->info(this, flag);
 
 	DBUG_RETURN(r);

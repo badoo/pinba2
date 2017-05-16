@@ -126,8 +126,9 @@ public:
 		return (
 			  HA_NO_AUTO_INCREMENT
 			| HA_NO_TRANSACTIONS
-			| HA_REC_NOT_IN_SEQ // must have if position() is implemented
 			| HA_NO_BLOBS
+			| HA_REC_NOT_IN_SEQ // must have
+			| HA_BINLOG_STMT_CAPABLE
 			);
 	}
 

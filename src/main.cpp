@@ -21,7 +21,7 @@ int main(int argc, char const *argv[])
 {
 	pinba_options_t options = {
 		.net_address              = "0.0.0.0",
-		.net_port                 = "3002",
+		.net_port                 = "30002",
 
 		.udp_threads              = 4,
 		.udp_batch_messages       = 256,
@@ -44,13 +44,15 @@ int main(int argc, char const *argv[])
 	auto *logger = pinba->globals()->logger();
 	logger->set_level(meow::logging::log_level::debug);
 
+	std::atomic<bool> in_shutdown = { false };
+
 	auto const threaded_print_report_snapshot = [&](std::string report_name)
 	{
 		std::thread([&]()
 		{
 			FILE *sink = stdout;
 
-			while (true)
+			while (!in_shutdown.load())
 			{
 				sleep(1);
 				auto const snapshot = pinba->get_report_snapshot(report_name);
@@ -64,7 +66,7 @@ int main(int argc, char const *argv[])
 					ff::fmt(sink, ">> merge took {0} --------->\n", sw.stamp());
 				}
 
-				debug_dump_report_snapshot(sink, snapshot.get());
+				// debug_dump_report_snapshot(sink, snapshot.get());
 			}
 		}).detach();
 	};
@@ -87,12 +89,12 @@ int main(int argc, char const *argv[])
 		};
 		pinba->start_report_with_config(conf);
 
-		// threaded_print_report_snapshot(conf.name);
+		threaded_print_report_snapshot(conf.name);
 	}
 
 	{
 		static report_conf___by_timer_t conf = {
-			.name            = "script+tag10",
+			.name            = "group+server",
 			.time_window     = 60 * d_second,
 			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
@@ -106,28 +108,30 @@ int main(int argc, char const *argv[])
 			},
 
 			.keys = {
-				report_conf___by_timer_t::key_descriptor_by_request_field("hostname", &packet_t::host_id),
-				report_conf___by_timer_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
-				report_conf___by_timer_t::key_descriptor_by_timer_tag("tag10", pinba->globals()->dictionary()->get_or_add("tag10")),
+				// report_conf___by_timer_t::key_descriptor_by_request_field("hostname", &packet_t::host_id),
+				// report_conf___by_timer_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
+				report_conf___by_timer_t::key_descriptor_by_timer_tag("group", pinba->globals()->dictionary()->get_or_add("group")),
+				report_conf___by_timer_t::key_descriptor_by_timer_tag("server", pinba->globals()->dictionary()->get_or_add("server")),
 			},
 		};
 		pinba->start_report_with_config(conf);
 
-		// threaded_print_report_snapshot(conf.name);
+		threaded_print_report_snapshot(conf.name);
 	}
 
 	getchar();
 
 	ff::fmt(stderr, "got shutdown request\n");
 
+	in_shutdown.store(true);
+	sleep(1);
+
+	ff::fmt(stderr, "shutdown reader threads\n");
+
 	pinba->shutdown();
 	pinba.reset();
 
 	ff::fmt(stderr, "pinba shutdown done\n");
-
-	// nn_term();
-
-	// ff::fmt(stderr, "nn_term done\n");
 
 	return 0;
 }
