@@ -10,6 +10,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/engine.h"
+#include "pinba/histogram.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 
@@ -57,7 +58,10 @@ int main(int argc, char const *argv[])
 				sleep(1);
 				auto const snapshot = pinba->get_report_snapshot(report_name);
 
-				ff::fmt(stdout, "got snapshot for report {0}, {1}\n", report_name, snapshot.get());
+				report_info_t const *rinfo = snapshot->report_info();
+
+				ff::fmt(stdout, "got snapshot for report {0}, {1}, hv: {2}, {3}\n"
+					, report_name, snapshot.get(), rinfo->hv_enabled, rinfo->hv_kind);
 				{
 					meow::stopwatch_t sw;
 
@@ -65,8 +69,29 @@ int main(int argc, char const *argv[])
 					snapshot->prepare();
 					ff::fmt(sink, ">> merge took {0} --------->\n", sw.stamp());
 				}
+#if 1
+				if (!rinfo->hv_enabled)
+					continue;
 
-				// debug_dump_report_snapshot(sink, snapshot.get());
+				if (rinfo->hv_kind != HISTOGRAM_KIND__FLAT)
+					continue;
+
+				duration_t total_d = {};
+
+				for (auto pos = snapshot->pos_first(); !snapshot->pos_equal(pos, snapshot->pos_last()); pos = snapshot->pos_next(pos))
+				{
+					auto const *hv = snapshot->get_histogram(pos);
+					if (hv == nullptr)
+						continue;
+
+					auto const *flat_hv = static_cast<flat_histogram_t const*>(hv);
+					total_d = total_d + get_percentile(*flat_hv, {rinfo->hv_bucket_count, rinfo->hv_bucket_d}, 99.9);
+				}
+
+				ff::fmt(sink, "total p(99.9) = {0}\n", total_d);
+#else
+				debug_dump_report_snapshot(sink, snapshot.get());
+#endif
 			}
 		}).detach();
 	};

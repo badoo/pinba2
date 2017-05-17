@@ -163,7 +163,7 @@ else
 	if test "$mysql_headers_found" != "1"; then
 		AC_MSG_CHECKING([mysql installed headers in $with_mysql/include/mysql])
 		mysql_headers_found=0
-		HEADERS="private/handler.h plugin.h"
+		HEADERS="private/handler.h private/table.h"
 
 		for file in $HEADERS; do
 			if test -r "$with_mysql//include/mysql/$file"; then
