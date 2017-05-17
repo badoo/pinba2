@@ -65,6 +65,13 @@ function convertTableSql(&$full_sql, $create_table_sql)
         convertDefaultReportsSql($full_sql, $create_table_sql, $comment);
         return;
     }
+
+    if (strpos($comment, "tag") === 0) {
+        convertTagReportsSql($full_sql, $create_table_sql, $comment);
+        return;
+    }
+
+    // TODO: rtag support
 }
 
 function tryConvertDefaultTableSql(&$full_sql, $create_table_sql, $comment)
@@ -154,6 +161,10 @@ function convertDefaultReportsSql(&$full_sql, $create_table_sql, $comment)
         showUsageAndExit(7);
     }
 
+    $keys = array_map(function ($item) {
+        return "~{$item}";
+    }, $fields_config[$parts[0]]);
+
     $percentiles = [
         'list' => [50],
     ];
@@ -173,6 +184,13 @@ function convertDefaultReportsSql(&$full_sql, $create_table_sql, $comment)
 
             $filter_parts[1] = str_replace("tag.", "+", $filter_parts[1]);
             $filters[$key] = "{$filter_parts[0]}={$filter_parts[1]}";
+        }
+    }
+
+    if (!empty($parts[3])) {
+        $ps = explode(",", $parts[3]);
+        foreach ($ps as $p) {
+            $percentiles['list'][] = $p;
         }
     }
 
@@ -208,19 +226,152 @@ function convertDefaultReportsSql(&$full_sql, $create_table_sql, $comment)
     }
 
     $create_table_sql_converted = $matches[1] . "\n" . $request_fields_sql . "\n" . $sql_body . $percentiles_fields_sql . "\n"
-                                . $matches[3] . generateV2Comment("request", $fields_config[$parts[0]], $percentiles, $filters) . $matches[4];
+                                . $matches[3] . generateV2Comment("request", $keys, $percentiles, $filters) . $matches[4];
 
     $full_sql = str_replace($create_table_sql, $create_table_sql_converted, $full_sql);
 }
 
-function generateV2Comment($report_type, $request_fields, $percentiles, $filters)
+function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
+{
+
+    {
+        static $legacy_fields = [
+            'host' => 'hostname',
+            'server' => 'server_name',
+            'script' => 'script_name',
+        ];
+
+        static $fields_types = [
+            'host' => "varchar(32)",
+            'server' => "varchar(64)",
+            'script' => "varchar(128)",
+        ];
+
+        static $fields_config = [
+            'tag_info' => [],
+            'tag2_info' => [],
+            'tagN_info' => [],
+            'tag_report' => ['script'],
+            'tag2_report' => ['script'],
+            'tagN_report' => ['script'],
+            'tag_report2' => ['script', 'host', 'server'],
+            'tag2_report2' => ['script', 'host', 'server'],
+            'tagN_report2' => ['script', 'host', 'server'],
+        ];
+
+        static $sql_body = "  `req_count` int(10) unsigned NOT NULL,
+  `req_per_sec` float NOT NULL,
+  `hit_count` int(10) unsigned NOT NULL,
+  `hit_per_sec` float NOT NULL,
+  `time_total` float NOT NULL,
+  `time_per_sec` float NOT NULL,
+  `ru_utime_total` float NOT NULL,
+  `ru_utime_per_sec` float NOT NULL,
+  `ru_stime_total` float NOT NULL,
+  `ru_stime_per_sec` float NOT NULL";
+    }
+
+    if (!preg_match("/(CREATE TABLE.*?\()(.*)(\)[^)]*COMMENT=')(?:.*?)(';)/s", $create_table_sql, $matches)) {
+        showUsageAndExit(8);
+    }
+
+    $parts = explode(":", $comment);
+    if (!isset($fields_config[$parts[0]])) {
+        showUsageAndExit(9);
+    }
+
+    $keys = array_map(function ($item) {
+        return "~{$item}";
+    }, $fields_config[$parts[0]]);
+
+    $tags = [];
+    if (!empty($parts[1])) {
+        $tags = explode(",", $parts[1]);
+        foreach ($tags as $tag) {
+            $keys[] = "@{$tag}";
+        }
+    }
+
+    $percentiles = [
+        'list' => [50],
+    ];
+
+    $filters = [];
+    if (!empty($parts[2])) {
+        $filters = explode(",", $parts[2]);
+        foreach ($filters as $key => $filter) {
+            $filter_parts = explode("=", $filter);
+
+            if ($filter_parts[0] === "histogram_max_time") {
+                $percentiles['max_time'] = $filter_parts[1];
+
+                unset($filters[$key]);
+                continue;
+            }
+
+            $filter_parts[1] = str_replace("tag.", "+", $filter_parts[1]);
+            $filters[$key] = "{$filter_parts[0]}={$filter_parts[1]}";
+        }
+    }
+
+    if (!empty($parts[3])) {
+        $ps = explode(",", $parts[3]);
+        foreach ($ps as $p) {
+            $percentiles['list'][] = $p;
+        }
+    }
+
+    $fields_sql = [];
+    foreach ($fields_config[$parts[0]] as $request_field) {
+        $name = $request_field;
+        if (isset($legacy_fields[$request_field])) {
+            $name = $legacy_fields[$request_field];
+        }
+
+        $field_type = "varchar(64)";
+        if (isset($fields_types[$request_field])) {
+            $field_type = $fields_types[$request_field];
+        }
+
+        $fields_sql[] = "  `{$name}` {$field_type} NOT NULL,";
+    }
+    foreach ($tags as $tag) {
+        $fields_sql[] = "  `{$tag}` varchar(64) NOT NULL,";
+    }
+    $fields_sql = implode("\n", $fields_sql);
+
+    $percentiles_fields_sql = "";
+    if (!empty($percentiles['list'])) {
+        $percentiles['list'] = array_map(function ($item) {
+            return "p{$item}";
+        }, $percentiles['list']);
+
+        $percentiles_fields_sql = [];
+        foreach ($percentiles['list']as $percentile) {
+            $percentiles_fields_sql[] = "  `{$percentile}` float NOT NULL";
+        }
+        $percentiles_fields_sql = implode(",\n", $percentiles_fields_sql);
+
+        $percentiles_fields_sql = ",\n{$percentiles_fields_sql}";
+    }
+
+    $create_table_sql_converted = $matches[1] . "\n" . $fields_sql . "\n" . $sql_body . $percentiles_fields_sql . "\n"
+        . $matches[3] . generateV2Comment("timer", $keys, $percentiles, $filters) . $matches[4];
+
+    $full_sql = str_replace($create_table_sql, $create_table_sql_converted, $full_sql);
+}
+
+function generateV2Comment($report_type, $keys, $percentiles, $filters)
 {
     static $hv_min_time = 0;
     static $hv_max_time = 60;
     static $hv_bucket_count = 10000;
 
-    $request_fields = array_map(function ($item) { return "~{$item}"; }, $request_fields);
-    $request_fields = implode(",", $request_fields);
+    if (empty($keys)) {
+        $keys = "no_keys";
+    } else {
+        $keys = implode(",", $keys);
+    }
 
     if (empty($percentiles)) {
         $percentiles = "no_percentiles";
@@ -241,5 +392,5 @@ function generateV2Comment($report_type, $request_fields, $percentiles, $filters
         $filters = implode(",", $filters);
     }
 
-    return "v2/{$report_type}/default_history_time/{$request_fields}/{$percentiles}/{$filters}";
+    return "v2/{$report_type}/default_history_time/{$keys}/{$percentiles}/{$filters}";
 }
