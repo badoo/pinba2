@@ -215,6 +215,10 @@ function convertDefaultReportsSql(&$full_sql, $create_table_sql, $comment)
 
 function generateV2Comment($report_type, $request_fields, $percentiles, $filters)
 {
+    static $hv_min_time = 0;
+    static $hv_max_time = 60;
+    static $hv_bucket_count = 10000;
+
     $request_fields = array_map(function ($item) { return "~{$item}"; }, $request_fields);
     $request_fields = implode(",", $request_fields);
 
@@ -222,9 +226,11 @@ function generateV2Comment($report_type, $request_fields, $percentiles, $filters
         $percentiles = "no_percentiles";
     } else {
         if (empty($percentiles['max_time'])) {
-            $percentiles['max_time'] = 60;
+            $percentiles['max_time'] = $hv_max_time;
         }
-        $percentiles_hv = "hv=0:10000:" . ($percentiles['max_time'] * 1000);
+        $percentiles['max_time'] *= 1000;
+
+        $percentiles_hv = "hv={$hv_min_time}:{$percentiles['max_time']}:{$hv_bucket_count}";
 
         $percentiles = $percentiles_hv . (!empty($percentiles['list']) ? "," . implode(",", $percentiles['list']) : "");
     }
