@@ -72,9 +72,9 @@ We get these over UDP, each request contains metrics data gathered by your appli
 Data comes in three forms
 
 - **request fields** (these are predefined and hardcoded since the dawn of original pinba)
-    - `hostname`: name of the physical host (like "subdomain.mycoolserver.localnetwork")
-    - `scriptname`: name of the script
-    - `servername`: name of the logical host (like "example.com")
+    - `host_name`: name of the physical host (like "subdomain.mycoolserver.localnetwork")
+    - `script_name`: name of the script
+    - `server_name`: name of the logical host (like "example.com")
     - `schema`: usually "http" or "https"
     - `status`: usually http status (this one is 32-bit integer)
     - `request_time`: wall-clock time it took to execute the whole request
@@ -154,7 +154,7 @@ general syntax for comment is as follows (not all reports use all the fields).
         - @timer_tag_name: use this timer tag's value as key (timer reports only)
     - example: '~host,~script,+application,@group,@server'
         - will aggregate on 5 keys
-        - 'hostname', 'scriptname' global fields, 'application' request tag, plus 'group' and 'server' timer tag values
+        - 'host_name', 'script_name' global fields, 'application' request tag, plus 'group' and 'server' timer tag values
 - &lt;histogram+percentiles&gt;: histogram time and percentiles definition
     - 'no_percentiles': disable
     - syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
@@ -303,7 +303,7 @@ mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
       COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 ```
 
-example (grouped by hostname,scriptname,servername and value timer tag "tag10")
+example (grouped by host_name, scrip_tname, server_name and value timer tag "tag10")
 
 ```sql
 mysql> CREATE TABLE `report_host_script_server_tag10` (
