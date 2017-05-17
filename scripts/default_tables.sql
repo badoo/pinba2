@@ -1,6 +1,6 @@
 # create default tables, that you might want to use in most circumstances
 
-use pinba;
+USE pinba;
 
 -- experimental
 -- create view status_variables as
@@ -9,7 +9,7 @@ use pinba;
 --     (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_POLL_TOTAL') as udp_poll_total,
 --     (select VARIABLE_VALUE from information_schema.global_status where VARIABLE_NAME='PINBA_UDP_RECV_PACKETS') as udp_recv_packets;
 
-CREATE TABLE if not exists `stats` (
+CREATE TABLE IF NOT EXISTS `stats` (
   `uptime` DOUBLE NOT NULL,
   `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
   `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
@@ -41,7 +41,7 @@ CREATE TABLE if not exists `stats` (
   `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 
-CREATE TABLE if not exists `active` (
+CREATE TABLE IF NOT EXISTS `active` (
   `id` int unsigned NOT NULL,
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE if not exists `active` (
   `last_snapshot_merge_duration` double NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
-CREATE TABLE if not exists `info` (
+CREATE TABLE IF NOT EXISTS `info` (
   `req_count` bigint(20) unsigned NOT NULL,
   `timer_count` bigint(20) unsigned NOT NULL,
   `time_total` double NOT NULL,
