@@ -1,5 +1,6 @@
 Pinba2
 ======
+
 An attempt to rethink internal implementation and some features of excellent https://github.com/tony2001/pinba_engine by @tony2001.
 
 
@@ -11,6 +12,7 @@ This is not limited to PHP, there are clients for multiple languages and nginx m
 
 Key differences from original implementation
 --------------------------------------------
+
 - no raw data tables (i.e. requests, timers) support, yet (can be implemented)
     - raw data tables have VERY high memory usage requirements and uses are limited
 - no support for getting raw histogram data (yet)
@@ -33,7 +35,8 @@ Key differences from original implementation
 
 
 Client libraries
-----------------------------------------------------------------
+----------------
+
 Same client libraries can be used with this pinba implementation
 
 list from http://pinba.org/
@@ -49,6 +52,7 @@ list from http://pinba.org/
 
 More Info
 --------
+
 - [TODO](TODO.md)
 - [Building and Installing](wiki/Building_Installing.md) - use docker, really
 - [Configuration](wiki/Configuration.md) - optional, should run fine with default settings
@@ -57,6 +61,7 @@ More Info
 
 Docker
 ------
+
 - [Fedora 25](docker/fedora-25/) (kinda works)
 - [Mariadb/debian](docker/debian-mariadb/) (unfinished)
 

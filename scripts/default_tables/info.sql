@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `info` (
+CREATE TABLE IF NOT EXISTS `pinba`.`info` (
   `req_count` bigint(20) unsigned NOT NULL,
   `timer_count` bigint(20) unsigned NOT NULL,
   `time_total` double NOT NULL,

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `stats` (
+CREATE TABLE IF NOT EXISTS `pinba`.`stats` (
   `uptime` DOUBLE NOT NULL,
   `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
   `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,

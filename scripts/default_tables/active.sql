@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `active` (
+CREATE TABLE IF NOT EXISTS `pinba`.`active` (
   `id` int unsigned NOT NULL,
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
