@@ -8,6 +8,9 @@ proto_DATA = \
 
 scriptsdir = $(prefix)/scripts
 scripts_DATA = \
-	scripts/default_tables.sql \
+	scripts/convert_mysqldump.php \
+	scripts/default_tables/active.sql \
+	scripts/default_tables/info.sql \
+	scripts/default_tables/stats.sql \
 	scripts/default_reports.sql \
 	#
