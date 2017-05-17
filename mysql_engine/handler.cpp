@@ -126,9 +126,9 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
-		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		auto *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 		MEOW_DEFER(
-			tmp_restore_column_map(table->write_set, old_map);
+			dbug_tmp_restore_column_map(table->write_set, old_map);
 		);
 
 		for (Field **field = table->field; *field; field++)
@@ -371,9 +371,9 @@ private:
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
-		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		auto *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 		MEOW_DEFER(
-			tmp_restore_column_map(table->write_set, old_map);
+			dbug_tmp_restore_column_map(table->write_set, old_map);
 		);
 
 		for (Field **field = table->field; *field; field++)
@@ -716,9 +716,9 @@ private:
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
-		auto *old_map = tmp_use_all_columns(table, table->write_set);
+		auto *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 		MEOW_DEFER(
-			tmp_restore_column_map(table->write_set, old_map);
+			dbug_tmp_restore_column_map(table->write_set, old_map);
 		);
 
 		for (Field **field = table->field; *field; field++)

@@ -24,7 +24,7 @@ struct histogram_hasher_t // TODO: try std::hash here, should be good for uint32
 {
 	inline uint64_t operator()(uint32_t const v) const
 	{
-		return t1ha0(&v, sizeof(v), 0);
+		return t1ha0(&v, sizeof(v), v);
 	}
 };
 
