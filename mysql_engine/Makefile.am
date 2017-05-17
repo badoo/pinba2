@@ -2,7 +2,7 @@
 AM_CXXFLAGS = \
 	$(AX_CXXFLAGS) \
 	$(MYSQL_ENGINE_CFLAGS) \
-	-Wno-error \
+	-Wno-error -Wno-macro-redefined \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
