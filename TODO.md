@@ -20,6 +20,8 @@
 	- [x] guidelines - how to run mysql with jemalloc
 	- [x] describe configuration options in readme
 	- [ ] internals/tuning guide
+	- [ ] rtag_* reports support in scripts/convert_mysqldump.php
+	- [ ] hv_* reports support in scripts/convert_mysqldump.php
 - decent logging
 	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
 	- [x] log levels support (with runtime change?)

@@ -5,7 +5,7 @@
 # so they will use whatever time is configured in my.cnf (60sec by default)
 #
 
-use pinba;
+USE pinba;
 
 CREATE TABLE `report_by_host_name` (
   `host` varchar(64) NOT NULL,
