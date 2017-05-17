@@ -7,9 +7,10 @@
 
 #include <boost/noncopyable.hpp>
 // #include <sparsehash/sparse_hash_map>
+#include <sparsehash/dense_hash_map>
 
 #include "t1ha/t1ha.h"
-#include "sparsepp/spp.h"
+// #include "sparsepp/spp.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -54,7 +55,16 @@ struct histogram_t
 	//     or do N a zillion hash lookups to traverse hashmap in a 'sorted' way by key
 	//
 	// typedef google::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
-	typedef spp::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
+	// typedef spp::sparse_hash_map<uint32_t, uint32_t, histogram_hasher_t> map_t;
+
+	struct map_t
+		: public google::dense_hash_map<uint32_t, uint32_t, histogram_hasher_t>
+	{
+		map_t()
+		{
+			this->set_empty_key(UINT_MAX);
+		}
+	};
 
 private:
 	map_t     map_;

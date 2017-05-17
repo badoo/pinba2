@@ -166,7 +166,7 @@ else
 		HEADERS="private/handler.h private/table.h"
 
 		for file in $HEADERS; do
-			if test -r "$with_mysql//include/mysql/$file"; then
+			if test -r "$with_mysql/include/mysql/$file"; then
 				mysql_headers_found=1
 				mysql_headers_type="installed"
 			fi
@@ -189,6 +189,7 @@ else
 	case $mysql_headers_type in
 		"source")
 			MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql -I$with_mysql/sql -I$with_mysql/regex -I$with_mysql/include"
+			# these are for mysql 5.7
 			MYSQL_INC="$MYSQL_INC -I$with_mysql/libbinlogevents/export -I$with_mysql/libbinlogevents/include"
 			;;
 		"installed")
