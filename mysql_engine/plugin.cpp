@@ -552,7 +552,7 @@ mysql_declare_plugin(pinba)
 	"PINBA",
 	"Anton Povarov",
 	"Pinba storage engine v2",
-	PLUGIN_LICENSE_GPL /*PLUGIN_LICENSE_BSD*/,    /* make this BSD maybe ? */
+	PLUGIN_LICENSE_BSD,                           /* make this BSD maybe ? */
 	pinba_engine_init,                            /* Plugin Init */
 	pinba_engine_shutdown,                        /* Plugin Deinit */
 	0x0200                                        /* version: 2.0 */,

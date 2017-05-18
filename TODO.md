@@ -5,7 +5,9 @@
 	- [x] table with list of all reports and their data
 	- [x] {won't fix, there is no need currently} table listing all open tables and their state
 	- [ ] raw histogram data tables
-	- [x] test with 5.7
+	- [ ] test with 5.7
+		- [x] build, selects, etc.
+		- [ ] fix status variables (now with perfschema?)
 	- [ ] improve report data sorting, by implementing position() and rnd_pos()
 		- [x] position() and rnd_pos() implemeted - this doesn't help at all, 300ms to sort 30k rows is too slow, suspicious
 		- [x] fix double snapshot prepare for order by and group by
