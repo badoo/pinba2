@@ -197,6 +197,7 @@ struct pinba_view___active_reports_t : public pinba_view___base_t
 	{
 		pinba_share_data_t  share_data;
 		report_state_ptr    report_state;
+		std::unique_ptr<char[]> dummy;
 	};
 	using view_t     = std::vector<view_row_t>;
 	using position_t = view_t::const_iterator;
@@ -322,9 +323,13 @@ private:
 		// also some reports, that we've coped data for, might have been deleted meanwhile
 		for (auto& row : tmp_data)
 		{
-			timeval_t const start_tv = os_unix::clock_monotonic_now();
-			timeval_t const tv = P_E_->get_internal_time();
-			LOG_DEBUG(P_L_, "internal time: {0}, request took: {2}", tv, tv - start_tv);
+			// timeval_t const start_tv = os_unix::clock_monotonic_now();
+			// timeval_t const tv = P_E_->get_internal_time();
+			// LOG_DEBUG(P_L_, "internal time: {0}, request took: {1}", tv, tv - start_tv);
+
+			row.report_state = meow::make_unique<report_state_t>();
+			row.dummy.reset(new char[256 * 1024]);
+			data_.emplace_back(std::move(row));
 
 #if 0
 			try
@@ -366,14 +371,17 @@ private:
 		auto const *sdata = &row->share_data;
 		auto       *table = handler->current_table();
 
-		report_state_t           *rstate     = row->report_state.get();
-		report_info_t const      *rinfo      = rstate->info;
-		report_stats_t const     *rstats     = rstate->stats;
-		report_estimates_t const *restimates = &rstate->estimates;
+		// report_state_t           *rstate     = row->report_state.get();
+		// report_info_t const      *rinfo      = rstate->info;
+		// report_stats_t const     *rstats     = rstate->stats;
+		// report_estimates_t const *restimates = &rstate->estimates;
 
 		// remember to lock this row stats data, since it might be changed by report host thread
 		// FIXME: this probably IS too coarse!
-		std::lock_guard<std::mutex> stats_lk_(rstats->lock);
+		// std::lock_guard<std::mutex> stats_lk_(rstats->lock);
+
+		// XXX: just a temporary dummy
+		std::lock_guard<std::mutex> stats_lk_(P_CTX_->lock);
 
 		// mark all fields as writeable to avoid assert() in ::store() calls
 		// got no idea how to do this properly anyway
@@ -408,12 +416,12 @@ private:
 
 				case 3:
 				{
-					str_ref const kind_name = [&sdata]()
-					{
-						return (sdata->view_conf)
-								? pinba_view_kind::enum_as_str_ref(sdata->view_conf->kind)
-								: meow::ref_lit("!! <table comment parse error (select from it, to see the error)>");
-					}();
+					// str_ref const kind_name = [&sdata]()
+					// {
+					// 	return (sdata->view_conf)
+					// 			? pinba_view_kind::enum_as_str_ref(sdata->view_conf->kind)
+					// 			: meow::ref_lit("!! <table comment parse error (select from it, to see the error)>");
+					// }();
 
 					(*field)->set_notnull();
 					(*field)->store("", 0, &my_charset_bin); //(kind_name.data(), kind_name.c_length(), &my_charset_bin);
@@ -422,7 +430,7 @@ private:
 
 				case 4:
 				{
-					auto const uptime = os_unix::clock_monotonic_now() - rstats->created_tv;
+					// auto const uptime = os_unix::clock_monotonic_now() - rstats->created_tv;
 					(*field)->set_notnull();
 					(*field)->store(0.0); //(timeval_to_double(uptime));
 				}
