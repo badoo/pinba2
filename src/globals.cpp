@@ -191,6 +191,25 @@ namespace { namespace aux {
 			return this->add_report(create_report_by_timer(this->globals(), conf));
 		}
 
+		virtual timeval_t get_internal_time() override
+		{
+			timeval_t tv = {};
+
+			auto req = meow::make_intrusive<coordinator_request___call_t>();
+			req->func = [&](coordinator_t*) {
+				tv = os_unix::clock_monotonic_now();
+			};
+
+			auto const result = coordinator_->request(req);
+
+			assert(COORDINATOR_RES__GENERIC == result->type);
+
+			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
+			assert(COORDINATOR_STATUS__OK == r->status);
+
+			return tv;
+		}
+
 		virtual report_state_ptr get_report_state(str_ref name) override
 		{
 			auto req = meow::make_intrusive<coordinator_request___get_report_state_t>();

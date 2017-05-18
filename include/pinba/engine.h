@@ -27,6 +27,7 @@ struct pinba_engine_t : private boost::noncopyable
 	virtual pinba_error_t start_report_with_config(report_conf___by_request_t const&) = 0;
 	virtual pinba_error_t start_report_with_config(report_conf___by_timer_t const&) = 0;
 
+	virtual timeval_t           get_internal_time() = 0; // dummy
 	virtual report_state_ptr    get_report_state(str_ref name) = 0;
 	virtual report_snapshot_ptr get_report_snapshot(str_ref name) = 0;
 };

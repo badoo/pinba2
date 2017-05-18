@@ -322,6 +322,11 @@ private:
 		// also some reports, that we've coped data for, might have been deleted meanwhile
 		for (auto& row : tmp_data)
 		{
+			timeval_t const start_tv = os_unix::clock_monotonic_now();
+			timeval_t const tv = P_E_->get_internal_time();
+			LOG_DEBUG(P_L_, "internal time: {0}, request took: {2}", tv, tv - start_tv);
+
+#if 0
 			try
 			{
 				auto rstate = P_E_->get_report_state(row.share_data.report_name);
@@ -336,6 +341,7 @@ private:
 				LOG_DEBUG(P_L_, "active::{0}; get_report_state for {1} failed (skipping), err: {1}", __func__, row.share_data.report_name, e.what());
 				continue;
 			}
+#endif
 		}
 
 		return 0;
