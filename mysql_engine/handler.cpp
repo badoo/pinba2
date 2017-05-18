@@ -387,17 +387,17 @@ private:
 			{
 				case 0:
 					(*field)->set_notnull();
-					(*field)->store(rstate->id);
+					(*field)->store(0); // rstate->id);
 				break;
 
 				case 1:
 					(*field)->set_notnull();
-					(*field)->store(sdata->mysql_name.c_str(), sdata->mysql_name.length(), &my_charset_bin);
+					(*field)->store("", 0, &my_charset_bin); //sdata->mysql_name.c_str(), sdata->mysql_name.length(), &my_charset_bin);
 				break;
 
 				case 2:
 					(*field)->set_notnull();
-					(*field)->store(sdata->report_name.c_str(), sdata->report_name.length(), &my_charset_bin);
+					(*field)->store("", 0, &my_charset_bin); //(sdata->report_name.c_str(), sdata->report_name.length(), &my_charset_bin);
 				break;
 
 				case 3:
@@ -410,7 +410,7 @@ private:
 					}();
 
 					(*field)->set_notnull();
-					(*field)->store(kind_name.data(), kind_name.c_length(), &my_charset_bin);
+					(*field)->store("", 0, &my_charset_bin); //(kind_name.data(), kind_name.c_length(), &my_charset_bin);
 				}
 				break;
 
@@ -418,33 +418,33 @@ private:
 				{
 					auto const uptime = os_unix::clock_monotonic_now() - rstats->created_tv;
 					(*field)->set_notnull();
-					(*field)->store(timeval_to_double(uptime));
+					(*field)->store(0.0); //(timeval_to_double(uptime));
 				}
 				break;
 
-				STORE_FIELD (5,  duration_seconds_as_double(rinfo->time_window));
-				STORE_FIELD (6,  rinfo->tick_count);
-				STORE_FIELD (7,  restimates->row_count);
-				STORE_FIELD (8,  restimates->mem_used);
-				STORE_FIELD (9,  rstats->batches_send_total);
-				STORE_FIELD (10, rstats->batches_recv_total);
-				STORE_FIELD (11, rstats->packets_recv_total);
-				STORE_FIELD (12, rstats->packets_send_err);
-				STORE_FIELD (13, rstats->packets_aggregated);
-				STORE_FIELD (14, rstats->packets_dropped_by_bloom);
-				STORE_FIELD (15, rstats->packets_dropped_by_filters);
-				STORE_FIELD (16, rstats->packets_dropped_by_rfield);
-				STORE_FIELD (17, rstats->packets_dropped_by_rtag);
-				STORE_FIELD (18, rstats->packets_dropped_by_timertag);
-				STORE_FIELD (19, rstats->timers_scanned);
-				STORE_FIELD (20, rstats->timers_aggregated);
-				STORE_FIELD (21, rstats->timers_skipped_by_filters);
-				STORE_FIELD (22, rstats->timers_skipped_by_tags);
-				STORE_FIELD (23, timeval_to_double(rstats->ru_utime));
-				STORE_FIELD (24, timeval_to_double(rstats->ru_stime));
-				STORE_FIELD (25, timeval_to_double(rstats->last_tick_tv));
-				STORE_FIELD (26, duration_seconds_as_double(rstats->last_tick_prepare_d));
-				STORE_FIELD (27, duration_seconds_as_double(rstats->last_snapshot_merge_d));
+				STORE_FIELD (5,  0); //duration_seconds_as_double(rinfo->time_window));
+				STORE_FIELD (6,  0); //rinfo->tick_count);
+				STORE_FIELD (7,  0); //restimates->row_count);
+				STORE_FIELD (8,  0); //restimates->mem_used);
+				STORE_FIELD (9,  0); //rstats->batches_send_total);
+				STORE_FIELD (10, 0); //rstats->batches_recv_total);
+				STORE_FIELD (11, 0); //rstats->packets_recv_total);
+				STORE_FIELD (12, 0); //rstats->packets_send_err);
+				STORE_FIELD (13, 0); //rstats->packets_aggregated);
+				STORE_FIELD (14, 0); //rstats->packets_dropped_by_bloom);
+				STORE_FIELD (15, 0); //rstats->packets_dropped_by_filters);
+				STORE_FIELD (16, 0); //rstats->packets_dropped_by_rfield);
+				STORE_FIELD (17, 0); //rstats->packets_dropped_by_rtag);
+				STORE_FIELD (18, 0); //rstats->packets_dropped_by_timertag);
+				STORE_FIELD (19, 0); //rstats->timers_scanned);
+				STORE_FIELD (20, 0); //rstats->timers_aggregated);
+				STORE_FIELD (21, 0); //rstats->timers_skipped_by_filters);
+				STORE_FIELD (22, 0); //rstats->timers_skipped_by_tags);
+				STORE_FIELD (23, 0); //timeval_to_double(rstats->ru_utime));
+				STORE_FIELD (24, 0); //timeval_to_double(rstats->ru_stime));
+				STORE_FIELD (25, 0); //timeval_to_double(rstats->last_tick_tv));
+				STORE_FIELD (26, 0); //duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE_FIELD (27, 0); //duration_seconds_as_double(rstats->last_snapshot_merge_d));
 			}
 		} // field for
 
@@ -734,7 +734,7 @@ private:
 				if (findex < n_key_fields)
 				{
 					(*field)->set_notnull();
-					(*field)->store(key[findex].begin(), key[findex].c_length(), &my_charset_bin);
+					(*field)->store("", 0, &my_charset_bin); //(key[findex].begin(), key[findex].c_length(), &my_charset_bin);
 					continue;
 				}
 				findex -= n_key_fields;
@@ -750,17 +750,17 @@ private:
 
 					switch (findex)
 					{
-						STORE_FIELD(0,  row->req_count);
-						STORE_FIELD(1,  double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(2,  duration_seconds_as_double(row->time_total));
-						STORE_FIELD(3,  duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(4,  duration_seconds_as_double(row->ru_utime));
-						STORE_FIELD(5,  duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(6,  duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(7,  duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(8,  row->traffic_kb);
-						STORE_FIELD(9,  double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(10, row->mem_usage);
+						STORE_FIELD(0,  0); //row->req_count);
+						STORE_FIELD(1,  0); //double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(2,  0); //duration_seconds_as_double(row->time_total));
+						STORE_FIELD(3,  0); //duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(4,  0); //duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(5,  0); //duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(6,  0); //duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(7,  0); //duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(8,  0); //row->traffic_kb);
+						STORE_FIELD(9,  0); //double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(10, 0); //row->mem_usage);
 					}
 
 					continue;
@@ -776,16 +776,16 @@ private:
 
 					switch (findex)
 					{
-						STORE_FIELD(0, row->req_count);
-						STORE_FIELD(1, double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(2, row->hit_count);
-						STORE_FIELD(3, double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(4, duration_seconds_as_double(row->time_total));
-						STORE_FIELD(5, duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(6, duration_seconds_as_double(row->ru_utime));
-						STORE_FIELD(7, duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(8, duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(9, duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(0, 0); //row->req_count);
+						STORE_FIELD(1, 0); //double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(2, 0); //row->hit_count);
+						STORE_FIELD(3, 0); //double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(4, 0); //duration_seconds_as_double(row->time_total));
+						STORE_FIELD(5, 0); //duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(6, 0); //duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(7, 0); //duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(8, 0); //duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(9, 0); //duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
 					}
 
 					continue;
@@ -801,13 +801,13 @@ private:
 
 					switch (findex)
 					{
-						STORE_FIELD(0,  row->req_count);
-						STORE_FIELD(1,  row->timer_count);
-						STORE_FIELD(2, duration_seconds_as_double(row->time_total));
-						STORE_FIELD(3, duration_seconds_as_double(row->ru_utime));
-						STORE_FIELD(4, duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(5,  row->traffic_kb);
-						STORE_FIELD(6,  row->mem_usage);
+						STORE_FIELD(0, 0); //row->req_count);
+						STORE_FIELD(1, 0); //row->timer_count);
+						STORE_FIELD(2, 0); //duration_seconds_as_double(row->time_total));
+						STORE_FIELD(3, 0); //duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD(4, 0); //duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD(5, 0); //row->traffic_kb);
+						STORE_FIELD(6, 0); //row->mem_usage);
 					}
 
 					continue;
@@ -852,7 +852,7 @@ private:
 					}();
 
 					(*field)->set_notnull();
-					(*field)->store(duration_seconds_as_double(percentile_d));
+					(*field)->store(0); // duration_seconds_as_double(percentile_d));
 				}
 
 				continue;
