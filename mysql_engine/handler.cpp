@@ -323,9 +323,12 @@ private:
 		// also some reports, that we've coped data for, might have been deleted meanwhile
 		for (auto& row : tmp_data)
 		{
-			// timeval_t const start_tv = os_unix::clock_monotonic_now();
-			// timeval_t const tv = P_E_->get_internal_time();
-			// LOG_DEBUG(P_L_, "internal time: {0}, request took: {1}", tv, tv - start_tv);
+			for (size_t i = 0; i < 1000; i++)
+			{
+				timeval_t const start_tv = os_unix::clock_monotonic_now();
+				timeval_t const tv = P_E_->get_internal_time();
+				//LOG_DEBUG(P_L_, "internal time: {0}, request took: {1}", tv, tv - start_tv);
+			}
 
 			row.report_state = meow::make_unique<report_state_t>();
 			row.dummy.reset(new char[256 * 1024]);
