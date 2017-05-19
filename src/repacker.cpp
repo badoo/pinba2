@@ -212,6 +212,10 @@ namespace { namespace aux {
 				.open(AF_SP, NN_PULL)
 				.bind(conf_->nn_shutdown);
 
+			shutdown_cli_sock_
+				.open(AF_SP, NN_PUSH)
+				.connect(conf_->nn_shutdown);
+
 
 			stats_->repacker_threads.resize(conf_->n_threads);
 
@@ -241,9 +245,10 @@ namespace { namespace aux {
 
 		virtual void shutdown() override
 		{
-			nmsg_socket_t sock;
-			sock.open(AF_SP, NN_PUSH).connect(conf_->nn_shutdown);
-			sock.send(1); // there is no need to send multiple times, threads exit on poll signal
+			{
+				std::unique_lock<std::mutex> lk_(shutdown_mtx_);
+				shutdown_cli_sock_.send(1); // there is no need to send multiple times, threads exit on poll signal
+			}
 
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
@@ -380,7 +385,10 @@ namespace { namespace aux {
 
 	private:
 		nmsg_socket_t    out_sock_;
+
 		nmsg_socket_t    shutdown_sock_;
+		nmsg_socket_t    shutdown_cli_sock_;
+		std::mutex       shutdown_mtx_;
 
 		pinba_globals_t  *globals_;
 		pinba_stats_t    *stats_;

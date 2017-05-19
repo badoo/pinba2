@@ -13,11 +13,15 @@
 		- [x] fix double snapshot prepare for order by and group by
 		- [ ] find a way! explain shows 0 rows and ref = NULL, what the f
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
-	- [ ] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
+	- [x] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 		- [x] test with mysql (tested, still leaks, probably my code)
 		- [x] test with mariadb (tested, still leaks, probably my code)
 		- [x] investigate nanomsg - can silently drop messages even with linger and in req/rep sockets
-		- [ ] try looking into 5.7 perfschema
+		- [x] try looking into 5.7 perfschema
+		- [x] manually
+			- [x] FOUND! nanomsg connect is broken and leaks memory when connecting frequently (until nn_term() anyway)
+			see experiments/exp_request_call.cpp
+			and https://github.com/nanomsg/nanomsg/issues/575
 - docs
 	- [x] README (well, should suffice for now)
 	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)

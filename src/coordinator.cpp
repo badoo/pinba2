@@ -80,8 +80,16 @@ namespace { namespace aux {
 		nmsg_socket_t          packets_send_sock_;
 		nmsg_socket_t          packets_recv_sock_;
 
-		nmsg_socket_t          reqrep_sock_;
+		// *_cli_sock_ + *_mtx_ are required for
+		// dirty workaround for https://github.com/nanomsg/nanomsg/issues/575
+
+		nmsg_socket_t          control_sock_;
+		nmsg_socket_t          control_cli_sock_;
+		std::mutex             control_mtx_;
+
 		nmsg_socket_t          shutdown_sock_;
+		nmsg_socket_t          shutdown_cli_sock_;
+		std::mutex             shutdown_mtx_;
 
 		report_ptr             report_;
 		report_stats_t         stats_;
@@ -101,13 +109,21 @@ namespace { namespace aux {
 				.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(packet_batch_ptr) * conf_.nn_packets_buffer, ff::fmt_str("{0}/in_sock", conf_.name))
 				.connect(conf_.nn_packets);
 
-			reqrep_sock_
+			control_sock_
 				.open(AF_SP, NN_REP)
 				.bind(conf_.nn_reqrep);
+
+			shutdown_cli_sock_
+				.open(AF_SP, NN_REQ)
+				.connect(conf_.nn_shutdown);
 
 			shutdown_sock_
 				.open(AF_SP, NN_REP)
 				.bind(conf_.nn_shutdown);
+
+			shutdown_cli_sock_
+				.open(AF_SP, NN_REQ)
+				.connect(conf_.nn_shutdown);
 
 			stats_.created_tv          = os_unix::clock_gettime_ex(CLOCK_MONOTONIC);
 			stats_.created_realtime_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
@@ -172,11 +188,11 @@ namespace { namespace aux {
 
 						report_->add_multi(batch->packets, batch->packet_count);
 					})
-					.read_nn_socket(reqrep_sock_, [this](timeval_t now)
+					.read_nn_socket(control_sock_, [this](timeval_t now)
 					{
-						auto const req = reqrep_sock_.recv<report_host_req_ptr>();
+						auto const req = control_sock_.recv<report_host_req_ptr>();
 						req->func(this);
-						reqrep_sock_.send(meow::make_intrusive<report_host_result_t>());
+						control_sock_.send(meow::make_intrusive<report_host_result_t>());
 					})
 					.read_nn_socket(shutdown_sock_, [this, &poller](timeval_t)
 					{
@@ -221,20 +237,24 @@ namespace { namespace aux {
 
 		virtual void execute_in_thread(report_host_call_func_t const& func) override
 		{
-			nmsg_socket_t sock;
-			sock.open(AF_SP, NN_REQ).connect(conf_.nn_reqrep);
+			// lock, so that multiple clients do not step on each other's toes
+			// we have is just one client currently, but keep same pattern as in other places
+			// where multiple clients are present
+			std::unique_lock<std::mutex> lk_(control_mtx_);
 
-			sock.send_message(meow::make_intrusive<report_host_req_t>(func));
-			sock.recv<report_host_result_ptr>();
+			control_cli_sock_.send_message(meow::make_intrusive<report_host_req_t>(func));
+			control_cli_sock_.recv<report_host_result_ptr>();
 		}
 
 		virtual void shutdown() override
 		{
-			nmsg_socket_t sock;
-			sock.open(AF_SP, NN_REQ).connect(conf_.nn_shutdown);
 
-			sock.send(1);
-			sock.recv<int>();
+			{
+				std::unique_lock<std::mutex> lk_(shutdown_mtx_);
+
+				shutdown_cli_sock_.send(1);
+				shutdown_cli_sock_.recv<int>();
+			}
 
 			t_.join();
 		}
@@ -253,8 +273,13 @@ namespace { namespace aux {
 			if (conf_->nn_input_buffer > 0)
 				in_sock_.set_option(NN_SOL_SOCKET, NN_RCVBUF, conf_->nn_input_buffer * sizeof(packet_batch_ptr), conf_->nn_input);
 
-			control_sock_ = nmsg_socket(AF_SP, NN_REP);
-			control_sock_.bind(conf_->nn_control);
+			control_sock_
+				.open(AF_SP, NN_REP)
+				.bind(conf_->nn_control);
+
+			control_cli_sock_
+				.open(AF_SP, NN_REQ)
+				.bind(conf_->nn_control);
 		}
 
 		virtual void startup() override
@@ -276,11 +301,10 @@ namespace { namespace aux {
 
 		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
 		{
-			nmsg_socket_t sock;
-			sock.open(AF_SP, NN_REQ).connect(conf_->nn_control);
+			std::unique_lock<std::mutex> lk_(control_mtx_);
 
-			sock.send_message(req);
-			return sock.recv<coordinator_response_ptr>();
+			control_cli_sock_.send_message(req);
+			return control_cli_sock_.recv<coordinator_response_ptr>();
 		}
 
 	private:
@@ -511,7 +535,10 @@ namespace { namespace aux {
 		report_host_map_t report_hosts_;
 
 		nmsg_socket_t    in_sock_;
+
 		nmsg_socket_t    control_sock_;
+		nmsg_socket_t    control_cli_sock_;
+		std::mutex       control_mtx_;
 
 		std::thread      t_;
 	};
