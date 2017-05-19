@@ -279,7 +279,7 @@ namespace { namespace aux {
 
 			control_cli_sock_
 				.open(AF_SP, NN_REQ)
-				.bind(conf_->nn_control);
+				.connect(conf_->nn_control);
 		}
 
 		virtual void startup() override
