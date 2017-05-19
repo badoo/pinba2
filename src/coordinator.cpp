@@ -29,7 +29,7 @@ namespace { namespace aux {
 		std::string name;
 		std::string thread_name;
 
-		std::string nn_reqrep;          // control messages and stuff
+		std::string nn_control;          // control messages and stuff
 		std::string nn_shutdown;        // shutdown message
 
 		std::string nn_packets;         // get packet_batch_ptr from this endpoint as fast as possible (SUB, pair to coodinator PUB)
@@ -111,11 +111,11 @@ namespace { namespace aux {
 
 			control_sock_
 				.open(AF_SP, NN_REP)
-				.bind(conf_.nn_reqrep);
+				.bind(conf_.nn_control);
 
-			shutdown_cli_sock_
+			control_cli_sock_
 				.open(AF_SP, NN_REQ)
-				.connect(conf_.nn_shutdown);
+				.connect(conf_.nn_control);
 
 			shutdown_sock_
 				.open(AF_SP, NN_REP)
@@ -427,7 +427,7 @@ namespace { namespace aux {
 									.id                = thread_id,
 									.name              = rh_name,
 									.thread_name       = thr_name,
-									.nn_reqrep         = ff::fmt_str("inproc://{0}/control", rh_name),
+									.nn_control         = ff::fmt_str("inproc://{0}/control", rh_name),
 									.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
 									.nn_packets        = ff::fmt_str("inproc://{0}/packets", rh_name),
 									.nn_packets_buffer = conf_->nn_report_input_buffer,
