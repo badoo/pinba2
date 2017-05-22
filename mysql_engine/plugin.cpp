@@ -254,7 +254,7 @@ static int pinba_engine_init(void *p)
 
 			.udp_threads              = pinba_variables()->udp_reader_threads,
 			.udp_batch_messages       = 256,
-			.udp_batch_timeout        = 10 * d_millisecond,
+			.udp_batch_timeout        = 50 * d_millisecond,
 
 			.repacker_threads         = pinba_variables()->repacker_threads,
 			.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,

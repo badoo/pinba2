@@ -234,93 +234,120 @@ namespace { namespace aux {
 
 			nmsg_poller_t poller;
 
-			poller
-				.before_poll([this](timeval_t now, duration_t wait_for)
-				{
-					++stats_->udp.poll_total;
-				})
-				.ticker(1 * d_second, [&](timeval_t now)
-				{
-					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+			// extra stats
+			poller.before_poll([this](timeval_t now, duration_t wait_for)
+			{
+				++stats_->udp.poll_total;
+			});
 
-					std::lock_guard<std::mutex> lk_(stats_->mtx);
-					stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
-					stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
-				})
-				.read_nn_socket(shutdown_sock_, [&](timeval_t)
+			// periodic rusage
+			poller.ticker(1 * d_second, [&](timeval_t now)
+			{
+				os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+				std::lock_guard<std::mutex> lk_(stats_->mtx);
+				stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
+				stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
+			});
+
+			// shutdown
+			poller.read_nn_socket(shutdown_sock_, [&](timeval_t)
+			{
+				LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
+				poller.set_shutdown_flag();
+			});
+#if 0
+			// resetable periodic event, to 'idly' send batch at regular intervals
+			auto batch_send_tick = poller.ticker_with_reset(conf_->batch_timeout, [&](timeval_t now)
+			{
+				if (!req || req->request_count == 0)
+					return;
+
+				this->send_current_batch(thread_id, req);
+			});
+#endif
+			// process udp packets from the network
+			poller.read_plain_fd(*fd, [&](timeval_t now)
+			{
+				// try receiving as much as possible without blocking
+				while (true)
 				{
-					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
-					poller.set_shutdown_flag();
-				})
-				.read_plain_fd(*fd, [&](timeval_t now)
-				{
-					// try receiving as much as possible without blocking
-					while (true)
+					++stats_->udp.recv_total;
+
+					int const n = recv(*fd, buf, sizeof(buf), MSG_DONTWAIT);
+					if (n > 0)
 					{
-						++stats_->udp.recv_total;
+						++stats_->udp.recv_packets;
 
-						int const n = recv(*fd, buf, sizeof(buf), MSG_DONTWAIT);
-						if (n > 0)
+						if (!req)
 						{
-							++stats_->udp.recv_packets;
+							constexpr size_t nmpa_block_size = 16 * 1024;
+							req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
+							request_unpack_pba.allocator_data = &req->nmpa;
+						}
 
-							if (!req)
-							{
-								constexpr size_t nmpa_block_size = 16 * 1024;
-								req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
-								request_unpack_pba.allocator_data = &req->nmpa;
-							}
+						stats_->udp.recv_bytes += uint64_t(n);
 
-							stats_->udp.recv_bytes += uint64_t(n);
-
-							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
-							if (request == NULL) {
-								++stats_->udp.packet_decode_err;
-								continue;
-							}
-
-							req->requests[req->request_count] = request;
-							req->request_count++;
-
-							if (req->request_count >= conf_->batch_size)
-							{
-								this->send_current_batch(thread_id, req);
-							}
-
+						Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
+						if (request == NULL) {
+							++stats_->udp.packet_decode_err;
 							continue;
 						}
 
-						if (n < 0) {
-							if (errno == EINTR)
-								continue;
+						req->requests[req->request_count] = request;
+						req->request_count++;
 
-							if (errno == EAGAIN)
+						if (req->request_count >= conf_->batch_size)
+						{
+							this->send_current_batch(thread_id, req);
+							// poller.reset_ticker(batch_send_tick, now);
+						}
+
+						continue;
+					}
+
+					if (n < 0) {
+						if (errno == EINTR)
+							continue;
+
+						if (errno == EAGAIN)
+						{
+							++stats_->udp.recv_eagain;
+
+							// need to send current batch if we've got anything
+							if (req && req->request_count > 0)
 							{
-								++stats_->udp.recv_eagain;
-
-								// need to send current batch if we've got anything
-								if (req && req->request_count > 0)
-								{
-									this->send_current_batch(thread_id, req);
-								}
-								return;
+								this->send_current_batch(thread_id, req);
+								// poller.reset_ticker(batch_send_tick, now);
 							}
 
-							LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
-							poller.set_shutdown_flag();
+							// sleep for at least 1ms, before polling again, to let more packets arrive
+							// and save a ton on system calls
+							constexpr struct timespec const sleep_for = {
+								.tv_sec = 0,
+								.tv_nsec = 1 * 1000 * 1000,
+							};
+							nanosleep(&sleep_for, NULL);
+
 							return;
 						}
 
-						// XXX: this will never happen, even if socket is closed from main thread
-						if (n == 0)
-						{
-							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
-							poller.set_shutdown_flag();
-							return;
-						}
+						LOG_ERROR(globals_->logger(), "udp_reader/{0}; recv() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
+						poller.set_shutdown_flag();
+						return;
 					}
-				})
-				.loop();
+
+					// XXX: this will never happen, even if socket is closed from main thread
+					if (n == 0)
+					{
+						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
+						poller.set_shutdown_flag();
+						return;
+					}
+				}
+			});
+
+			poller.loop();
 		}
 
 #ifdef PINBA_HAVE_RECVMMSG
@@ -362,109 +389,126 @@ namespace { namespace aux {
 
 			nmsg_poller_t poller;
 
-			poller
-				.before_poll([this](timeval_t now, duration_t wait_for)
-				{
-					++stats_->udp.poll_total;
-				})
-				.ticker(1 * d_second, [&](timeval_t now)
-				{
-					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+			// extra stats
+			poller.before_poll([this](timeval_t now, duration_t wait_for)
+			{
+				++stats_->udp.poll_total;
+			});
 
-					std::lock_guard<std::mutex> lk_(stats_->mtx);
-					stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
-					stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
-				})
-				.read_nn_socket(shutdown_sock_, [&](timeval_t)
+			// periodic rusage
+			poller.ticker(1 * d_second, [&](timeval_t now)
+			{
+				os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
+
+				std::lock_guard<std::mutex> lk_(stats_->mtx);
+				stats_->collector_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
+				stats_->collector_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
+			});
+
+			// shutdown
+			poller.read_nn_socket(shutdown_sock_, [&](timeval_t)
+			{
+				LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
+				poller.set_shutdown_flag();
+			});
+
+			// resetable periodic event, to 'idly' send batch at regular intervals
+			auto batch_send_tick = poller.ticker_with_reset(conf_->batch_timeout, [&](timeval_t now)
+			{
+				if (!req || req->request_count == 0)
+					return;
+
+				this->send_current_batch(thread_id, req);
+			});
+
+			poller.read_plain_fd(*fd, [&](timeval_t now)
+			{
+				// recv as much as possible without blocking
+				// but see comments in EAGAIN handling on sleep() and saving syscalls
+				while (true)
 				{
-					LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
-					poller.set_shutdown_flag();
-				})
-				.read_plain_fd(*fd, [&](timeval_t now)
-				{
-					// recv as much as possible without blocking
-					// but see comments in EAGAIN handling on sleep() and saving syscalls
-					while (true)
+					++stats_->udp.recv_total;
+
+					int const n = recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+					if (n > 0)
 					{
-						++stats_->udp.recv_total;
+						stats_->udp.recv_packets += uint64_t(n);
 
-						int const n = recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
-						if (n > 0)
+						for (int i = 0; i < n; i++)
 						{
-							stats_->udp.recv_packets += uint64_t(n);
-
-							for (int i = 0; i < n; i++)
+							if (!req)
 							{
-								if (!req)
-								{
-									constexpr size_t nmpa_block_size = 16 * 1024;
-									req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
-									request_unpack_pba.allocator_data = &req->nmpa;
-								}
-
-								str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
-
-								stats_->udp.recv_bytes += dgram.size();
-
-								Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
-								if (request == NULL) {
-									++stats_->udp.packet_decode_err;
-									continue;
-								}
-
-								req->requests[req->request_count] = request;
-								req->request_count++;
-
-								if (req->request_count >= conf_->batch_size)
-								{
-									this->send_current_batch(thread_id, req);
-								}
+								constexpr size_t nmpa_block_size = 16 * 1024;
+								req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
+								request_unpack_pba.allocator_data = &req->nmpa;
 							}
 
-							continue;
-						}
+							str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
 
-						if (n < 0)
-						{
-							if (errno == EINTR)
+							stats_->udp.recv_bytes += dgram.size();
+
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
+							if (request == NULL) {
+								++stats_->udp.packet_decode_err;
 								continue;
-
-							if (errno == EAGAIN)
-							{
-								++stats_->udp.recv_eagain;
-
-								// need to send current batch if we've got anything
-								if (req && req->request_count > 0)
-								{
-									this->send_current_batch(thread_id, req);
-								}
-
-								// sleep for at least 1ms, before polling again, to let more packets arrive
-								// and save a ton on system calls
-								constexpr struct timespec const sleep_for = {
-									.tv_sec = 0,
-									.tv_nsec = 1 * 1000 * 1000,
-								};
-								nanosleep(&sleep_for, NULL);
-
-								return;
 							}
 
-							LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
-							poller.set_shutdown_flag();
+							req->requests[req->request_count] = request;
+							req->request_count++;
+
+							if (req->request_count >= conf_->batch_size)
+							{
+								this->send_current_batch(thread_id, req);
+								poller.reset_ticker(batch_send_tick, now);
+							}
+						}
+
+						continue;
+					}
+
+					if (n < 0)
+					{
+						if (errno == EINTR)
+							continue;
+
+						if (errno == EAGAIN)
+						{
+							++stats_->udp.recv_eagain;
+
+							// need to send current batch if we've got anything
+							if (req && req->request_count > 0)
+							{
+								this->send_current_batch(thread_id, req);
+								poller.reset_ticker(batch_send_tick, now);
+							}
+
+							// sleep for at least 1ms, before polling again, to let more packets arrive
+							// and save a ton on system calls
+							constexpr struct timespec const sleep_for = {
+								.tv_sec = 0,
+								.tv_nsec = 1 * 1000 * 1000,
+							};
+							nanosleep(&sleep_for, NULL);
+
 							return;
 						}
 
-						// XXX: this will never happen, even if socket is closed from main thread
-						if (n == 0)
-						{
-							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
-							poller.set_shutdown_flag();
-							return;
-						}
-					} // recv loop
-				})
-				.loop();
+						LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
+						poller.set_shutdown_flag();
+						return;
+					}
+
+					// XXX: this will never happen, even if socket is closed from main thread
+					if (n == 0)
+					{
+						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
+						poller.set_shutdown_flag();
+						return;
+					}
+				} // recv loop
+			});
+
+			poller.loop();
 		}
 #endif // PINBA_HAVE_RECVMMSG
 

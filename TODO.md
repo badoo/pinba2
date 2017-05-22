@@ -5,6 +5,7 @@
 	- [x] table with list of all reports and their data
 	- [x] {won't fix, there is no need currently} table listing all open tables and their state
 	- [ ] raw histogram data tables
+	- [ ] shutdown/clean reports with 'truncate table'
 	- [ ] test with 5.7
 		- [x] build, selects, etc.
 		- [ ] fix status variables (now with perfschema?)

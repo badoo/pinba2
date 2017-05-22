@@ -293,9 +293,6 @@ namespace { namespace aux {
 			// extra stats
 			poller.before_poll([this](timeval_t now, duration_t wait_for)
 			{
-				// TODO: observing a lil more poll() calls than really needed
-				// but to poll() low-ish time precision and maybe debug build
-				// LOG_DEBUG(globals_->logger(), "before_poll; now: {0}, wait_for: {1}", now, wait_for);
 				++stats_->repacker.poll_total;
 			});
 
