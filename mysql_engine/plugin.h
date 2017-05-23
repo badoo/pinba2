@@ -75,7 +75,6 @@ struct pinba_status_variables_t
 
 	char                extra[1024];
 
-
 	char                version_info[1024];
 	char                build_string[1024];
 };

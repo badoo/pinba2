@@ -29,13 +29,12 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define STORE_FIELD(N, value)     \
+#define STORE_FIELD(N, value...)  \
 	case N:                       \
 		(*field)->set_notnull();  \
 		(*field)->store(value);   \
 	break;
 /**/
-
 
 struct pinba_view___base_t : public pinba_view_t
 {
@@ -173,6 +172,9 @@ struct pinba_view___stats_t : public pinba_view___base_t
 
 				STORE_FIELD(27, vars_->dictionary_size);
 				STORE_FIELD(28, vars_->dictionary_mem_used);
+
+				STORE_FIELD(29, vars_->version_info, strlen(vars_->version_info), &my_charset_bin);
+				STORE_FIELD(30, vars_->build_string, strlen(vars_->build_string), &my_charset_bin);
 
 			default:
 				break;
