@@ -2,7 +2,7 @@ AC_INIT([pinba], [2.0.5])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/globals.cpp])
 AM_INIT_AUTOMAKE([foreign])
-AM_CONFIG_HEADER([pinba_config.h])
+AM_CONFIG_HEADER([auto_config.h])
 AX_PREFIX_CONFIG_H([pinba_config.h])
 AX_CONFIG_NICE([config.nice])
 AM_INIT_AUTOMAKE
@@ -267,19 +267,18 @@ AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [enable debugging symbols
 	INSTALL_STRIP_FLAG="-s"
 ])
 
-AC_ARG_WITH(build-string,
-	[AS_HELP_STRING([--with-build-string],[set custom build information here])
-	],
-	[
-	 dq="\""
-	 ws=" "
-	 if test "${with_build_string#*$ws}" != "$with_build_string" || test "${with_build_string#*$dq}" != "$with_build_string"; then
-		 AC_MSG_ERROR([Build string cannot contain whitespaces or double quotes])
-	 fi
-	 AC_DEFINE_UNQUOTED([PINBA_BUILD_STRING], "$with_build_string", [custom build string])
-	],
-	[ ]
-)
+AC_ARG_WITH(build-string,  [AS_HELP_STRING([--with-build-string],[set custom build information here])],
+[
+	dq="\""
+	ws=" "
+	if test "${with_build_string#*$ws}" != "$with_build_string" || test "${with_build_string#*$dq}" != "$with_build_string"; then
+		AC_MSG_ERROR([Build string cannot contain whitespaces or double quotes])
+	fi
+	AC_DEFINE_UNQUOTED([BUILD_STRING], "$with_build_string", [custom build string])
+],
+[
+	AC_DEFINE_UNQUOTED([BUILD_STRING], "$with_build_string", [custom build string])
+])
 
 
 AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build it statically)])],
