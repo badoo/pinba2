@@ -1,6 +1,7 @@
 #ifndef PINBA__REPORT_UTIL_H_
 #define PINBA__REPORT_UTIL_H_
 
+#include <limits>
 #include <string>
 #include <vector>
 #include <utility>
@@ -79,7 +80,7 @@ template<size_t N>
 inline report_key_impl_t<N> report_key_impl___make_empty()
 {
 	report_key_impl_t<N> result;
-	result.fill(0);
+	result.fill(PINBA_INTERNAL___EMPTY_KEY_PART);
 	return result;
 }
 

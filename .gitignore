@@ -18,6 +18,7 @@ perf.data
 .deps
 .libs
 _configs.sed
+auto_config.h
 pinba_config.h
 pinba_config.h~
 pinba_config.h.in

@@ -12,6 +12,8 @@
 #include "t1ha/t1ha.h"
 // #include "sparsepp/spp.h"
 
+#include "pinba/limits.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct histogram_conf_t
@@ -62,7 +64,7 @@ struct histogram_t
 	{
 		map_t()
 		{
-			this->set_empty_key(UINT_MAX);
+			this->set_empty_key(PINBA_INTERNAL___EMPTY_HV_BUCKET_ID);
 		}
 	};
 

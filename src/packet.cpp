@@ -1,6 +1,7 @@
 #include <cmath>
 
 #include "pinba/globals.h"
+#include "pinba/limits.h"
 #include "pinba/dictionary.h"
 #include "pinba/packet.h"
 #include "pinba/bloom.h"
@@ -11,6 +12,9 @@
 
 request_validate_result_t pinba_validate_request(Pinba__Request *r)
 {
+	if (r->status >= PINBA_INTERNAL___STATUS_MAX)
+		return request_validate_result::status_is_too_large;
+
 	if (r->n_timer_value != r->n_timer_hit_count) // all timers have hit counts
 		return request_validate_result::bad_hit_count;
 
@@ -48,11 +52,11 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 
 
 
-	// request_time must be > 0, be strict here to avoid crazy data
+	// request_time should be > 0, reset to 0 when < 0
 	{
 		switch (std::fpclassify(r->request_time))
 		{
-			case FP_ZERO:    return request_validate_result::zero_float_request_time;
+			case FP_ZERO:    break;
 			case FP_NORMAL:	 break;
 			default:         return request_validate_result::bad_float_request_time;
 		}

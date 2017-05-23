@@ -337,7 +337,7 @@ namespace { namespace aux {
 
 report_ptr create_report_by_request(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 {
-	constexpr size_t max_keys = 8;
+	constexpr size_t max_keys = PINBA_LIMIT___MAX_KEY_PARTS;
 	size_t const n_keys = conf.keys.size();
 
 	switch (n_keys)
@@ -357,7 +357,6 @@ report_ptr create_report_by_request(pinba_globals_t *globals, report_conf___by_r
 		CASE(5);
 		CASE(6);
 		CASE(7);
-		CASE(8);
 
 	#undef CASE
 	}

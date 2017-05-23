@@ -214,6 +214,7 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 
 MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((okay,                           "okay"))
+					((status_is_too_large,            "status_is_too_large"))
 					((bad_hit_count,                  "bad_hit_count"))
 					((bad_tag_count,                  "bad_tag_count"))
 					((not_enough_tag_names,           "not_enough_tag_names"))
@@ -223,8 +224,8 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					((bad_timer_hit_count,            "bad_timer_hit_count"))
 
 					((bad_float_request_time,         "bad_float_request_time"))
-					((zero_float_request_time,         "zero_float_request_time"))
-					((negative_float_request_time,    "negative_float_request_time"))
+					// ((zero_float_request_time,         "zero_float_request_time"))
+					// ((negative_float_request_time,    "negative_float_request_time"))
 
 					((bad_float_ru_utime,             "bad_float_ru_utime"))
 					// ((negative_float_ru_utime,        "negative_float_ru_utime"))
