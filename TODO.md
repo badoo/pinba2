@@ -23,6 +23,9 @@
 			- [x] FOUND! nanomsg connect is broken and leaks memory when connecting frequently (until nn_term() anyway)
 			see experiments/exp_request_call.cpp
 			and https://github.com/nanomsg/nanomsg/issues/575
+- library
+	- [ ] plain-C API
+	- [ ] Go server, wrapping it, with http interface and stuff.
 - docs
 	- [x] README (well, should suffice for now)
 	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
@@ -48,7 +51,9 @@
 	- [x] mysql table
 	- [x] status variables
 	- [x] make stats table the same as status variables, or remove it in favor of the former
-- raw data support
+	- [ ] transient memory stats (aka. memory used by data, that was read from the network, and not yet aggregated)
+- [ ] raw data support
+- [ ] 'counter' reports (aka, infinite aggregation window) reports (statsd like?)
 - [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
 
@@ -64,7 +69,6 @@
 	- [x] timer reports
 	- [x] request reports
 	- [ ] packet reports
-	- [ ] performance numbers
 - [ ] {medium} thread cpu + numa affinity
 	- [ ] coordinator (or packet relay for that matter) affinity + priority
 	- [ ] repacker affinity + config support
