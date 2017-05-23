@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS `pinba`.`stats` (
   `udp_packet_decode_err` BIGINT(20) UNSIGNED NOT NULL,
   `udp_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
   `udp_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+  `udp_packet_send_total` BIGINT(20) UNSIGNED NOT NULL,
+  `udp_packet_send_err` BIGINT(20) UNSIGNED NOT NULL,
   `udp_ru_utime` DOUBLE NOT NULL,
   `udp_ru_stime` DOUBLE NOT NULL,
   `repacker_poll_total` BIGINT(20) UNSIGNED NOT NULL,

@@ -149,32 +149,34 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				STORE_FIELD(6,  vars_->udp_packet_decode_err);
 				STORE_FIELD(7,  vars_->udp_batch_send_total);
 				STORE_FIELD(8,  vars_->udp_batch_send_err);
-				STORE_FIELD(9,  vars_->udp_ru_utime);
-				STORE_FIELD(10, vars_->udp_ru_stime);
+				STORE_FIELD(9,  vars_->udp_packet_send_total);
+				STORE_FIELD(10, vars_->udp_packet_send_err);
+				STORE_FIELD(11,  vars_->udp_ru_utime);
+				STORE_FIELD(12, vars_->udp_ru_stime);
 
-				STORE_FIELD(11, vars_->repacker_poll_total);
-				STORE_FIELD(12, vars_->repacker_recv_total);
-				STORE_FIELD(13, vars_->repacker_recv_eagain);
-				STORE_FIELD(14, vars_->repacker_recv_packets);
-				STORE_FIELD(15, vars_->repacker_packet_validate_err);
-				STORE_FIELD(16, vars_->repacker_batch_send_total);
-				STORE_FIELD(17, vars_->repacker_batch_send_by_timer);
-				STORE_FIELD(18, vars_->repacker_batch_send_by_size);
-				STORE_FIELD(19, vars_->repacker_ru_utime);
-				STORE_FIELD(20, vars_->repacker_ru_stime);
+				STORE_FIELD(13, vars_->repacker_poll_total);
+				STORE_FIELD(14, vars_->repacker_recv_total);
+				STORE_FIELD(15, vars_->repacker_recv_eagain);
+				STORE_FIELD(16, vars_->repacker_recv_packets);
+				STORE_FIELD(17, vars_->repacker_packet_validate_err);
+				STORE_FIELD(18, vars_->repacker_batch_send_total);
+				STORE_FIELD(19, vars_->repacker_batch_send_by_timer);
+				STORE_FIELD(20, vars_->repacker_batch_send_by_size);
+				STORE_FIELD(21, vars_->repacker_ru_utime);
+				STORE_FIELD(22, vars_->repacker_ru_stime);
 
-				STORE_FIELD(21, vars_->coordinator_batches_received);
-				STORE_FIELD(22, vars_->coordinator_batch_send_total);
-				STORE_FIELD(23, vars_->coordinator_batch_send_err);
-				STORE_FIELD(24, vars_->coordinator_control_requests);
-				STORE_FIELD(25, vars_->coordinator_ru_utime);
-				STORE_FIELD(26, vars_->coordinator_ru_stime);
+				STORE_FIELD(23, vars_->coordinator_batches_received);
+				STORE_FIELD(24, vars_->coordinator_batch_send_total);
+				STORE_FIELD(25, vars_->coordinator_batch_send_err);
+				STORE_FIELD(26, vars_->coordinator_control_requests);
+				STORE_FIELD(27, vars_->coordinator_ru_utime);
+				STORE_FIELD(28, vars_->coordinator_ru_stime);
 
-				STORE_FIELD(27, vars_->dictionary_size);
-				STORE_FIELD(28, vars_->dictionary_mem_used);
+				STORE_FIELD(29, vars_->dictionary_size);
+				STORE_FIELD(30, vars_->dictionary_mem_used);
 
-				STORE_FIELD(29, vars_->version_info, strlen(vars_->version_info), &my_charset_bin);
-				STORE_FIELD(30, vars_->build_string, strlen(vars_->build_string), &my_charset_bin);
+				STORE_FIELD(31, vars_->version_info, strlen(vars_->version_info), &my_charset_bin);
+				STORE_FIELD(32, vars_->build_string, strlen(vars_->build_string), &my_charset_bin);
 
 			default:
 				break;
