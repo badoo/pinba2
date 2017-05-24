@@ -12,8 +12,9 @@
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
 
-#include "pinba/globals.h"
 #include "t1ha/t1ha.h"
+
+#include "pinba/globals.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

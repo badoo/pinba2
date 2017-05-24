@@ -202,10 +202,15 @@ namespace { namespace aux {
 
 		void send_current_batch(uint32_t thread_id, raw_request_ptr& req)
 		{
-			++stats_->udp.batch_send_total;
+			stats_->udp.batch_send_total++;
+			stats_->udp.packet_send_total += req->request_count;
+
 			bool const success = out_sock_.send_message(req, NN_DONTWAIT);
 			if (!success)
-				++stats_->udp.batch_send_err;
+			{
+				stats_->udp.batch_send_err;
+				stats_->udp.packet_send_err += req->request_count;
+			}
 
 			req.reset(); // signal the need to reinit
 		}

@@ -49,6 +49,8 @@ struct pinba_status_variables_t
 	unsigned long long  udp_packet_decode_err;
 	unsigned long long  udp_batch_send_total;
 	unsigned long long  udp_batch_send_err;
+	unsigned long long  udp_packet_send_total;
+	unsigned long long  udp_packet_send_err;
 	double              udp_ru_utime;
 	double              udp_ru_stime;
 
@@ -73,7 +75,10 @@ struct pinba_status_variables_t
 	unsigned long long  dictionary_size;
 	unsigned long long  dictionary_mem_used;
 
-	char                extra[4096];
+	char                extra[1024];
+
+	char                version_info[1024];
+	char                build_string[1024];
 };
 using pinba_status_variables_ptr = std::unique_ptr<pinba_status_variables_t>;
 

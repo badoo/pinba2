@@ -1,3 +1,5 @@
+#include "pinba_config.h"
+
 #include <string>
 
 #include <nanomsg/pipeline.h>
@@ -245,6 +247,14 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 }} // namespace { namespace aux {
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// export version and build info symbols explicitly
+extern "C" {
+	volatile char const pinba_version_info[] = "pinba_version_info " PINBA_VERSION " git: " PINBA_VCS_FULL_HASH " modified: " PINBA_VCS_WC_MODIFIED;
+	volatile char const pinba_build_string[] = "pinba_build_string " PINBA_BUILD_STRING;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 pinba_globals_t* pinba_globals()

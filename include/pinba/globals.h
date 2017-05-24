@@ -77,6 +77,8 @@ struct pinba_stats_t
 		std::atomic<uint64_t> packet_decode_err = {0};      // number of times we've failed to decode incoming message
 		std::atomic<uint64_t> batch_send_total  = {0};      // batch send attempts (to repacker)
 		std::atomic<uint64_t> batch_send_err    = {0};      // batch sends that failed
+		std::atomic<uint64_t> packet_send_total = {0};      // n packets in batches we attempted to send (to repacker)
+		std::atomic<uint64_t> packet_send_err   = {0};      // n packets that were lost to batch send fails
 	} udp;
 
 	std::vector<collector_stats_t> collector_threads;

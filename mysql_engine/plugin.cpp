@@ -1,3 +1,5 @@
+#include "pinba_config.h"
+
 #include "mysql_engine/plugin.h"
 #include "mysql_engine/handler.h"
 
@@ -55,6 +57,8 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 	vars->udp_packet_decode_err = stats->udp.packet_decode_err;
 	vars->udp_batch_send_total  = stats->udp.batch_send_total;
 	vars->udp_batch_send_err    = stats->udp.batch_send_err;
+	vars->udp_packet_send_total = stats->udp.packet_send_total;
+	vars->udp_packet_send_err   = stats->udp.packet_send_err;
 
 	{
 		std::lock_guard<std::mutex> lk_(stats->mtx);
@@ -134,6 +138,12 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 	}();
 	snprintf(vars->extra, sizeof(vars->extra), "%s", extra_str.c_str());
 
+	// version and build info
+	snprintf(vars->version_info, sizeof(vars->version_info),
+		"%s %s, git: %s, modified: %s",
+		PINBA_PACKAGE_NAME, PINBA_VERSION, PINBA_VCS_FULL_HASH, PINBA_VCS_WC_MODIFIED);
+
+	snprintf(vars->build_string, sizeof(vars->build_string), "%s", PINBA_BUILD_STRING);
 
 	return vars;
 }
@@ -489,6 +499,8 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 		SVAR(udp_packet_decode_err,             SHOW_LONGLONG)
 		SVAR(udp_batch_send_total,              SHOW_LONGLONG)
 		SVAR(udp_batch_send_err,                SHOW_LONGLONG)
+		SVAR(udp_packet_send_total,             SHOW_LONGLONG)
+		SVAR(udp_packet_send_err,               SHOW_LONGLONG)
 		SVAR(udp_ru_utime,                      SHOW_DOUBLE)
 		SVAR(udp_ru_stime,                      SHOW_DOUBLE)
 		SVAR(repacker_poll_total,               SHOW_LONGLONG)
@@ -510,6 +522,8 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 		SVAR(dictionary_size,                   SHOW_LONGLONG)
 		SVAR(dictionary_mem_used,               SHOW_LONGLONG)
 		SVAR(extra,                             SHOW_CHAR)
+		SVAR(version_info,                      SHOW_CHAR)
+		SVAR(build_string,                      SHOW_CHAR)
 
 	#undef SVAR
 		{ NullS, NullS, SHOW_LONG }

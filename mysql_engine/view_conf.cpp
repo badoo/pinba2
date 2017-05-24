@@ -82,6 +82,9 @@ namespace { namespace aux {
 			vcf->keys.push_back(key_s);
 		}
 
+		if (vcf->keys.size() > PINBA_LIMIT___MAX_KEY_PARTS)
+			return ff::fmt_err("we suport maximum of {0} keys (this is a tunable compile-time constant)", PINBA_LIMIT___MAX_KEY_PARTS);
+
 		return {};
 	}
 
@@ -166,6 +169,9 @@ namespace { namespace aux {
 		// TODO: should make histogram setup optional (i.e. have sensible defaults)
 		if (!hv_present)
 			return ff::fmt_err("hv=<time_lower>:<time_upper>:<n_buckets> must be present");
+
+		if (vcf->hv_bucket_count > PINBA_LIMIT___MAX_HISTOGRAM_SIZE)
+			return ff::fmt_err("we support maximum of {0} histogram buckets (this is a tunable compile-time constant)", PINBA_LIMIT___MAX_HISTOGRAM_SIZE);
 
 		// makes no sense to have histogram without percentiles specified
 		bool const pct_present = (vcf->percentiles.size() > 0);

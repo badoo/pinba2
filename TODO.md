@@ -23,32 +23,33 @@
 			- [x] FOUND! nanomsg connect is broken and leaks memory when connecting frequently (until nn_term() anyway)
 			see experiments/exp_request_call.cpp
 			and https://github.com/nanomsg/nanomsg/issues/575
+- [x] logging: levels + configureable format (mysql format from mysql plugin, etc.)
+- library
+	- [ ] plain-C API
+	- [ ] Go server, wrapping it, with http interface and stuff.
 - docs
 	- [x] README (well, should suffice for now)
 	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
 	- [x] guidelines - how to run mysql with jemalloc
 	- [x] describe configuration options in readme
+	- [ ] document packet fields validation rules and value limits
 	- [ ] internals/tuning guide
+- tools
 	- [ ] rtag_* reports support in scripts/convert_mysqldump.php
 	- [ ] hv_* reports support in scripts/convert_mysqldump.php
-- decent logging
-	- [x] i mean writing to stderr from a 'library' is not something you'd call nice
-	- [x] log levels support (with runtime change?)
-- report data filtering
-	- [x] min/max time
+- reports
+	- [x] filtering by request min/max time
 	- [x] request field/tag based filtering (i.e. take only requests with +browser=chrome)
 	- [x] timer tag based filtering (i.e. take only timers with @group=memcached)
-- per-report stats
-	- [x] rusage
-	- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
-- [x] per-report nanomsg queues instead of pubsub
-	- to track packets drops, slow reports, etc.
-	- we actually leak memory if any batches get dropped (due to incrementing ref counts for all present reports)
-- global stats
+- stats
 	- [x] mysql table
 	- [x] status variables
 	- [x] make stats table the same as status variables, or remove it in favor of the former
-- raw data support
+	- [ ] transient memory stats (aka. memory used by data, that was read from the network, and not yet aggregated)
+	- per-report stats
+		- [x] rusage
+		- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
+- [ ] raw data support
 - [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
 
@@ -64,7 +65,6 @@
 	- [x] timer reports
 	- [x] request reports
 	- [ ] packet reports
-	- [ ] performance numbers
 - [ ] {medium} thread cpu + numa affinity
 	- [ ] coordinator (or packet relay for that matter) affinity + priority
 	- [ ] repacker affinity + config support
