@@ -369,7 +369,7 @@ function generateV2Comment($report_type, $keys, $percentiles, $filters)
 {
     static $hv_min_time = 0;
     static $hv_max_time = 60;
-    static $hv_bucket_count = 10000;
+    static $hv_bucket_count = 32768;
 
     if (empty($keys)) {
         $keys = "no_keys";
