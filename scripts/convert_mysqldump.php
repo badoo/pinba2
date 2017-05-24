@@ -340,7 +340,7 @@ function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
         $fields_sql[] = "  `{$name}` {$field_type} NOT NULL,";
     }
     foreach ($tags as $tag) {
-        $fields_sql[] = "  `{$tag}` varchar(64) NOT NULL,";
+        $fields_sql[] = "  `{$tag}_value` varchar(64) NOT NULL,";
     }
     $fields_sql = implode("\n", $fields_sql);
 
