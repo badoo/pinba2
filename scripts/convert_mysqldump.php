@@ -275,6 +275,10 @@ function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
         showUsageAndExit(8);
     }
 
+    if ($comment === 'tag') {
+        return;
+    }
+
     $parts = explode(":", $comment);
     if (!isset($fields_config[$parts[0]])) {
         showUsageAndExit(9);
