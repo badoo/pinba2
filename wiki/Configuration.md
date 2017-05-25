@@ -25,13 +25,13 @@ Default: 60 (seconds)
 
 ## pinba_udp_reader_threads
 Number of UDP reader threads, default is usually enough here.<br>
-Default: 4<br>
+Default: 2<br>
 Max: 16
 
 ## pinba_repacker_threads
 Number of internal packet-repack threads, default is usually enough here.<br>
 Try tunning higher if stats udp_batches_lost is > 0.<br>
-Default: 4<br>
+Default: 2<br>
 Max: 16
 
 ## pinba_repacker_input_buffer

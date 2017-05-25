@@ -27,11 +27,15 @@ Key differences from original implementation
 - simpler to maintain
     - no 'pools' to configure, aka no re-configuration is required when traffic grows
     - no limits on tag name/value sizes (but keep it reasonable)
-- improved performance, reduced cpu/memory usage
+- aggregation performance improved, reduced cpu/memory usage
     - currently handles ~72k simple packets/sec (~200mbps) with 5 medium-complexity reports (4 keys aggregation) @ ~40% overall cpu usage
     - uses significantly less memory (orders of magnitude) for common cases, since we don't store raw requests by default
     - current goal is to be able to handle 10gpbs of incoming traffic with hundreds of reports
-    - selects from complex reports never slow down new data aggregation
+- select performance
+  - selects from complex reports never slow down new data aggregation
+  - selects in general will be slower for complex reports with thousands of rows and high percision percentiles
+    - select * from 30k rows report without percentiles takes at least ~200 milliseconds or so
+    - with percentiles (say histogram with 10k entries) - will add ~300ms to that
 
 
 Client libraries
