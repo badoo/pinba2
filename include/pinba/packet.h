@@ -96,6 +96,7 @@ static_assert(std::is_standard_layout<packed_timer_t>::value == true, "packed_ti
 
 struct packet_t
 {
+	uint32_t          sequence_id;     // sequence id, report shards use this number of figure out packets they need to process
 	uint32_t          host_id;
 	uint32_t          server_id;
 	uint32_t          script_id;
@@ -103,12 +104,12 @@ struct packet_t
 	uint32_t          status;          // can we make this uint16_t for http statuses only ?
 	uint32_t          doc_size;
 	uint32_t          memory_peak;
+	uint32_t          UNUSED____;      // memory_foorprint; // currently unused
 	uint16_t          tag_count;       // length of this->tags
 	uint16_t          timer_count;     // length of this->timers
 	duration_t        request_time;    // use microseconds_t here?
 	duration_t        ru_utime;        // use microseconds_t here?
 	duration_t        ru_stime;        // use microseconds_t here?
-	dictionary_t      *dictionary;     // dictionary used to translate ids to names
 	uint32_t          *tag_name_ids;   // request tag names  (sequential in memory = scan speed)
 	uint32_t          *tag_value_ids;  // request tag values (sequential in memory = scan speed) TODO: remove this ptr, address via tag_name_ids
 	packed_timer_t    *timers;
@@ -162,7 +163,7 @@ inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 };
 
 template<class SinkT>
-inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nmpa = NULL)
+inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, struct nmpa_s *nmpa = NULL)
 {
 	auto const n_timer_tags = [&]()
 	{
@@ -174,9 +175,9 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 
 	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packed_timer_t), sizeof(packed_tag_t));
 	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
-		packet->host_id, packet->dictionary->get_word(packet->host_id),
-		packet->server_id, packet->dictionary->get_word(packet->server_id),
-		packet->script_id, packet->dictionary->get_word(packet->script_id),
+		packet->host_id, d->get_word(packet->host_id),
+		packet->server_id, d->get_word(packet->server_id),
+		packet->script_id, d->get_word(packet->script_id),
 		packet->timer_count, packet->tag_count, n_timer_tags);
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
@@ -185,8 +186,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 		auto const value_id = packet->tag_value_ids[i];
 		ff::fmt(sink, "  tag[{0}]: {{ {1}:{2} -> {3}:{4} }\n",
 			i,
-			name_id, packet->dictionary->get_word(name_id),
-			value_id, packet->dictionary->get_word(value_id));
+			name_id, d->get_word(name_id),
+			value_id, d->get_word(value_id));
 	}
 	ff::fmt(sink, "\n");
 
@@ -201,8 +202,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, struct nmpa_s *nm
 			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(sink, "    {0}:{1} -> {2}:{3}\n",
-				name_id, packet->dictionary->get_word(name_id),
-				value_id, packet->dictionary->get_word(value_id));
+				name_id, d->get_word(name_id),
+				value_id, d->get_word(value_id));
 		}
 		ff::fmt(sink, "\n");
 	}

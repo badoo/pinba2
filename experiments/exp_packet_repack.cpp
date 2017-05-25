@@ -137,7 +137,7 @@ static inline size_t nmpa_user_space_used(const struct nmpa_s *nmpa)
 }
 
 
-inline void dump_packet(packet_t *packet, struct nmpa_s *nmpa)
+inline void dump_packet(packet_t *packet, dictionary_t const *d, struct nmpa_s *nmpa)
 {
 	auto const n_timer_tags = [&]()
 	{
@@ -150,9 +150,9 @@ inline void dump_packet(packet_t *packet, struct nmpa_s *nmpa)
 	ff::fmt(stderr, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
 	ff::fmt(stderr, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
 	ff::fmt(stderr, "p: {0}, {1}, {2}, n_timers: {3}, n_tags: {4}, n_timer_tags: {5}\n",
-		packet->dictionary->get_word(packet->host_id),
-		packet->dictionary->get_word(packet->server_id),
-		packet->dictionary->get_word(packet->script_id),
+		d->get_word(packet->host_id),
+		d->get_word(packet->server_id),
+		d->get_word(packet->script_id),
 		packet->timer_count, packet->tag_count, n_timer_tags);
 
 	for (unsigned i = 0; i < packet->timer_count; i++)
@@ -166,8 +166,8 @@ inline void dump_packet(packet_t *packet, struct nmpa_s *nmpa)
 			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(stdout, "    {0}:{1} -> {2}:{3}\n",
-				name_id, packet->dictionary->get_word(name_id),
-				value_id, packet->dictionary->get_word(value_id));
+				name_id, d->get_word(name_id),
+				value_id, d->get_word(value_id));
 		}
 		ff::fmt(stdout, "\n");
 	}
@@ -240,7 +240,7 @@ try
 
 		packet_t *packet = pinba_request_to_packet(request, &d, &nmpa);
 
-		dump_packet(packet, &nmpa);
+		dump_packet(packet, &d, &nmpa);
 		nmpa_empty(&nmpa);
 	}
 

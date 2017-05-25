@@ -33,6 +33,7 @@ try
 	pinba_globals_t *globals = pinba_globals_init(&options);
 
 	auto packet_data = packet_t {
+		.sequence_id = 0,
 		.host_id = 1,
 		.server_id = 0,
 		.script_id = 7,
@@ -40,12 +41,12 @@ try
 		.status = 0,
 		.doc_size = 9999,
 		.memory_peak = 1,
+		.UNUSED____ = 1,
 		.tag_count = 0,
 		.timer_count = 0,
 		.request_time = duration_t{ 15 * msec_in_sec },
 		.ru_utime = duration_t{ 3 * msec_in_sec },
 		.ru_stime = duration_t{ 1 * msec_in_sec },
-		.dictionary = NULL,
 		.tag_name_ids = NULL,
 		.tag_value_ids = NULL,
 		.timers = NULL,
@@ -68,7 +69,7 @@ try
 
 		packet = pinba_request_to_packet(request, globals->dictionary(), &nmpa);
 
-		debug_dump_packet(stdout, packet);
+		debug_dump_packet(stdout, packet, globals->dictionary());
 	}
 
 

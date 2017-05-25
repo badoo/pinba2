@@ -143,6 +143,7 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 		// ff::fmt(stdout, "{0}; dict xform {1} -> {2}\n", __func__, r->dictionary[i], td[i]);
 	}
 
+	// p->sequence_id  = 0; // there is no need to touch this field, caller know how to deal with this
 	p->host_id      = d->get_or_add(r->hostname);
 	p->server_id    = d->get_or_add(r->server_name);
 	p->script_id    = d->get_or_add(r->script_name);
@@ -153,7 +154,6 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 	p->request_time = duration_from_float(r->request_time);
 	p->ru_utime     = duration_from_float(r->ru_utime);
 	p->ru_stime     = duration_from_float(r->ru_stime);
-	p->dictionary   = dict;
 
 	// bloom should be somewhere close to the top
 	p->timer_bloom = (timertag_bloom_t*)nmpa_calloc(nmpa, sizeof(timertag_bloom_t)); // NOTE: no ctor is called here!
