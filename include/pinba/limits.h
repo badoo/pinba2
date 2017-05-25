@@ -12,7 +12,7 @@
 //                since reports have hardcoded switch() that must be the same as this constant
 //                fixable with some boost/preprocessor magic
 #ifndef PINBA_LIMIT___MAX_KEY_PARTS
-#define PINBA_LIMIT___MAX_KEY_PARTS (7)
+#define PINBA_LIMIT___MAX_KEY_PARTS 7
 #endif
 
 // max histogram size

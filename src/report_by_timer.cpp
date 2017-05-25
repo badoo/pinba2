@@ -3,6 +3,9 @@
 #include <functional>
 #include <utility>
 
+#include <boost/preprocessor/arithmetic/add.hpp>
+#include <boost/preprocessor/repetition/repeat.hpp>
+
 #include <meow/stopwatch.hpp>
 #include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
 
@@ -764,16 +767,11 @@ report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_tim
 		default:
 			throw std::logic_error(ff::fmt_str("report_by_timer supports up to {0} keys, {1} given", max_keys, n_keys));
 
-	#define CASE(N) \
-		case N: return std::make_shared<aux::report___by_timer_t<N>>(globals, conf);
+	#define CASE(z, N, unused) \
+		case N: return std::make_shared<aux::report___by_timer_t<N>>(globals, conf); \
+	/**/
 
-		CASE(1);
-		CASE(2);
-		CASE(3);
-		CASE(4);
-		CASE(5);
-		CASE(6);
-		CASE(7);
+	BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_ADD(PINBA_LIMIT___MAX_KEY_PARTS, 1), CASE, 0);
 
 	#undef CASE
 	}

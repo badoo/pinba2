@@ -17,7 +17,7 @@ Key differences from original implementation
     - raw data tables have VERY high memory usage requirements and uses are limited
 - no support for getting raw histogram data (yet)
 - simpler, more flexible report configuration
-    - only 3 kinds of reports (of which you mostly need one: timer), covering all use cases from original pinba
+    - all use cases from original pinba are covered by only 3 kinds of reports (of which you mostly need one: timer)
     - simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
         - supports 7 keys max at the moment (never seen anyone using more than 5 anyway)
         - performance is about the same, regardless of the number of keys used
