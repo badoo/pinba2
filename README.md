@@ -196,7 +196,7 @@ General information about incoming packets
 
 - just aggregates everything into single item (mostly used to gauge general traffic)
 - Aggregation_key is always empty
-- Aggregated_data is just totals: { req_count, timer_count, hit_count, total_time, ru_utime, ru_stime, traffic_kb, mem_used }
+- Aggregated_data is global packet totals: { req_count, timer_count, hit_count, total_time, ru_utime, ru_stime, traffic, memory_footprint }
 
 Table comment syntax
 
@@ -211,16 +211,16 @@ mysql> CREATE TABLE `info` (
       `time_total` double NOT NULL,
       `ru_utime_total` double NOT NULL,
       `ru_stime_total` double NOT NULL,
-      `traffic_kb` bigint(20) unsigned NOT NULL,
-      `memory_usage` bigint(20) unsigned NOT NULL
+      `traffic` bigint(20) unsigned NOT NULL,
+      `memory_footprint` bigint(20) unsigned NOT NULL
     ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
 
 mysql> select * from info;
-+-----------+-------------+------------+----------------+----------------+------------+--------------+
-| req_count | timer_count | time_total | ru_utime_total | ru_stime_total | traffic_kb | memory_usage |
-+-----------+-------------+------------+----------------+----------------+------------+--------------+
-|    254210 |      508420 |     254.21 |              0 |              0 |          0 |            0 |
-+-----------+-------------+------------+----------------+----------------+------------+--------------+
++-----------+-------------+-------------------+------------------+-----------------+-----------+------------------+
+| req_count | timer_count | time_total        | ru_utime_total   | ru_stime_total  | traffic   | memory_footprint |
++-----------+-------------+-------------------+------------------+-----------------+-----------+------------------+
+|   3940547 |    59017168 | 6982620.849607239 | 128279.101920963 | 18963.268457099 | 141734072 |  317514981871616 |
++-----------+-------------+-------------------+------------------+-----------------+-----------+------------------+
 1 row in set (0.00 sec)
 ```
 
