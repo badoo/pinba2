@@ -276,12 +276,14 @@ namespace { namespace aux {
 							if (dst.saved_hv.empty())
 								dst.saved_hv.reserve(ticks.size());
 
-							hv_appends++;
 							dst.saved_hv.push_back(&src_hv.values);
 						}
 					}
 
 					key_lookups += tick->data.items.size();
+
+					if (need_histograms)
+						hv_appends  += tick->data.hvs.size();
 				}
 
 				LOG_DEBUG(globals->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
