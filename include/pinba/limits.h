@@ -8,9 +8,6 @@
 // TUNABLE limits
 
 // max number of key parts we support for reports
-// FIXME(antoxa): this isn't really very tunable
-//                since reports have hardcoded switch() that must be the same as this constant
-//                fixable with some boost/preprocessor magic
 #ifndef PINBA_LIMIT___MAX_KEY_PARTS
 #define PINBA_LIMIT___MAX_KEY_PARTS 7
 #endif
