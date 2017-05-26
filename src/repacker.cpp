@@ -287,8 +287,6 @@ namespace { namespace aux {
 			dictionary_t *dictionary = globals_->dictionary();
 			repacker_dictionary_t r_dictionary { globals_->dictionary() };
 
-			uint32_t packet_sequence_id = thread_id; // start different in different threads, but that doesn't matter anyway
-
 			// processing loop
 			nmsg_poller_t poller;
 
@@ -357,15 +355,6 @@ namespace { namespace aux {
 
 						// packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
 						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
-
-						// sequence
-						// NOTE: this can be incremented per-packet or per-batch
-						//       which gives different report shards behaviour, aka.
-						//       per-packet: reports will most likely process every X-th packet from incoming batch
-						//       per-batch:  reports will process full batch and then skip other batches
-						//
-						//       per-batch is probably better with cache locality, but needs some benchmarking tbh
-						packet->sequence_id = ++packet_sequence_id;
 
 						// append to current batch
 						batch->packets[batch->packet_count] = packet;

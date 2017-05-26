@@ -32,24 +32,22 @@ try
 	pinba_options_t options = {};
 	pinba_globals_t *globals = pinba_globals_init(&options);
 
-	auto packet_data = packet_t {
-		.sequence_id = 0,
-		.host_id = 1,
-		.server_id = 0,
-		.script_id = 7,
-		.schema_id = 0,
-		.status = 0,
-		.doc_size = 9999,
-		.memory_peak = 1,
-		.UNUSED____ = 1,
-		.tag_count = 0,
-		.timer_count = 0,
-		.request_time = duration_t{ 15 * msec_in_sec },
-		.ru_utime = duration_t{ 3 * msec_in_sec },
-		.ru_stime = duration_t{ 1 * msec_in_sec },
-		.tag_name_ids = NULL,
+	packet_t packet_data = {
+		.host_id       = 1,
+		.server_id     = 0,
+		.script_id     = 7,
+		.schema_id     = 0,
+		.status        = 0,
+		.traffic       = 9999,
+		.mem_used      = 1,
+		.tag_count     = 0,
+		.timer_count   = 0,
+		.request_time  = duration_t{ 15 * msec_in_sec },
+		.ru_utime      = duration_t{ 3 * msec_in_sec },
+		.ru_stime      = duration_t{ 1 * msec_in_sec },
+		.tag_name_ids  = NULL,
 		.tag_value_ids = NULL,
-		.timers = NULL,
+		.timers        = NULL,
 	};
 
 	packet_t *packet = &packet_data;

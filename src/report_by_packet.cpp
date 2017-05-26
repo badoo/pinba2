@@ -72,8 +72,8 @@ namespace { namespace aux {
 				data.time_total  += packet->request_time;
 				data.ru_utime    += packet->ru_utime;
 				data.ru_stime    += packet->ru_stime;
-				data.traffic_kb  += packet->doc_size;
-				data.mem_usage   += packet->memory_peak;
+				data.traffic     += packet->traffic;
+				data.mem_used    += packet->mem_used;
 			}
 
 			void hv_increment(packet_t *packet, uint32_t hv_bucket_count, duration_t hv_bucket_d)
@@ -124,8 +124,8 @@ namespace { namespace aux {
 					dst.data.time_total  += src.data.time_total;
 					dst.data.ru_utime    += src.data.ru_utime;
 					dst.data.ru_stime    += src.data.ru_stime;
-					dst.data.traffic_kb  += src.data.traffic_kb;
-					dst.data.mem_usage   += src.data.mem_usage;
+					dst.data.traffic  += src.data.traffic;
+					dst.data.mem_used    += src.data.mem_used;
 
 					if (rinfo.hv_enabled)
 					{

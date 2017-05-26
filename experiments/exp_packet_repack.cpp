@@ -22,98 +22,6 @@
 using meow::string_ref;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
-struct dictionary_t
-{
-	typedef std::vector<std::string>                                   words_t;
-	typedef std::unordered_map<str_ref, uint32_t, meow::hash<str_ref>> hash_t;
-
-	words_t  words;
-	hash_t   hash;
-
-	str_ref get_word(uint32_t word_id)
-	{
-		if (word_id >= words.size())
-			return {};
-		return words[word_id];
-	}
-
-	uint32_t get_or_add(str_ref const word)
-	{
-		auto const it = hash.find(word);
-		if (hash.end() != it)
-		{
-			return it->second;
-		}
-
-		// insert new element
-		words.push_back(word.str());
-
-		assert(words.size() < size_t(INT_MAX));
-
-		auto const word_id = static_cast<uint32_t>(words.size() - 1);
-		hash.insert({word, word_id});
-		return word_id;
-	}
-};
-#endif
-////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
-packet_t* pinba_request_to_packet(Pinba__Request *r, dictionary_t *d, struct nmpa_s *nmpa)
-{
-	auto p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
-
-	uint32_t td[r->n_dictionary] = {0};
-
-	for (unsigned i = 0; i < r->n_dictionary; i++)
-	{
-		td[i] = d->get_or_add(r->dictionary[i]);
-	}
-
-	p->host_id      = d->get_or_add(r->hostname);
-	p->server_id    = d->get_or_add(r->server_name);
-	p->script_id    = d->get_or_add(r->script_name);
-	p->schema_id    = d->get_or_add(r->schema);
-	p->status       = r->status;
-	p->doc_size     = r->document_size;
-	p->memory_peak  = r->memory_peak;
-	p->request_time = duration_from_float(r->request_time);
-	p->ru_utime     = duration_from_float(r->ru_utime);
-	p->ru_stime     = duration_from_float(r->ru_stime);
-	p->dictionary   = d;
-
-	p->timer_count = r->n_timer_value;
-	p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
-	for_each_timer(r, [&](Pinba__Request *r, timer_data_t const& timer)
-	{
-		packed_timer_t *t = p->timers + timer.id;
-		t->hit_count = timer.hit_count;
-		t->value     = timer.value;
-		t->ru_utime  = timer.ru_utime;
-		t->ru_stime  = timer.ru_stime;
-		t->tag_count = timer.tag_count;
-
-		if (timer.tag_count > 0)
-		{
-			t->tags = (packed_tag_t*)nmpa_alloc(nmpa, sizeof(packed_tag_t) * timer.tag_count);
-
-			for (unsigned i = 0; i < timer.tag_count; i++)
-			{
-				t->tags[i] = { td[timer.tag_name_ids[i]], td[timer.tag_value_ids[i]] };
-			}
-		}
-	});
-
-	p->tag_count = r->n_tag_name;
-	p->tags = (packed_tag_t*)nmpa_alloc(nmpa, sizeof(packed_tag_t) * r->n_tag_name);
-	for (unsigned i = 0; i < r->n_tag_name; i++)
-	{
-		p->tags[i] = { td[r->tag_name[i]], td[r->tag_value[i]] };
-	}
-
-	return p;
-}
-#endif
 
 static inline size_t nmpa_user_space_used(const struct nmpa_s *nmpa)
 {
@@ -172,15 +80,6 @@ inline void dump_packet(packet_t *packet, dictionary_t const *d, struct nmpa_s *
 		ff::fmt(stdout, "\n");
 	}
 }
-
-// typedef std::unique_ptr<nmpa_s, nmpa_free> nmpa_ptr;
-
-// inline nmpa_ptr nmpa_create(size_t block_sz)
-// {
-// 	nmpa_ptr nmpa { new nmpa_s; };
-// 	nmpa_init(nmpa.get(), block_sz);
-// 	return move(nmpa);
-// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

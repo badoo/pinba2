@@ -149,8 +149,8 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 	p->script_id    = d->get_or_add(r->script_name);
 	p->schema_id    = d->get_or_add(r->schema);
 	p->status       = r->status;
-	p->doc_size     = r->document_size;
-	p->memory_peak  = r->memory_peak;
+	p->traffic      = r->document_size;
+	p->mem_used     = r->memory_footprint;
 	p->request_time = duration_from_float(r->request_time);
 	p->ru_utime     = duration_from_float(r->ru_utime);
 	p->ru_stime     = duration_from_float(r->ru_stime);

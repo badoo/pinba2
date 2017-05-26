@@ -151,7 +151,7 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				STORE_FIELD(8,  vars_->udp_batch_send_err);
 				STORE_FIELD(9,  vars_->udp_packet_send_total);
 				STORE_FIELD(10, vars_->udp_packet_send_err);
-				STORE_FIELD(11,  vars_->udp_ru_utime);
+				STORE_FIELD(11, vars_->udp_ru_utime);
 				STORE_FIELD(12, vars_->udp_ru_stime);
 
 				STORE_FIELD(13, vars_->repacker_poll_total);
@@ -762,9 +762,9 @@ private:
 						STORE_FIELD(5,  duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
 						STORE_FIELD(6,  duration_seconds_as_double(row->ru_stime));
 						STORE_FIELD(7,  duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(8,  row->traffic_kb);
-						STORE_FIELD(9,  double(row->traffic_kb) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(10, row->mem_usage);
+						STORE_FIELD(8,  row->traffic);
+						STORE_FIELD(9,  double(row->traffic) / duration_seconds_as_double(rinfo->time_window));
+						STORE_FIELD(10, row->mem_used);
 					}
 
 					continue;
@@ -805,13 +805,13 @@ private:
 
 					switch (findex)
 					{
-						STORE_FIELD(0,  row->req_count);
-						STORE_FIELD(1,  row->timer_count);
+						STORE_FIELD(0, row->req_count);
+						STORE_FIELD(1, row->timer_count);
 						STORE_FIELD(2, duration_seconds_as_double(row->time_total));
 						STORE_FIELD(3, duration_seconds_as_double(row->ru_utime));
 						STORE_FIELD(4, duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(5,  row->traffic_kb);
-						STORE_FIELD(6,  row->mem_usage);
+						STORE_FIELD(5, row->traffic);
+						STORE_FIELD(6, row->mem_used);
 					}
 
 					continue;

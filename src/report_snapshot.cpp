@@ -66,7 +66,7 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5}, {6} }",
 				data->req_count, data->timer_count, data->time_total, data->ru_utime, data->ru_stime,
-				data->traffic_kb, data->mem_usage);
+				data->traffic, data->mem_used);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
 			ff::fmt(sink, " {{ rps: {0} }",
@@ -83,7 +83,7 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 
 			ff::fmt(sink, "{{ {0}, {1}, {2}, {3}, {4}, {5} }",
 				data->req_count, data->time_total, data->ru_utime, data->ru_stime,
-				data->traffic_kb, data->mem_usage);
+				data->traffic, data->mem_used);
 
 			auto const time_window = rinfo->time_window; // TODO: calculate real time window from snapshot data
 			ff::fmt(sink, " {{ rps: {0} }",

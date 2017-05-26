@@ -14,7 +14,6 @@ struct report_row_data___by_timer_t
 	uint32_t    req_count;   // number of requests timer with such tag was present in
 	uint32_t    hit_count;   // timer hit X times
 	duration_t  time_total;  // sum of all timer values (i.e. total time spent in this timer)
-	// timeval_t   time_total;  // sum of all timer values (i.e. total time spent in this timer)
 	duration_t  ru_utime;    // same for rusage user
 	duration_t  ru_stime;    // same for rusage system
 

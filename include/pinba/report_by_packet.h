@@ -17,8 +17,8 @@ struct report_row_data___by_packet_t
 	duration_t time_total;
 	duration_t ru_utime;
 	duration_t ru_stime;
-	uint64_t   traffic_kb;
-	uint64_t   mem_usage;
+	uint64_t   traffic;
+	uint64_t   mem_used;
 
 	report_row_data___by_packet_t()
 	{

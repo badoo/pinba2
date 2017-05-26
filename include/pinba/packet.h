@@ -96,15 +96,13 @@ static_assert(std::is_standard_layout<packed_timer_t>::value == true, "packed_ti
 
 struct packet_t
 {
-	uint32_t          sequence_id;     // sequence id, report shards use this number of figure out packets they need to process
 	uint32_t          host_id;
 	uint32_t          server_id;
 	uint32_t          script_id;
 	uint32_t          schema_id;       // can we make this uint16_t, expecting number of schemas to be small?
 	uint32_t          status;          // can we make this uint16_t for http statuses only ?
-	uint32_t          doc_size;
-	uint32_t          memory_peak;
-	uint32_t          UNUSED____;      // memory_foorprint; // currently unused
+	uint32_t          traffic;         // document_size
+	uint32_t          mem_used;        // memory_footprint
 	uint16_t          tag_count;       // length of this->tags
 	uint16_t          timer_count;     // length of this->timers
 	duration_t        request_time;    // use microseconds_t here?
@@ -118,7 +116,7 @@ struct packet_t
 
 // packet_t has been carefully crafted to avoid padding inside and eat as little memory as possible
 // make sure we haven't made a mistake anywhere
-static_assert(sizeof(packet_t) == 96, "make sure packet_t has no padding inside");
+static_assert(sizeof(packet_t) == 88, "make sure packet_t has no padding inside");
 static_assert(std::is_standard_layout<packet_t>::value == true, "packet_t must be a standard layout type");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
