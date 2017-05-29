@@ -31,11 +31,14 @@ Key differences from original implementation
     - currently handles ~72k simple packets/sec (~200mbps) with 5 medium-complexity reports (4 keys aggregation) @ ~40% overall cpu usage
     - uses significantly less memory (orders of magnitude) for common cases, since we don't store raw requests by default
     - current goal is to be able to handle 10gpbs of incoming traffic with hundreds of reports
-- select performance
+- select performance - might be slower
   - selects from complex reports never slow down new data aggregation
   - selects in general will be slower for complex reports with thousands of rows and high percision percentiles
     - select * from 30k rows report without percentiles takes at least ~200 milliseconds or so
     - with percentiles (say histogram with 10k entries) - will add ~300ms to that
+- misc
+  - traffic and memory_footprint are measured in bytes (original pinba truncates to kilobytes)
+  - no *_percent fields in reports (will add)
 
 
 Client libraries
@@ -52,6 +55,14 @@ list from http://pinba.org/
 - Python: https://github.com/IsCoolEntertainment/pynba
 - Java: https://github.com/alex-krash/jpinba
 - Go: https://github.com/mkevac/gopinba
+
+
+Migrating from original Pinba
+-----------------------------
+
+We've got some scripts to help [in scripts directory](scripts).
+Convert mysqldump of your old tables to new format with [this script](scripts/convert_mysqldump.php).
+
 
 
 More Info
