@@ -55,7 +55,54 @@
 #else
 #define __GNUC_PREREQ(maj, min) 0
 #endif
+#endif /* __GNUC_PREREQ */
+
+#ifndef __CLANG_PREREQ
+#ifdef __clang__
+#define __CLANG_PREREQ(maj, min)                                               \
+  ((__clang_major__ << 16) + __clang_minor__ >= ((maj) << 16) + (min))
+#else
+#define __CLANG_PREREQ(maj, min) (0)
 #endif
+#endif /* __CLANG_PREREQ */
+
+#ifndef __dll_export
+#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(__GNUC__) || __has_attribute(dllexport)
+#define __dll_export __attribute__((dllexport))
+#elif defined(_MSC_VER)
+#define __dll_export __declspec(dllexport)
+#else
+#define __dll_export
+#endif
+#elif defined(__GNUC__) || __has_attribute(visibility)
+#define __dll_export __attribute__((visibility("default")))
+#else
+#define __dll_export
+#endif
+#endif /* __dll_export */
+
+#ifndef __dll_import
+#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(__GNUC__) || __has_attribute(dllimport)
+#define __dll_import __attribute__((dllimport))
+#elif defined(_MSC_VER)
+#define __dll_import __declspec(dllimport)
+#else
+#define __dll_import
+#endif
+#else
+#define __dll_import
+#endif
+#endif /* __dll_import */
+
+#if defined(t1ha_EXPORTS)
+#define T1HA_API __dll_export
+#elif defined(t1ha_IMPORTS)
+#define T1HA_API __dll_import
+#else
+#define T1HA_API
+#endif /* T1HA_API */
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,21 +113,21 @@ extern "C" {
  *    in other cases may runs slowly.
  *  - returns same result on all architectures and CPUs,
  *    but it is differs from t1ha(). */
-uint64_t t1ha1_le(const void *data, size_t len, uint64_t seed);
+T1HA_API uint64_t t1ha1_le(const void *data, size_t length, uint64_t seed);
 
 /* The big-endian version.
  *  - runs faster on 64-bit big-endian platforms,
  *    in other cases may runs slowly.
  *  - returns same result on all architectures and CPUs,
  *    but it is differs from t1ha(). */
-uint64_t t1ha1_be(const void *data, size_t len, uint64_t seed);
+T1HA_API uint64_t t1ha1_be(const void *data, size_t length, uint64_t seed);
 
 /* The nicname for generic version of "Fast Positive Hash".
  *  - returns same result on all architectures and CPUs.
  *  - created for 64-bit little-endian platforms,
  *    in other cases may runs slowly. */
-static __inline uint64_t t1ha(const void *data, size_t len, uint64_t seed) {
-  return t1ha1_le(data, len, seed);
+static __inline uint64_t t1ha(const void *data, size_t length, uint64_t seed) {
+  return t1ha1_le(data, length, seed);
 }
 
 /* t1ha0() is a facade that selects most quick-and-dirty hash
@@ -88,8 +135,9 @@ static __inline uint64_t t1ha(const void *data, size_t len, uint64_t seed) {
  *
  * BE CAREFUL!!!  This is means:
  *
- *   1. The quality of hash is a subject for tradeoffs with performance
- *      and may be lower than t1ha1(), especially on 32-bit targets.
+ *   1. The quality of hash is a subject for tradeoffs with performance.
+ *      So, the quality and strength of t1ha0() may be lower than t1ha1(),
+ *      especially on 32-bit targets, but then much faster.
  *      However, guaranteed that it passes all SMHasher tests.
  *
  *   2. No warranty that the hash result will be same for particular
@@ -99,23 +147,24 @@ static __inline uint64_t t1ha(const void *data, size_t len, uint64_t seed) {
  *      used only in runtime, but should not be persist or transferred
  *      over a network. */
 
-#if defined(__ELF__) && (__GNUC_PREREQ(4, 6) || __has_attribute(ifunc))
-uint64_t t1ha0(const void *data, size_t len, uint64_t seed);
+#ifdef __ELF__
+T1HA_API uint64_t t1ha0(const void *data, size_t length, uint64_t seed);
 #else
-extern uint64_t (*_t1ha0_ptr)(const void *data, size_t len, uint64_t seed);
-static __inline uint64_t t1ha0(const void *data, size_t len, uint64_t seed) {
-  return _t1ha0_ptr(data, len, seed);
+T1HA_API extern uint64_t (*_t1ha0_ptr)(const void *data, size_t length,
+                                       uint64_t seed);
+static __inline uint64_t t1ha0(const void *data, size_t length, uint64_t seed) {
+  return _t1ha0_ptr(data, length, seed);
 }
-#endif
+#endif /* __ELF__ */
 
 #ifdef T1HA_TESTING
-uint64_t _t1ha_32le(const void *data, size_t len, uint64_t seed);
-uint64_t _t1ha_32be(const void *data, size_t len, uint64_t seed);
+uint64_t _t1ha_32le(const void *data, size_t length, uint64_t seed);
+uint64_t _t1ha_32be(const void *data, size_t length, uint64_t seed);
 
 #if ((defined(__AES__) || __GNUC_PREREQ(4, 4) || __has_attribute(target)) &&   \
      (defined(__x86_64__) || defined(__i386__))) ||                            \
     defined(_M_X64) || defined(_M_IX86)
-uint64_t _t1ha_ia32aes(const void *data, size_t len, uint64_t seed);
+uint64_t _t1ha_ia32aes(const void *data, size_t length, uint64_t seed);
 #endif /* __AES__ */
 
 #endif /* T1HA_TESTING */

@@ -30,8 +30,8 @@ libpinba2_a_SOURCES = \
 	report_by_packet.cpp \
 	report_by_request.cpp \
 	report_by_timer.cpp \
-	../t1ha/t1ha0.c \
-	../t1ha/t1ha1.c \
+	../t1ha/src/t1ha0.c \
+	../t1ha/src/t1ha1.c \
 	../proto/pinba.pb-c.c \
 	#
 

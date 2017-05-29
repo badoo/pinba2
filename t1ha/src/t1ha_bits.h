@@ -59,11 +59,12 @@
     defined(__MIPSEL__) || defined(_MIPSEL) || defined(__MIPSEL) ||            \
     defined(__i386) || defined(__x86_64__) || defined(_M_IX86) ||              \
     defined(_M_X64) || defined(i386) || defined(_X86_) || defined(__i386__) || \
-    defined(_X86_64_) || defined(_M_ARM) || defined(__e2k__)
+    defined(_X86_64_) || defined(_M_ARM) || defined(_M_ARM64) ||               \
+    defined(__e2k__)
 #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 #elif defined(__BIG_ENDIAN__) || defined(_BIG_ENDIAN) || defined(__ARMEB__) || \
     defined(__THUMBEB__) || defined(__AARCH64EB__) || defined(__MIPSEB__) ||   \
-    defined(_MIPSEB) || defined(__MIPSEB)
+    defined(_MIPSEB) || defined(__MIPSEB) || defined(_M_IA64)
 #define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 #else
 #error __BYTE_ORDER__ should be defined.
@@ -121,11 +122,7 @@
 #endif
 #endif
 
-#pragma warning(                                                               \
-    disable : 4710) /* C4710: C4710: 'mux64': function not inlined */
-#pragma warning(                                                               \
-    disable : 4711) /* C4711: function 'x86_cpu_features' selected for         \
-                       automatic inline expansion */
+#pragma warning(push, 1)
 
 #include <intrin.h>
 #include <stdlib.h>
@@ -139,7 +136,7 @@
 #define rot32(v, s) _rotr(v, s)
 #define __inline __forceinline
 
-#if defined(_M_ARM64) || defined(_M_X64)
+#if defined(_M_ARM64) || defined(_M_X64) || defined(_M_IA64)
 #pragma intrinsic(_umul128)
 #define mul_64x64_128(a, b, ph) _umul128(a, b, ph)
 #pragma intrinsic(__umulh)
@@ -152,6 +149,14 @@
 #elif defined(_M_ARM)
 #define mul_32x32_64(a, b) _arm_umull(a, b)
 #endif
+
+#pragma warning(pop)
+
+#pragma warning(disable : 4514) /* 'xyz': unreferenced inline function         \
+                                   has been removed */
+#pragma warning(disable : 4710) /* 'xyz': function not inlined */
+#pragma warning(disable : 4711) /* function 'xyz' selected for                 \
+                                   automatic inline expansion */
 
 #endif /* Compiler */
 
@@ -190,6 +195,12 @@ static __inline uint32_t bswap32(uint32_t v) {
 #ifndef bswap16
 static __inline uint16_t bswap16(uint16_t v) { return v << 8 | v >> 8; }
 #endif /* bswap16 */
+
+#ifndef T1HA_TESTING
+#define T1HA_INTERNAL static maybe_unused
+#else
+#define T1HA_INTERNAL
+#endif /* T1HA_TESTING */
 
 /***************************************************************************/
 

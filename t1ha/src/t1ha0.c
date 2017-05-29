@@ -40,7 +40,11 @@
  * for The 1Hippeus project - zerocopy messaging in the spirit of Sparta!
  */
 
-#include "t1ha.h"
+#ifdef _MSC_VER
+#pragma warning(disable : 4464) /* relative include path contains '..' */
+#endif
+
+#include "../t1ha.h"
 #include "t1ha_bits.h"
 
 static __inline uint32_t tail32_le(const void *v, size_t tail) {
@@ -139,7 +143,7 @@ static const uint32_t q4 = 0x86F0FD61;
 static const uint32_t q5 = 0xCA2DA6FB;
 static const uint32_t q6 = 0xC4BB3575;
 
-uint64_t _t1ha_32le(const void *data, size_t len, uint64_t seed) {
+T1HA_INTERNAL uint64_t _t1ha_32le(const void *data, size_t len, uint64_t seed) {
   uint32_t a = rot32((uint32_t)len, s1) + (uint32_t)seed;
   uint32_t b = (uint32_t)len ^ (uint32_t)(seed >> 32);
 
@@ -208,7 +212,7 @@ uint64_t _t1ha_32le(const void *data, size_t len, uint64_t seed) {
   }
 }
 
-uint64_t _t1ha_32be(const void *data, size_t len, uint64_t seed) {
+T1HA_INTERNAL uint64_t _t1ha_32be(const void *data, size_t len, uint64_t seed) {
   uint32_t a = rot32((uint32_t)len, s1) + (uint32_t)seed;
   uint32_t b = (uint32_t)len ^ (uint32_t)(seed >> 32);
 
@@ -301,15 +305,21 @@ static uint32_t x86_cpu_features(void) {
 }
 #endif
 
-#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) ||            \
-    defined(_M_X64) || defined(i386) || defined(_X86_) || defined(_X86_64_)
+#undef T1HA_ia32aes_AVAILABLE
+#if defined(_X86_64_) || defined(__x86_64__) || defined(_M_X64) ||             \
+    ((defined(__i386__) || defined(_M_IX86) || defined(i386) ||                \
+      defined(_X86_)) &&                                                       \
+     (!defined(_MSC_VER) || (_MSC_VER >= 1900)))
+
+#define T1HA_ia32aes_AVAILABLE
 #include <emmintrin.h>
 #include <smmintrin.h>
 #include <wmmintrin.h>
 
 #if defined(__x86_64__) && defined(__ELF__) &&                                 \
     (__GNUC_PREREQ(4, 6) || __has_attribute(ifunc)) && __has_attribute(target)
-uint64_t _t1ha_ia32aes(const void *data, size_t len, uint64_t seed)
+T1HA_INTERNAL uint64_t _t1ha_ia32aes(const void *data, size_t len,
+                                     uint64_t seed)
     __attribute__((ifunc("t1ha_aes_resolve")));
 
 static uint64_t t1ha_ia32aes_avx(const void *data, size_t len, uint64_t seed);
@@ -430,13 +440,13 @@ t1ha_ia32aes_avx(const void *data, size_t len, uint64_t seed) {
 
 static uint64_t
 #if __GNUC_PREREQ(4, 4) || __has_attribute(target)
-    __attribute__((target("aes")))
+    __attribute__((target("aes,no-avx,no-avx2")))
 #endif
     t1ha_ia32aes_noavx(const void *data, size_t len, uint64_t seed) {
 
 #else /* ELF && ifunc */
 
-uint64_t
+T1HA_INTERNAL uint64_t
 #if __GNUC_PREREQ(4, 4) || __has_attribute(target)
     __attribute__((target("aes")))
 #endif
@@ -550,26 +560,37 @@ uint64_t
 
 /***************************************************************************/
 
-static uint64_t (*t1ha0_resolve(void))(const void *, size_t, uint64_t) {
-#if defined(__x86_64) || defined(_M_IX86) || defined(_M_X64) ||                \
-    defined(i386) || defined(_X86_) || defined(__i386__) || defined(_X86_64_)
+static
+#if __GNUC_PREREQ(4, 0) || __has_attribute(used)
+    __attribute__((used))
+#endif
+    uint64_t (*t1ha0_resolve(void))(const void *, size_t, uint64_t) {
+#ifdef T1HA_ia32aes_AVAILABLE
 
   uint32_t features = x86_cpu_features();
   if (features & (1l << 25))
     return _t1ha_ia32aes;
-#endif /* x86 */
+#endif /* T1HA_ia32aes_AVAILABLE */
 
+  return (sizeof(size_t) >= 8)
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  return (sizeof(long) >= 8) ? t1ha1_be : _t1ha_32be;
+             ? t1ha1_be
+             : _t1ha_32be;
 #else
-  return (sizeof(long) >= 8) ? t1ha1_le : _t1ha_32le;
+             ? t1ha1_le
+             : _t1ha_32le;
 #endif
 }
 
-#if defined(__ELF__) && (__GNUC_PREREQ(4, 6) || __has_attribute(ifunc))
+#ifdef __ELF__
 
+#if __GNUC_PREREQ(4, 6) || __has_attribute(ifunc)
 uint64_t t1ha0(const void *data, size_t len, uint64_t seed)
     __attribute__((ifunc("t1ha0_resolve")));
+#else
+__asm("\t.globl\tt1ha0\n\t.type\tt1ha0, "
+      "@gnu_indirect_function\n\t.set\tt1ha0,t1ha0_resolve");
+#endif /* ifunc */
 
 #elif __GNUC_PREREQ(4, 0) || __has_attribute(constructor)
 
@@ -579,7 +600,7 @@ static void __attribute__((constructor)) t1ha0_init(void) {
   _t1ha0_ptr = t1ha0_resolve();
 }
 
-#else /* ELF && ifunc */
+#else /* ELF */
 
 static uint64_t t1ha0_proxy(const void *data, size_t len, uint64_t seed) {
   _t1ha0_ptr = t1ha0_resolve();

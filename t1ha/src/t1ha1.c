@@ -40,7 +40,11 @@
  * for The 1Hippeus project - zerocopy messaging in the spirit of Sparta!
  */
 
-#include "t1ha.h"
+#ifdef _MSC_VER
+#pragma warning(disable : 4464) /* relative include path contains '..' */
+#endif
+
+#include "../t1ha.h"
 #include "t1ha_bits.h"
 
 uint64_t t1ha1_le(const void *data, size_t len, uint64_t seed) {
