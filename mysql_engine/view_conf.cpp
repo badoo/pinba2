@@ -708,7 +708,7 @@ namespace { namespace aux {
 		if (vcf.max_time.nsec < 0)
 			return ff::fmt_err("max_time must be >= 0");
 
-		if (vcf.min_time.nsec != 0 && vcf.min_time > vcf.max_time)
+		if (vcf.min_time.nsec != 0 && vcf.max_time.nsec != 0 && vcf.min_time > vcf.max_time)
 			return ff::fmt_err("min_time should be < max_time");
 
 		return {};
