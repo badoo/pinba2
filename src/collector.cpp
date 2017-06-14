@@ -11,6 +11,10 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/pipeline.h>
 
+#ifdef PINBA_HAVE_LZ4
+#	include <lz4/lz4.h>
+#endif
+
 #include <meow/defer.hpp>
 #include <meow/format/format.hpp>
 #include <meow/unix/fd_handle.hpp>
@@ -99,6 +103,18 @@ namespace { namespace aux {
 			reset();
 		}
 	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	#define PINBA_WIRE_FLAG___LZ4_COMPRESSED (1 << 0)
+
+	struct wire_header_t
+	{
+		uint32_t  version    : 4;  // 0, 1
+		uint32_t  packet_len : 16;
+		uint32_t  flags      : 12; // PINBA_WIRE_FLAG_*
+	};
+	static_assert(sizeof(wire_header_t) == 4, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -370,6 +386,9 @@ namespace { namespace aux {
 			std::unique_ptr<char[]> recv_buffer_p { new char[max_dgrams_to_recv * max_message_size] };
 			char *recv_buffer = recv_buffer_p.get();
 
+			std::unique_ptr<char[]> decompress_buf_p { new char[max_message_size] };
+			meow::buffer_ref decompress_buf = { decompress_buf_p.get(), max_message_size };
+
 			// touch all network memory in advance
 			memset(hdr, 0, max_dgrams_to_recv * sizeof(*hdr));
 			memset(iov, 0, max_dgrams_to_recv * sizeof(*iov));
@@ -383,6 +402,7 @@ namespace { namespace aux {
 				hdr[i].msg_hdr.msg_iov    = &iov[i];
 				hdr[i].msg_hdr.msg_iovlen = 1;
 			}
+
 
 			raw_request_ptr req;
 
@@ -452,7 +472,68 @@ namespace { namespace aux {
 
 							stats_->udp.recv_bytes += dgram.size();
 
-							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
+							wire_header_t header = {};
+							str_ref       data   = {};
+
+							if (dgram.size() <= sizeof(wire_header_t))
+							{
+								header = wire_header_t {
+									.version    = 0,
+									.packet_len = uint32_t(dgram.size()),
+									.flags      = 0,
+								};
+								data = dgram;
+							}
+							else
+							{
+								// try and distinguish old plain protobuf from new framing
+								// basically protobuf should have 0x0a first byte, if it has been encoded in-order, which is the case 99% of the time
+								// if that's true, wire_header_t::version shall be == 0
+								// header (if present) should be in network byte order
+								auto const header_data = ntohl(*reinterpret_cast<uint32_t const*>(dgram.data()));
+								auto const *header_p   = reinterpret_cast<wire_header_t const*>(&header_data);
+
+								if (header_p->version == 0)
+								{
+									header = wire_header_t {
+										.version    = 0,
+										.packet_len = uint32_t(dgram.size()),
+										.flags      = 0,
+									};
+									data = dgram;
+								}
+								else if (header_p->version == 1)
+								{
+									header = *header_p;
+									data = str_ref { dgram.begin() + sizeof(wire_header_t), dgram.end() };
+								}
+								else
+								{
+									++stats_->udp.packet_decode_err; // TODO: maybe a special stats counter?
+									continue;
+								}
+							}
+
+							if (header.flags & PINBA_WIRE_FLAG___LZ4_COMPRESSED)
+							{
+							#ifdef PINBA_HAVE_LZ4
+								int const r = LZ4_decompress_safe(data.data(), decompress_buf.data(), data.c_length(), decompress_buf.c_length());
+								if (r < 0)
+								{
+									++stats_->udp.packet_decode_err; // TODO: maybe a special stats counter?
+									continue;
+								}
+
+								// just repurpose data here, to point to uncompressed bytes
+								data = str_ref { decompress_buf.data(), size_t(r) };
+							#else
+								++stats_->udp.packet_decode_err; // TODO: maybe a special stats counter?
+								continue;
+							#endif
+							}
+
+
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, data.c_length(), (uint8_t*)data.data());
 							if (request == NULL) {
 								++stats_->udp.packet_decode_err;
 								continue;
