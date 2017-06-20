@@ -293,7 +293,7 @@ static int pinba_engine_init(void *p)
 			return PM;
 		}();
 
-		LOG_NOTICE(logger, "engine initialized");
+		LOG_NOTICE(logger, "engine initialized on {0}:{1}", options.net_address, options.net_port);
 	}
 	catch (std::exception const& e)
 	{
