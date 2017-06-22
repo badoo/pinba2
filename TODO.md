@@ -35,7 +35,7 @@
 	- [ ] document packet fields validation rules and value limits
 	- [ ] internals/tuning guide
 - tools
-	- [ ] rtag_* reports support in scripts/convert_mysqldump.php
+	- [X] rtag_* reports support in scripts/convert_mysqldump.php
 	- [ ] hv_* reports support in scripts/convert_mysqldump.php
 - reports
 	- [x] filtering by request min/max time
