@@ -208,7 +208,7 @@ namespace { namespace aux {
 			bool const success = out_sock_.send_message(req, NN_DONTWAIT);
 			if (!success)
 			{
-				stats_->udp.batch_send_err;
+				stats_->udp.batch_send_err++;
 				stats_->udp.packet_send_err += req->request_count;
 			}
 

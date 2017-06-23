@@ -149,7 +149,7 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 	p->script_id    = d->get_or_add(r->script_name);
 	p->schema_id    = d->get_or_add(r->schema);
 	// p->status       = r->status;
-	p->status       = d->get_or_add(meow::format::tunnel(r->status));
+	p->status       = d->get_or_add(meow::format::type_tunnel<uint32_t>::call(r->status));
 	p->traffic      = r->document_size;
 	p->mem_used     = r->memory_footprint;
 	p->request_time = duration_from_float(r->request_time);
