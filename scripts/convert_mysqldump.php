@@ -71,7 +71,10 @@ function convertTableSql(&$full_sql, $create_table_sql)
         return;
     }
 
-    // TODO: rtag support
+    if (strpos($comment, "rtag") === 0) {
+        convertRtagReportsSql($full_sql, $create_table_sql, $comment);
+        return;
+    }
 }
 
 function tryConvertDefaultTableSql(&$full_sql, $create_table_sql, $comment)
@@ -233,7 +236,6 @@ function convertDefaultReportsSql(&$full_sql, $create_table_sql, $comment)
 
 function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
 {
-
     {
         static $legacy_fields = [
             'host' => 'hostname',
@@ -273,6 +275,10 @@ function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
 
     if (!preg_match("/(CREATE TABLE.*?\()(.*)(\)[^)]*COMMENT=')(?:.*?)(';)/s", $create_table_sql, $matches)) {
         showUsageAndExit(8);
+    }
+
+    if ($comment === 'tag') {
+        return;
     }
 
     $parts = explode(":", $comment);
@@ -336,7 +342,7 @@ function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
         $fields_sql[] = "  `{$name}` {$field_type} NOT NULL,";
     }
     foreach ($tags as $tag) {
-        $fields_sql[] = "  `{$tag}` varchar(64) NOT NULL,";
+        $fields_sql[] = "  `{$tag}_value` varchar(64) NOT NULL,";
     }
     $fields_sql = implode("\n", $fields_sql);
 
@@ -361,11 +367,134 @@ function convertTagReportsSql(&$full_sql, $create_table_sql, $comment)
     $full_sql = str_replace($create_table_sql, $create_table_sql_converted, $full_sql);
 }
 
+function convertRtagReportsSql(&$full_sql, $create_table_sql, $comment)
+{
+    {
+        static $legacy_fields = [
+            'host' => 'hostname',
+        ];
+
+        static $fields_types = [
+            'host' => "varchar(32)",
+        ];
+
+        static $fields_config = [
+            'rtag_info' => [],
+            'rtag2_info' => [],
+            'rtagN_info' => [],
+            'rtag_report' => ['host'],
+            'rtag2_report' => ['host'],
+            'rtagN_report' => ['host'],
+        ];
+
+        static $sql_body = "  `req_count` int(10) unsigned NOT NULL,
+  `req_per_sec` float NOT NULL,
+  `req_time_total` float NOT NULL,
+  `req_time_per_sec` float NOT NULL,
+  `ru_utime_total` float NOT NULL,
+  `ru_utime_per_sec` float NOT NULL,
+  `ru_stime_total` float NOT NULL,
+  `ru_stime_per_sec` float NOT NULL,
+  `traffic_total` bigint(20) unsigned NOT NULL,
+  `traffic_per_sec` float NOT NULL,
+  `memory_footprint` bigint(20) NOT NULL";
+    }
+
+    if (!preg_match("/(CREATE TABLE.*?\()(.*)(\)[^)]*COMMENT=')(?:.*?)(';)/s", $create_table_sql, $matches)) {
+        showUsageAndExit(8);
+    }
+
+    $parts = explode(":", $comment);
+    if (!isset($fields_config[$parts[0]])) {
+        showUsageAndExit(9);
+    }
+
+    $keys = array_map(function ($item) {
+        return "~{$item}";
+    }, $fields_config[$parts[0]]);
+
+    $tags = [];
+    if (!empty($parts[1])) {
+        $tags = explode(",", $parts[1]);
+        foreach ($tags as $tag) {
+            $keys[] = "+{$tag}";
+        }
+    }
+
+    $percentiles = [
+        'list' => [50],
+    ];
+
+    $filters = [];
+    if (!empty($parts[2])) {
+        $filters = explode(",", $parts[2]);
+        foreach ($filters as $key => $filter) {
+            $filter_parts = explode("=", $filter);
+
+            if ($filter_parts[0] === "histogram_max_time") {
+                $percentiles['max_time'] = $filter_parts[1];
+
+                unset($filters[$key]);
+                continue;
+            }
+
+            $filter_parts[1] = str_replace("tag.", "+", $filter_parts[1]);
+            $filters[$key] = "{$filter_parts[0]}={$filter_parts[1]}";
+        }
+    }
+
+    if (!empty($parts[3])) {
+        $ps = explode(",", $parts[3]);
+        foreach ($ps as $p) {
+            $percentiles['list'][] = $p;
+        }
+    }
+
+    $fields_sql = [];
+    foreach ($fields_config[$parts[0]] as $request_field) {
+        $name = $request_field;
+        if (isset($legacy_fields[$request_field])) {
+            $name = $legacy_fields[$request_field];
+        }
+
+        $field_type = "varchar(64)";
+        if (isset($fields_types[$request_field])) {
+            $field_type = $fields_types[$request_field];
+        }
+
+        $fields_sql[] = "  `{$name}` {$field_type} NOT NULL,";
+    }
+    foreach ($tags as $tag) {
+        $fields_sql[] = "  `{$tag}_value` varchar(64) NOT NULL,";
+    }
+    $fields_sql = implode("\n", $fields_sql);
+
+    $percentiles_fields_sql = "";
+    if (!empty($percentiles['list'])) {
+        $percentiles['list'] = array_map(function ($item) {
+            return "p{$item}";
+        }, $percentiles['list']);
+
+        $percentiles_fields_sql = [];
+        foreach ($percentiles['list']as $percentile) {
+            $percentiles_fields_sql[] = "  `{$percentile}` float NOT NULL";
+        }
+        $percentiles_fields_sql = implode(",\n", $percentiles_fields_sql);
+
+        $percentiles_fields_sql = ",\n{$percentiles_fields_sql}";
+    }
+
+    $create_table_sql_converted = $matches[1] . "\n" . $fields_sql . "\n" . $sql_body . $percentiles_fields_sql . "\n"
+        . $matches[3] . generateV2Comment("request", $keys, $percentiles, $filters) . $matches[4];
+
+    $full_sql = str_replace($create_table_sql, $create_table_sql_converted, $full_sql);
+}
+
 function generateV2Comment($report_type, $keys, $percentiles, $filters)
 {
     static $hv_min_time = 0;
     static $hv_max_time = 60;
-    static $hv_bucket_count = 10000;
+    static $hv_bucket_count = 32768;
 
     if (empty($keys)) {
         $keys = "no_keys";
