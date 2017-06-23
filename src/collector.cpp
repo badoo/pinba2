@@ -1,6 +1,7 @@
 #include "pinba_config.h"
 
 #include <fcntl.h>
+#include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h> // setsockopt
 
@@ -12,11 +13,13 @@
 #include <nanomsg/pipeline.h>
 
 #ifdef PINBA_HAVE_LZ4
-#	include <lz4/lz4.h>
+#	include <lz4.h>
 #endif
 
 #include <meow/defer.hpp>
 #include <meow/format/format.hpp>
+#include <meow/format/inserter/as_printf.hpp>
+#include <meow/format/inserter/hex_string.hpp>
 #include <meow/unix/fd_handle.hpp>
 #include <meow/unix/socket.hpp>
 #include <meow/unix/netdb.hpp>
@@ -106,15 +109,17 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+	constexpr uint32_t const udp_wire_header_size = 4;
+
 	#define PINBA_WIRE_FLAG___LZ4_COMPRESSED (1 << 0)
 
-	struct wire_header_t
+	struct decoded_dgram_t
 	{
-		uint32_t  version    : 4;  // 0, 1
-		uint32_t  packet_len : 16;
-		uint32_t  flags      : 12; // PINBA_WIRE_FLAG_*
+		uint8_t   version;   // 0, 1
+		uint16_t  data_len;
+		uint16_t  flags;     // PINBA_WIRE_FLAG_*
+		str_ref   data;
 	};
-	static_assert(sizeof(wire_header_t) == 4, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -230,6 +235,8 @@ namespace { namespace aux {
 
 			req.reset(); // signal the need to reinit
 		}
+
+	private: // networking
 
 		void eat_udp(uint32_t const thread_id, fd_handle_t const& fd)
 		{
@@ -468,44 +475,49 @@ namespace { namespace aux {
 								request_unpack_pba.allocator_data = &req->nmpa;
 							}
 
-							str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
+							str_ref const udp_data = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
 
-							stats_->udp.recv_bytes += dgram.size();
+							stats_->udp.recv_bytes += udp_data.size();
 
-							wire_header_t header = {};
-							str_ref       data   = {};
+							decoded_dgram_t dgram = {};
 
-							if (dgram.size() <= sizeof(wire_header_t))
+							if (udp_data.size() <= udp_wire_header_size)
 							{
-								header = wire_header_t {
-									.version    = 0,
-									.packet_len = uint32_t(dgram.size()),
-									.flags      = 0,
+								dgram = decoded_dgram_t {
+									.version  = 0,
+									.data_len = uint16_t(udp_data.size()),
+									.flags    = 0,
+									.data     = udp_data,
 								};
-								data = dgram;
 							}
 							else
 							{
+								// LOG_DEBUG(globals_->logger(), "udp_reader/{0}; header: {1}", thread_id
+								// 	, ff::as_hex_string(str_ref{udp_data.begin(), udp_data.begin() + udp_wire_header_size}));
+
+								auto const *raw_mem = reinterpret_cast<uint8_t const*>(udp_data.data());
+								dgram.version = (raw_mem[0] >> 4);
+
 								// try and distinguish old plain protobuf from new framing
 								// basically protobuf should have 0x0a first byte, if it has been encoded in-order, which is the case 99% of the time
-								// if that's true, wire_header_t::version shall be == 0
-								// header (if present) should be in network byte order
-								auto const header_data = ntohl(*reinterpret_cast<uint32_t const*>(dgram.data()));
-								auto const *header_p   = reinterpret_cast<wire_header_t const*>(&header_data);
-
-								if (header_p->version == 0)
+								// this needs to be done before htohl() header transformation
+								if (dgram.version == 0)
 								{
-									header = wire_header_t {
-										.version    = 0,
-										.packet_len = uint32_t(dgram.size()),
-										.flags      = 0,
+									dgram = decoded_dgram_t {
+										.version  = 0,
+										.data_len = uint16_t(udp_data.size()),
+										.flags    = 0,
+										.data     = udp_data,
 									};
-									data = dgram;
 								}
-								else if (header_p->version == 1)
+								else if (dgram.version == 1)
 								{
-									header = *header_p;
-									data = str_ref { dgram.begin() + sizeof(wire_header_t), dgram.end() };
+									dgram.flags    = ((raw_mem[0] & 0x0f) << 8) | raw_mem[1];
+									dgram.data_len = (raw_mem[2] << 8) | raw_mem[3];
+									dgram.data = str_ref { udp_data.begin() + udp_wire_header_size, udp_data.end() };
+
+									// LOG_DEBUG(globals_->logger(), "udp_reader/{0}; v: {1}, bl: {2}, f: {3}", thread_id
+									// 	, dgram.version, dgram.data_len, ff::as_printf("0x%02x", uint32_t(dgram.flags)));
 								}
 								else
 								{
@@ -514,18 +526,21 @@ namespace { namespace aux {
 								}
 							}
 
-							if (header.flags & PINBA_WIRE_FLAG___LZ4_COMPRESSED)
+							if (dgram.flags & PINBA_WIRE_FLAG___LZ4_COMPRESSED)
 							{
 							#ifdef PINBA_HAVE_LZ4
-								int const r = LZ4_decompress_safe(data.data(), decompress_buf.data(), data.c_length(), decompress_buf.c_length());
+								int const r = LZ4_decompress_safe(dgram.data.data(), decompress_buf.data(), dgram.data.c_length(), decompress_buf.c_length());
 								if (r < 0)
 								{
+									// LOG_DEBUG(globals_->logger(), "udp_reader/{0}; decompres error: {1}, data: {2}", thread_id, r, ff::as_hex_string(dgram.data));
 									++stats_->udp.packet_decode_err; // TODO: maybe a special stats counter?
 									continue;
 								}
 
+								// LOG_DEBUG(globals_->logger(), "udp_reader/{0}; decompressed ok, len: {1}", thread_id, r);
+
 								// just repurpose data here, to point to uncompressed bytes
-								data = str_ref { decompress_buf.data(), size_t(r) };
+								dgram.data = str_ref { decompress_buf.data(), size_t(r) };
 							#else
 								++stats_->udp.packet_decode_err; // TODO: maybe a special stats counter?
 								continue;
@@ -533,7 +548,7 @@ namespace { namespace aux {
 							}
 
 
-							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, data.c_length(), (uint8_t*)data.data());
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.data.c_length(), (uint8_t*)dgram.data.data());
 							if (request == NULL) {
 								++stats_->udp.packet_decode_err;
 								continue;

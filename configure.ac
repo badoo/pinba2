@@ -305,6 +305,13 @@ AC_ARG_WITH(boost, [AS_HELP_STRING([--with-boost], [path to boost library])],
 	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_boost"         # just downloaded source code version
 ])
 
+AC_ARG_WITH(lz4, [AS_HELP_STRING([--with-lz4], [path to lz4 library])],
+[
+	AC_DEFINE([HAVE_LZ4], 1, [enable lz4 decompression support])
+	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_lz4/include"
+	DEPS_LIBS="$DEPS_LIBS $with_lz4/lib/liblz4.a"
+])
+
 AC_ARG_ENABLE(experiments, [AS_HELP_STRING([--enable-experiments], [enable building experiments code])],
 [
 	EXPERIMENT_DIR="experiments"
@@ -318,6 +325,7 @@ AC_SUBST(AX_CXXFLAGS)
 AC_SUBST(AX_LDFLAGS)
 
 AC_SUBST(DEPS_CFLAGS)
+AC_SUBST(DEPS_LDFLAGS)
 AC_SUBST(DEPS_LIBS)
 
 AC_SUBST(MYSQL_ENGINE_CFLAGS)

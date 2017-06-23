@@ -18,6 +18,7 @@ AM_CFLAGS = \
 
 AM_LDFLAGS = \
 	$(AX_LDFLAGS) \
+	$(DEPS_LDFLAGS) \
 	#
 
 LIBS = \
