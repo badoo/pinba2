@@ -489,8 +489,10 @@ Table comment syntax
 example
 
 ```sql
-mysql> CREATE TABLE if not exists `stats` (
+mysql> CREATE TABLE IF NOT EXISTS `stats` (
       `uptime` DOUBLE NOT NULL,
+      `ru_utime` DOUBLE NOT NULL,
+      `ru_stime` DOUBLE NOT NULL,
       `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
       `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
       `udp_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,
@@ -499,6 +501,8 @@ mysql> CREATE TABLE if not exists `stats` (
       `udp_packet_decode_err` BIGINT(20) UNSIGNED NOT NULL,
       `udp_batch_send_total` BIGINT(20) UNSIGNED NOT NULL,
       `udp_batch_send_err` BIGINT(20) UNSIGNED NOT NULL,
+      `udp_packet_send_total` BIGINT(20) UNSIGNED NOT NULL,
+      `udp_packet_send_err` BIGINT(20) UNSIGNED NOT NULL,
       `udp_ru_utime` DOUBLE NOT NULL,
       `udp_ru_stime` DOUBLE NOT NULL,
       `repacker_poll_total` BIGINT(20) UNSIGNED NOT NULL,
@@ -518,43 +522,54 @@ mysql> CREATE TABLE if not exists `stats` (
       `coordinator_ru_utime` DOUBLE NOT NULL,
       `coordinator_ru_stime` DOUBLE NOT NULL,
       `dictionary_size` BIGINT(20) UNSIGNED NOT NULL,
-      `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL
+      `dictionary_mem_hash` BIGINT(20) UNSIGNED NOT NULL,
+      `dictionary_mem_list` BIGINT(20) UNSIGNED NOT NULL,
+      `dictionary_mem_strings` BIGINT(20) UNSIGNED NOT NULL,
+      `version_info` text(1024) NOT NULL,
+      `build_string` text(1024) NOT NULL
     ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
 ```
 
 ```sql
 mysql> select *, (repacker_ru_utime/uptime) as repacker_ru_utime_per_sec from stats\G
 *************************** 1. row ***************************
-                      uptime: 68010.137554896
-              udp_poll_total: 221300494
-              udp_recv_total: 491356020
-             udp_recv_eagain: 221273810
-              udp_recv_bytes: 825110655708
-            udp_recv_packets: 3688826822
+                      uptime: 12.482723834
+                    ru_utime: 2.248
+                    ru_stime: 1.12
+              udp_poll_total: 20924
+              udp_recv_total: 49753
+             udp_recv_eagain: 20904
+              udp_recv_bytes: 192375675
+            udp_recv_packets: 870451
        udp_packet_decode_err: 0
-        udp_batch_send_total: 210814894
+        udp_batch_send_total: 20915
           udp_batch_send_err: 0
-                udp_ru_utime: 5589.292
-                udp_ru_stime: 7014.176
-         repacker_poll_total: 211720282
-         repacker_recv_total: 421384094
-        repacker_recv_eagain: 210569200
-       repacker_recv_packets: 3688826822
+       udp_packet_send_total: 870451
+         udp_packet_send_err: 0
+                udp_ru_utime: 0.8680000000000001
+                udp_ru_stime: 0.8240000000000001
+         repacker_poll_total: 20948
+         repacker_recv_total: 41827
+        repacker_recv_eagain: 20912
+       repacker_recv_packets: 870451
 repacker_packet_validate_err: 0
-   repacker_batch_send_total: 3719021
-repacker_batch_send_by_timer: 677901
- repacker_batch_send_by_size: 3041120
-           repacker_ru_utime: 12269.856
-           repacker_ru_stime: 7373.804
-coordinator_batches_received: 3719021
-coordinator_batch_send_total: 7437390
+   repacker_batch_send_total: 849
+repacker_batch_send_by_timer: 0
+ repacker_batch_send_by_size: 849
+           repacker_ru_utime: 1.1720000000000002
+           repacker_ru_stime: 0.07200000000000001
+coordinator_batches_received: 849
+coordinator_batch_send_total: 0
   coordinator_batch_send_err: 0
-coordinator_control_requests: 6812
-        coordinator_ru_utime: 74.696
-        coordinator_ru_stime: 59.36
-             dictionary_size: 364
-         dictionary_mem_used: 6303104
-   repacker_ru_utime_per_sec: 0.18041216267348514
+coordinator_control_requests: 0
+        coordinator_ru_utime: 0.032
+        coordinator_ru_stime: 0
+             dictionary_size: 444
+         dictionary_mem_hash: 6311251
+         dictionary_mem_list: 14208
+      dictionary_mem_strings: 5587
+                version_info: pinba 2.0.8, git: 1afd7eb872a6ef95e34efbbe730aea3926489798, modified: 1
+                build_string: whatever-string-from-configure
 ```
 
 
