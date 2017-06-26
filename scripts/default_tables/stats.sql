@@ -1,5 +1,7 @@
 CREATE TABLE IF NOT EXISTS `pinba`.`stats` (
   `uptime` DOUBLE NOT NULL,
+  `ru_utime` DOUBLE NOT NULL,
+  `ru_stime` DOUBLE NOT NULL,
   `udp_poll_total` BIGINT(20) UNSIGNED NOT NULL,
   `udp_recv_total` BIGINT(20) UNSIGNED NOT NULL,
   `udp_recv_eagain` BIGINT(20) UNSIGNED NOT NULL,

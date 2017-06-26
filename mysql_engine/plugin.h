@@ -40,6 +40,8 @@ pinba_variables_t* pinba_variables();
 struct pinba_status_variables_t
 {
 	double              uptime;
+	double              ru_utime;
+	double              ru_stime;
 
 	unsigned long long  udp_poll_total;
 	unsigned long long  udp_recv_total;

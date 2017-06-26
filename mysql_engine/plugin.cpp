@@ -11,6 +11,8 @@
 #include <meow/format/inserter/as_printf.hpp>
 #include <meow/format/sink/char_buffer.hpp>
 #include <meow/format/sink/fd.hpp>
+#include <meow/unix/time.hpp>
+#include <meow/unix/resource.hpp>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -46,6 +48,12 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 	auto const *stats = P_G_->stats();
 
 	vars->uptime = timeval_to_double(os_unix::clock_monotonic_now() - stats->start_tv);
+
+	{
+		os_rusage_t ru = os_unix::getrusage_ex(RUSAGE_SELF);
+		vars->ru_utime = timeval_to_double(timeval_from_os_timeval(ru.ru_utime));
+		vars->ru_stime = timeval_to_double(timeval_from_os_timeval(ru.ru_stime));
+	}
 
 	// udp
 
@@ -495,6 +503,8 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 	/**/
 
 		SVAR(uptime,                            SHOW_DOUBLE)
+		SVAR(ru_utime,                          SHOW_DOUBLE)
+		SVAR(ru_stime,                          SHOW_DOUBLE)
 		SVAR(udp_poll_total,                    SHOW_LONGLONG)
 		SVAR(udp_recv_total,                    SHOW_LONGLONG)
 		SVAR(udp_recv_eagain,                   SHOW_LONGLONG)
