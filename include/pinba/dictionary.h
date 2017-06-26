@@ -104,6 +104,13 @@ struct dictionary_word_hasher_t
 	}
 };
 
+struct dictionary_memory_t
+{
+	uint64_t hash_bytes;
+	uint64_t list_bytes;
+	uint64_t strings_bytes;
+};
+
 struct dictionary_t
 {
 	using words_t = std::deque<std::string>; // deque to save a lil on push_back reallocs
@@ -135,21 +142,15 @@ struct dictionary_t
 		return words.size();
 	}
 
-	uint64_t memory_used() const
+	dictionary_memory_t memory_used() const
 	{
-		uint32_t n_buckets, sz;
+		scoped_read_lock_t lock_(mtx_);
 
-		{
-			scoped_read_lock_t lock_(mtx_);
-			n_buckets = hash.bucket_count();
-			// sz       = words.capacity(); // vector
-			sz       = words.size(); // deque
-		}
-
-		uint64_t const words_mem_sz = sz * sizeof(words_t::value_type);
-		uint64_t const hash_mem_sz  = n_buckets * sizeof(hash_t::value_type);
-
-		return mem_used_by_word_strings + words_mem_sz + hash_mem_sz;
+		return dictionary_memory_t {
+			.hash_bytes    = hash.bucket_count() * sizeof(*hash.begin()),
+			.list_bytes    = words.size() * sizeof(*words.begin()),
+			.strings_bytes = mem_used_by_word_strings,
+		};
 	}
 
 	str_ref get_word(uint32_t word_id) const
@@ -292,7 +293,8 @@ struct repacker_dictionary_t : private boost::noncopyable
 			return it->second;
 
 		// cache miss - slowpath
-		// can't store `word' in hash, since it might be the same string by content, but not in memory
+		// can't store `word' in our local hash directly, since it's supposed to be freed quickly by the calling code
+		// so dictionary copies the string, and we store str_ref to that copy here
 		str_ref real_string = {};
 		uint32_t const word_id = d->get_or_add_pessimistic(word, &real_string);
 

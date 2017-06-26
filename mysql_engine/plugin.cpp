@@ -117,7 +117,9 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		dictionary_t *dictionary = P_G_->dictionary();
 
 		vars->dictionary_size     = dictionary->size();
-		vars->dictionary_mem_used = dictionary->memory_used();
+
+		dictionary_memory_t const dmem = dictionary->memory_used();
+		vars->dictionary_mem_used = dmem.hash_bytes + dmem.list_bytes + dmem.strings_bytes;
 	}
 
 	// extras
