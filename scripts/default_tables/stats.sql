@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS `pinba`.`stats` (
   `coordinator_ru_utime` DOUBLE NOT NULL,
   `coordinator_ru_stime` DOUBLE NOT NULL,
   `dictionary_size` BIGINT(20) UNSIGNED NOT NULL,
-  `dictionary_mem_used` BIGINT(20) UNSIGNED NOT NULL,
+  `dictionary_mem_hash` BIGINT(20) UNSIGNED NOT NULL,
+  `dictionary_mem_list` BIGINT(20) UNSIGNED NOT NULL,
+  `dictionary_mem_strings` BIGINT(20) UNSIGNED NOT NULL,
   `version_info` text(1024) NOT NULL,
   `build_string` text(1024) NOT NULL
 ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';

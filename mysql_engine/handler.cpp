@@ -173,10 +173,12 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				STORE_FIELD(28, vars_->coordinator_ru_stime);
 
 				STORE_FIELD(29, vars_->dictionary_size);
-				STORE_FIELD(30, vars_->dictionary_mem_used);
+				STORE_FIELD(30, vars_->dictionary_mem_hash);
+				STORE_FIELD(31, vars_->dictionary_mem_list);
+				STORE_FIELD(32, vars_->dictionary_mem_strings);
 
-				STORE_FIELD(31, vars_->version_info, strlen(vars_->version_info), &my_charset_bin);
-				STORE_FIELD(32, vars_->build_string, strlen(vars_->build_string), &my_charset_bin);
+				STORE_FIELD(33, vars_->version_info, strlen(vars_->version_info), &my_charset_bin);
+				STORE_FIELD(34, vars_->build_string, strlen(vars_->build_string), &my_charset_bin);
 
 			default:
 				break;

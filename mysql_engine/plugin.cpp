@@ -119,7 +119,9 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		vars->dictionary_size     = dictionary->size();
 
 		dictionary_memory_t const dmem = dictionary->memory_used();
-		vars->dictionary_mem_used = dmem.hash_bytes + dmem.list_bytes + dmem.strings_bytes;
+		vars->dictionary_mem_hash    = dmem.hash_bytes + dmem.list_bytes + dmem.strings_bytes;
+		vars->dictionary_mem_list    = dmem.list_bytes;
+		vars->dictionary_mem_strings = dmem.strings_bytes;
 	}
 
 	// extras
@@ -522,7 +524,9 @@ static void status_variables_show_func(THD*, SHOW_VAR *var, char *buf)
 		SVAR(coordinator_ru_utime,              SHOW_DOUBLE)
 		SVAR(coordinator_ru_stime,              SHOW_DOUBLE)
 		SVAR(dictionary_size,                   SHOW_LONGLONG)
-		SVAR(dictionary_mem_used,               SHOW_LONGLONG)
+		SVAR(dictionary_mem_hash,               SHOW_LONGLONG)
+		SVAR(dictionary_mem_list,               SHOW_LONGLONG)
+		SVAR(dictionary_mem_strings,            SHOW_LONGLONG)
 		SVAR(extra,                             SHOW_CHAR)
 		SVAR(version_info,                      SHOW_CHAR)
 		SVAR(build_string,                      SHOW_CHAR)

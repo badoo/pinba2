@@ -73,7 +73,9 @@ struct pinba_status_variables_t
 	double              coordinator_ru_stime;
 
 	unsigned long long  dictionary_size;
-	unsigned long long  dictionary_mem_used;
+	unsigned long long  dictionary_mem_hash;
+	unsigned long long  dictionary_mem_list;
+	unsigned long long  dictionary_mem_strings;
 
 	char                extra[1024];
 
