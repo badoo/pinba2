@@ -159,39 +159,44 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 	// bloom should be somewhere close to the top
 	p->timer_bloom = (timertag_bloom_t*)nmpa_calloc(nmpa, sizeof(timertag_bloom_t)); // NOTE: no ctor is called here!
 
-	// timers basic info
+	// timers
 	p->timer_count = r->n_timer_value;
-	p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
-	for_each_timer(r, [&](Pinba__Request const *r, timer_data_t const& timer)
+	if (p->timer_count > 0)
 	{
-		packed_timer_t *t = p->timers + timer.id;
-		t->hit_count = timer.hit_count;
-		t->value     = timer.value;
-		t->ru_utime  = timer.ru_utime;
-		t->ru_stime  = timer.ru_stime;
-		t->tag_count = timer.tag_count;
-	});
-
-	// timer tags
-	{
-		// copy tag names / values in one go, have them be contiguous in memory
-		uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
-		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
-		for (unsigned i = 0; i < r->n_timer_tag_name; i++)
+		// basic info
+		p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
+		for_each_timer(r, [&](Pinba__Request const *r, timer_data_t const& timer)
 		{
-			p->timer_bloom->add(td[r->timer_tag_name[i]]);
+			packed_timer_t *t = p->timers + timer.id;
+			t->hit_count = timer.hit_count;
+			t->value     = timer.value;
+			t->ru_utime  = timer.ru_utime;
+			t->ru_stime  = timer.ru_stime;
+			t->tag_count = timer.tag_count;
+		});
 
-			timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
-			timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
-		}
-
-		// fixup base pointers
-		unsigned current_tag_offset = 0;
-		for (unsigned i = 0; i < r->n_timer_value; i++)
+		// timer tags
+		if (r->n_timer_tag_name > 0)
 		{
-			p->timers[i].tag_name_ids = timer_tag_name_ids + current_tag_offset;
-			p->timers[i].tag_value_ids = timer_tag_value_ids + current_tag_offset;
-			current_tag_offset += r->timer_tag_count[i];
+			// copy tag names / values in one go, have them be contiguous in memory
+			uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
+			uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
+			for (unsigned i = 0; i < r->n_timer_tag_name; i++)
+			{
+				p->timer_bloom->add(td[r->timer_tag_name[i]]);
+
+				timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
+				timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
+			}
+
+			// fixup base pointers
+			unsigned current_tag_offset = 0;
+			for (unsigned i = 0; i < r->n_timer_value; i++)
+			{
+				p->timers[i].tag_name_ids = timer_tag_name_ids + current_tag_offset;
+				p->timers[i].tag_value_ids = timer_tag_value_ids + current_tag_offset;
+				current_tag_offset += r->timer_tag_count[i];
+			}
 		}
 	}
 
