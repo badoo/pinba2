@@ -35,7 +35,7 @@
 	- [ ] document packet fields validation rules and value limits
 	- [ ] internals/tuning guide
 - tools
-	- [X] rtag_* reports support in scripts/convert_mysqldump.php
+	- [x] rtag_* reports support in scripts/convert_mysqldump.php
 	- [ ] hv_* reports support in scripts/convert_mysqldump.php
 - reports
 	- [x] filtering by request min/max time
@@ -82,14 +82,11 @@
 	- hard to change all clients
 	- not really worth it, since pb unpack doesn't seem to take that much cpu
 - [ ] {hard} maybe replace nanomsg with something doing less locking / syscalls (thorough meamurements first!)
-- [ ] {medium, worth it?} simple bloom filtering (aka is this report interested in this packet?)
-	- [x] poor man's handmade solution with std::bitset
-	- a library like this one? https://github.com/mavam/libbf
+- [x] {medium, worth it?} simple 'bloom filtering' (aka is this report interested in this packet?)
+	- [x] poor man's handmade solution with std::bitset, timer tags only (where it's really needed)
 	- try calculating a simple bloom filter (over tag names) for all incoming packets
 	- report has it's own bloom, filled with tag names it's interested in
 	- compare those 2, if no match - packet doesn't need to be inspected
-	- might be memory intensive and not worth it
-	- might also take a look if something like https://en.wikipedia.org/wiki/MinHash would work
 - [ ] {easy, worth it?} per repacker dictionary caches (reduces locking on global dictionary)
 - [ ] {medium, worth it?} per snapshot merger dictionary caches
 
@@ -100,6 +97,10 @@
 - [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
 - [ ] split report raw data aggregation and tick repack (i.e. have a few threads doing repack and providing snapshots)
 	- when this is done, we can actually split any report into any number of threads we want (both aggregation and tick-repack parts)
+- [ ] implement dictionary decay (aka, remove values for dictionary, when they're not used by reports anymore)
+	- use case: sending highly unique data to pinba (like 'encrypted urls' in nginx module)
+	- [ ] timeslices and ref counting for repacker dictionary caches + report 'dictionary timeslice' references
+	- [ ] propagate data about "fields that are interesting to reports" to repacker threads, and do not add stuff to dictionary if noone is interested (this would break naive raw data implementation, since we'd lose timers/tags that are not used by reports)
 - percentiles
 	- [x] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
 	- [ ] calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)
