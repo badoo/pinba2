@@ -8,6 +8,7 @@
 
 #include <sparsehash/dense_hash_map>
 
+#include <meow/intrusive_ptr.hpp>
 #include <meow/str_ref.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
@@ -270,16 +271,58 @@ struct snapshot_dictionary_t : private boost::noncopyable
 
 struct repacker_dictionary_t : private boost::noncopyable
 {
-	using hash_t = google::dense_hash_map<str_ref, uint32_t, dictionary_word_hasher_t>;
+	struct word_id_hasher_t
+	{
+		inline uint64_t operator()(uint32_t const key) const
+		{
+			return t1ha0(&key, sizeof(key), key);
+		}
+	};
 
-	hash_t        hash;
-	dictionary_t  *d;
+	struct word_t : public boost::intrusive_ref_counter<word_t> // TODO: can use non-atomic counter here
+	{
+		uint32_t const id;
+		str_ref  const str;
+
+		word_t(uint32_t i, str_ref s)
+			: id(i)
+			, str(s)
+		{
+		}
+	};
+	using word_ptr = boost::intrusive_ptr<word_t>;
+
+	struct timeslice_t : public meow::ref_counted_t
+	{
+		struct hash_t : public google::dense_hash_map<uint32_t, word_ptr, word_id_hasher_t>
+		{
+			hash_t()
+			{
+				this->set_empty_key(PINBA_INTERNAL___UINT32_MAX);
+			}
+		};
+
+		hash_t ht;
+	};
+	using timeslice_ptr = boost::intrusive_ptr<timeslice_t>;
+
+	using word_to_id_hash_t = google::dense_hash_map<str_ref, word_ptr, dictionary_word_hasher_t>;
+
+public: // cba
+
+	dictionary_t       *d;
+
+	word_to_id_hash_t          word_to_id;
+
+	std::deque<timeslice_ptr>  slices;
+	timeslice_ptr              curr_slice;
+
+public:
 
 	repacker_dictionary_t(dictionary_t *dict)
-		: hash() // , hash(dict->size()) // provide initial size
-		, d(dict)
+		: d(dict)
 	{
-		hash.set_empty_key(str_ref{});
+		word_to_id.set_empty_key(str_ref{});
 	}
 
 	uint32_t get_or_add(str_ref const word)
@@ -288,18 +331,80 @@ struct repacker_dictionary_t : private boost::noncopyable
 			return 0;
 
 		// fastpath - local lookup
-		auto const it = hash.find(word);
-		if (hash.end() != it)
-			return it->second;
+		auto const it = word_to_id.find(word);
+		if (word_to_id.end() != it)
+		{
+			this->add_to_current_timeslice(it->second.get());
+			return it->second->id;
+		}
 
 		// cache miss - slowpath
-		// can't store `word' in our local hash directly, since it's supposed to be freed quickly by the calling code
+		// can't store `word' in our local word_to_id directly, since it's supposed to be freed quickly by the calling code
 		// so dictionary copies the string, and we store str_ref to that copy here
 		str_ref real_string = {};
 		uint32_t const word_id = d->get_or_add_pessimistic(word, &real_string);
 
-		hash.insert({real_string, word_id});
+		word_ptr w = meow::make_intrusive<word_t>(word_id, real_string);
+		this->add_to_current_timeslice(w.get());
+
+		word_to_id.insert({real_string, w});
 		return word_id;
+	}
+
+	void add_to_current_timeslice(word_t *w)
+	{
+		if (!curr_slice)
+			curr_slice = meow::make_intrusive<timeslice_t>();
+
+		word_ptr& ts_word = curr_slice->ht[w->id];
+		if (!ts_word)
+		{
+			ts_word.reset(w); // increments refcount here
+		}
+	}
+
+	void start_new_timeslice()
+	{
+		auto const ts = meow::make_intrusive<timeslice_t>();
+		slices.push_back(ts);
+		curr_slice = ts;
+	}
+
+	void detach_timeslice(timeslice_ptr ts)
+	{
+		auto const it = [this, &ts]()
+		{
+			for (auto it = slices.begin(); it != slices.end(); ++it)
+			{
+				if (*it == ts)
+					return it;
+			}
+
+			assert(!"detach_timeslice: must have found the ts");
+		}();
+
+		// remove timeslice early, we've got a ref to it in `ts` anyway
+		slices.erase(it);
+
+		// now reduce refcounts to all words in there
+		for (auto& ts_pair : ts->ht)
+		{
+			word_t *w = ts_pair.second.get();
+
+			assert(w->use_count() >= 2); // at least `this->word_to_id` and `ts_item` must reference the word
+			ts_pair.second.reset();
+
+			if (w->use_count() == 1) // only `this->word_to_id' references the word, should erase
+			{
+				size_t const erased_count = word_to_id.erase(w->str);
+				assert(erased_count == 1);
+
+				// w is invalid here
+
+				// TODO: tell global dictionary that we've erased the word
+				//       are we immune to ABA problem here (since word ids are reused by global dictionary!)?
+			}
+		}
 	}
 };
 

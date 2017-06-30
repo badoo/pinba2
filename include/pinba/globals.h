@@ -19,6 +19,8 @@
 #include <meow/logging/log_write.hpp>
 #include <meow/unix/time.hpp>
 
+#include "pinba/limits.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace ff = meow::format;
