@@ -67,7 +67,6 @@ struct dictionary_t;
 struct timertag_bloom_t;
 
 
-
 struct packed_tag_t
 {
 	uint32_t name_id;
@@ -173,9 +172,9 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 
 	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packed_timer_t), sizeof(packed_tag_t));
 	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
-		packet->host_id, d->get_word(packet->host_id),
-		packet->server_id, d->get_word(packet->server_id),
-		packet->script_id, d->get_word(packet->script_id),
+		packet->host_id, d->get_word___noref(packet->host_id),
+		packet->server_id, d->get_word___noref(packet->server_id),
+		packet->script_id, d->get_word___noref(packet->script_id),
 		packet->timer_count, packet->tag_count, n_timer_tags);
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
@@ -184,8 +183,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		auto const value_id = packet->tag_value_ids[i];
 		ff::fmt(sink, "  tag[{0}]: {{ {1}:{2} -> {3}:{4} }\n",
 			i,
-			name_id, d->get_word(name_id),
-			value_id, d->get_word(value_id));
+			name_id, d->get_word___noref(name_id),
+			value_id, d->get_word___noref(value_id));
 	}
 	ff::fmt(sink, "\n");
 
@@ -200,8 +199,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(sink, "    {0}:{1} -> {2}:{3}\n",
-				name_id, d->get_word(name_id),
-				value_id, d->get_word(value_id));
+				name_id, d->get_word___noref(name_id),
+				value_id, d->get_word___noref(value_id));
 		}
 		ff::fmt(sink, "\n");
 	}

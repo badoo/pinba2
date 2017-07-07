@@ -58,9 +58,9 @@ inline void dump_packet(packet_t *packet, dictionary_t const *d, struct nmpa_s *
 	ff::fmt(stderr, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
 	ff::fmt(stderr, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
 	ff::fmt(stderr, "p: {0}, {1}, {2}, n_timers: {3}, n_tags: {4}, n_timer_tags: {5}\n",
-		d->get_word(packet->host_id),
-		d->get_word(packet->server_id),
-		d->get_word(packet->script_id),
+		d->get_word___noref(packet->host_id),
+		d->get_word___noref(packet->server_id),
+		d->get_word___noref(packet->script_id),
 		packet->timer_count, packet->tag_count, n_timer_tags);
 
 	for (unsigned i = 0; i < packet->timer_count; i++)
@@ -74,8 +74,8 @@ inline void dump_packet(packet_t *packet, dictionary_t const *d, struct nmpa_s *
 			auto const value_id = t.tag_value_ids[j];
 
 			ff::fmt(stdout, "    {0}:{1} -> {2}:{3}\n",
-				name_id, d->get_word(name_id),
-				value_id, d->get_word(value_id));
+				name_id, d->get_word___noref(name_id),
+				value_id, d->get_word___noref(value_id));
 		}
 		ff::fmt(stdout, "\n");
 	}
@@ -160,8 +160,8 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, {2} lookups, {3} inserts, elapsed: {4}, {5} req/sec\n",
-			name, n_iterations, d.lookup_count, d.insert_count, elapsed, (double)n_iterations / timeval_to_double(elapsed));
+		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
 	auto const run_repack = [&](str_ref name, ProtobufCAllocator *pba)
@@ -175,8 +175,8 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, {2} lookups, {3} inserts, elapsed: {4}, {5} req/sec\n",
-			name, n_iterations, d.lookup_count, d.insert_count, elapsed, (double)n_iterations / timeval_to_double(elapsed));
+		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
 	auto const run_full_repack = [&](str_ref name, ProtobufCAllocator *pba)
@@ -196,8 +196,8 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, {2} lookups, {3} inserts, elapsed: {4}, {5} req/sec\n",
-			name, n_iterations, d.lookup_count, d.insert_count, elapsed, (double)n_iterations / timeval_to_double(elapsed));
+		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
 	// run_deserialize("deserialize[with_pba]", &pba);

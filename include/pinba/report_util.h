@@ -143,7 +143,7 @@ std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t con
 
 	for (size_t i = 0; i < k.size(); ++i)
 	{
-		ff::fmt(result, "{0}{1}<{2}>", (i == 0) ? "" : "|", k[i], dict->get_word(k[i]));
+		ff::fmt(result, "{0}{1}<{2}>", (i == 0) ? "" : "|", k[i], dict->get_word___noref(k[i]));
 	}
 
 	return result;
@@ -187,7 +187,7 @@ public:
 		, ticks_(ticks)
 		, rinfo_(rinfo)
 		, globals_(globals)
-		, snapshot_d(globals->dictionary())
+		// , snapshot_d(globals->dictionary())
 	{
 	}
 
@@ -295,7 +295,8 @@ private:
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
 			// str_ref const word = dictionary()->get_word(k[i]);
-			str_ref const word = snapshot_d.get_word(k[i]);
+			// str_ref const word = snapshot_d.get_word(k[i]);
+			str_ref const word = dictionary()->get_word___noref(k[i]); // FIXME
 			result.push_back(word);
 		}
 		return result;
@@ -333,7 +334,7 @@ private:
 	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
 	pinba_globals_t  *globals_;  // globals for logging / dictionary
 
-	snapshot_dictionary_t snapshot_d;
+	// snapshot_dictionary_t snapshot_d;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

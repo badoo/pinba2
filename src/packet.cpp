@@ -131,7 +131,7 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 }
 
 template<class D>
-static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, dictionary_t *dict, struct nmpa_s *nmpa)
+static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, struct nmpa_s *nmpa)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
@@ -218,11 +218,11 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, d
 
 packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa)
 {
-	return pinba_request_to_packet___impl(r, d, d, nmpa);
+	return pinba_request_to_packet___impl(r, d, nmpa);
 }
 
 
 packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa)
 {
-	return pinba_request_to_packet___impl(r, d, d->d, nmpa);
+	return pinba_request_to_packet___impl(r, d, nmpa);
 }

@@ -108,34 +108,77 @@ struct dictionary_word_hasher_t
 struct dictionary_memory_t
 {
 	uint64_t hash_bytes;
-	uint64_t list_bytes;
+	uint64_t wordlist_bytes;
+	uint64_t freelist_bytes;
 	uint64_t strings_bytes;
 };
 
-struct dictionary_t
+struct dictionary_t : private boost::noncopyable
 {
-	using words_t = std::deque<std::string>; // deque to save a lil on push_back reallocs
-	// using words_t = std::vector<std::string>; // deque to save a lil on push_back reallocs
-	// using hash_t  = google::dense_hash_map<str_ref, uint32_t, meow::hash<str_ref>>;
-	using hash_t  = google::dense_hash_map<str_ref, uint32_t, dictionary_word_hasher_t>;
+	struct word_t : private boost::noncopyable
+	{
+		uint32_t    refcount;
+		uint32_t    id;
+		std::string str;
+
+		word_t(uint32_t i, str_ref s)
+			: refcount(0)
+			, id(i)
+			, str(s.str())
+		{
+		}
+
+		void clear()
+		{
+			refcount = 0;
+			id       = 0;
+			str      = "";
+		}
+	};
+	static_assert((sizeof(word_t) == (2*sizeof(uint32_t) + sizeof(std::string))), "word_t should have no padding");
+
+	// kind of a hack of accomodate storing special str_refs as deleted/empty keys
+	struct hash_str_ref_equal_t
+	{
+		bool operator()(str_ref l, str_ref r) const // TODO: make this one constexpr
+		{
+			if ((l.size() == r.size()) && (l.size() == 0))
+				return l.data() == r.data();
+			return l == r;
+		}
+	};
+
+	// word -> pointer to elt in `words` array
+	using hashtable_t = google::dense_hash_map<str_ref, word_t*, dictionary_word_hasher_t, hash_str_ref_equal_t>;
+
+	struct hash_t : public hashtable_t
+	{
+		hash_t()
+			: hashtable_t(64 * 1024)
+		{
+			this->set_empty_key(str_ref{});
+			this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
+		}
+	};
+
+	// id -> word_t,
+	// deque is critical here, since `hash` stores pointers to elements,
+	// appends must not invalidate them
+	struct words_t : public std::deque<word_t>
+	{
+	};
+
+private:
 
 	mutable rw_mutex_t mtx_;
 
-	words_t  words;
-	hash_t   hash;
+	hash_t                hash;
+	words_t               words;
+	std::deque<uint32_t>  freelist;
 
-	uint64_t mem_used_by_word_strings;
-	uint64_t lookup_count;
-	uint64_t insert_count;
+	uint64_t mem_used_by_word_strings = 0;
 
-	dictionary_t()
-		: hash(64 * 1024)
-		, mem_used_by_word_strings(0)
-		, lookup_count(0)
-		, insert_count(0)
-	{
-		hash.set_empty_key(str_ref{});
-	}
+public:
 
 	uint32_t size() const
 	{
@@ -148,83 +191,132 @@ struct dictionary_t
 		scoped_read_lock_t lock_(mtx_);
 
 		return dictionary_memory_t {
-			.hash_bytes    = hash.bucket_count() * sizeof(*hash.begin()),
-			.list_bytes    = words.size() * sizeof(*words.begin()),
-			.strings_bytes = mem_used_by_word_strings,
+			.hash_bytes     = hash.bucket_count() * sizeof(*hash.begin()),
+			.wordlist_bytes = words.size() * sizeof(*words.begin()),
+			.freelist_bytes = freelist.size() * sizeof(*freelist.begin()),
+			.strings_bytes  = mem_used_by_word_strings,
 		};
 	}
 
-	str_ref get_word(uint32_t word_id) const
+public:
+
+	// get transient work, caller must make sure it stays valid while using
+	str_ref get_word___noref(uint32_t word_id) const
 	{
 		if (word_id == 0)
 			return {};
 
+		// can use only READ lock, here, since word refcount is not incremented
 		scoped_read_lock_t lock_(mtx_);
 
-		if (word_id > words.size())
-			return {};
+		assert((word_id <= words.size()) && "word_id > wordlist.size(), bad word_id reference");
 
-		return words[word_id-1];
+		word_t const *w = &words[word_id - 1];
+		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
+
+		return str_ref { w->str }; // TODO: optimize pointer deref here (string::size(), etc.)
 	}
 
-	uint32_t get_or_add(str_ref const word)
+	void erase_word___ref(uint32_t word_id) // pair to get_or_add___ref()
+	{
+		if (word_id == 0)
+			return; // allow for some leeway
+
+		// TODO: not worth using rlock just for quick assert that should never fire
+		//       but might be worth using it for refcount check (in case it's atomic) and upgrade only after
+		scoped_write_lock_t lock_(mtx_);
+
+		assert((word_id <= words.size()) && "word_id > wordlist.size(), bad word_id reference");
+
+		uint32_t const word_offset = word_id - 1;
+
+		word_t *w = &words[word_offset];
+		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
+
+		if (0 == --w->refcount)
+		{
+			size_t const n_erased = hash.erase(str_ref { w->str });
+			assert((n_erased == 1) && "must have erased something here");
+
+			freelist.push_back(word_offset);
+			w->clear();
+		}
+	}
+
+	// get or add a word that might get removed with erase_word___ref() later
+	word_t const* get_or_add___permanent(str_ref const word)
 	{
 		if (!word)
-			return 0;
+			return {};
 
 		// fastpath
 		scoped_read_lock_t lock_(mtx_);
-
 		{
-			++this->lookup_count;
-			auto const it = hash.find(word);
+			auto it = hash.find(word);
 			if (hash.end() != it)
+			{
+				// no need to increment here, refcount should be >= 2 already
+				// and caller MUST NOT try erasing this word without getting it ref'd
 				return it->second;
+			}
 		}
 
 		// slowpath
 		lock_.upgrade_to_wrlock();
 
-		return this->get_or_add_wrlocked(word);
+		word_t *w = this->get_or_add___wrlocked(word);
+		w->refcount += 2;
+
+		return w;
 	}
 
-	uint32_t get_or_add_pessimistic(str_ref const word, str_ref *real_string)
+	// compatibility wrapper, allows using dictionary_t and repacker_dictionary_t without changing code much
+	uint32_t get_or_add(str_ref const word)
+	{
+		return this->get_or_add___permanent(word)->id;
+	}
+
+	// get or add a word that is never supposed to be removed
+	word_t const* get_or_add___ref(str_ref const word)
 	{
 		if (!word)
-			return 0;
+			return {};
 
 		scoped_write_lock_t lock_(mtx_);
 
-		uint32_t const word_id = this->get_or_add_wrlocked(word);
+		word_t *w = this->get_or_add___wrlocked(word);
+		w->refcount += 1;
 
-		if (real_string)
-			*real_string = words[word_id - 1];
-
-		return word_id;
+		return w;
 	}
 
 private:
 
-	uint32_t get_or_add_wrlocked(str_ref const word)
+	// get or create a word, REFCOUNT IS NOT MODIFIED, i.e. even if just created -> refcount == 0
+	word_t* get_or_add___wrlocked(str_ref const word)
 	{
-		++this->lookup_count;
-		auto const it = hash.find(word);
+		// re-check word existence, might've appeated while upgrading the lock
+		auto it = hash.find(word);
 		if (hash.end() != it)
 			return it->second;
 
+		// need to insert, going to be really slow, mon
+
 		mem_used_by_word_strings += word.size();
 
-		// insert new element
-		words.push_back(word.str());
-
 		// word_id starts with 1, since 0 is reserved for empty
-		assert(words.size() < size_t(INT_MAX));
-		auto const word_id = static_cast<uint32_t>(words.size());
+		assert((words.size() + 1) < size_t(INT_MAX));
+		auto const word_id = static_cast<uint32_t>(words.size() + 1);
 
-		++this->insert_count;
-		hash.insert({words.back(), word_id});
+		// insert new element
+		words.emplace_back(word_id, word);
 
-		return word_id;
+		// ptr to constructed word, with word->str that's going to be alive for long
+		word_t *w = &words.back();
+
+		hash.insert({ str_ref { w->str }, w });
+
+		return w;
 	}
 };
 
@@ -233,37 +325,37 @@ private:
 // transforms word_id -> word only
 // intended to be used in snapshot scans, snapshot data never changes, so we can cache d->size()
 
-struct snapshot_dictionary_t : private boost::noncopyable
-{
-	using words_t = std::vector<str_ref>;
+// struct snapshot_dictionary_t : private boost::noncopyable
+// {
+// 	using words_t = std::vector<str_ref>;
 
-	mutable words_t    words;
-	dictionary_t const *d;
-	uint32_t           d_words_size;
+// 	mutable words_t    words;
+// 	dictionary_t const *d;
+// 	uint32_t           d_words_size;
 
-	explicit snapshot_dictionary_t(dictionary_t const *dict)
-		: d(dict)
-	{
-		d_words_size = d->size();
-		words.resize(d_words_size);
-	}
+// 	explicit snapshot_dictionary_t(dictionary_t const *dict)
+// 		: d(dict)
+// 	{
+// 		d_words_size = d->size();
+// 		words.resize(d_words_size);
+// 	}
 
-	str_ref get_word(uint32_t word_id) const
-	{
-		if (word_id == 0)
-			return {};
+// 	str_ref get_word(uint32_t word_id) const
+// 	{
+// 		if (word_id == 0)
+// 			return {};
 
-		if (word_id > d_words_size)
-			return {};
+// 		if (word_id > d_words_size)
+// 			return {};
 
-		str_ref& word = words[word_id-1];
+// 		str_ref& word = words[word_id-1];
 
-		if (!word) // cache miss
-			word = d->get_word(word_id);
+// 		if (!word) // cache miss
+// 			word = d->get_word(word_id);
 
-		return word;
-	}
-};
+// 		return word;
+// 	}
+// };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // single threaded cache for dictionary_t to be used by repacker
@@ -271,15 +363,7 @@ struct snapshot_dictionary_t : private boost::noncopyable
 
 struct repacker_dictionary_t : private boost::noncopyable
 {
-	struct word_id_hasher_t
-	{
-		inline uint64_t operator()(uint32_t const key) const
-		{
-			return t1ha0(&key, sizeof(key), key);
-		}
-	};
-
-	struct word_t : public boost::intrusive_ref_counter<word_t> // TODO: can use non-atomic counter here
+	struct word_t : public boost::intrusive_ref_counter<word_t> // TODO: can use non-atomic counter here?
 	{
 		uint32_t const id;
 		str_ref  const str;
@@ -292,21 +376,56 @@ struct repacker_dictionary_t : private boost::noncopyable
 	};
 	using word_ptr = boost::intrusive_ptr<word_t>;
 
-	struct timeslice_t : public meow::ref_counted_t
+	struct wordslice_t : public meow::ref_counted_t
 	{
-		struct hash_t : public google::dense_hash_map<uint32_t, word_ptr, word_id_hasher_t>
+		struct word_id_hasher_t
+		{
+			inline uint64_t operator()(uint32_t const key) const
+			{
+				return t1ha0(&key, sizeof(key), key);
+			}
+		};
+
+		using hashtable_t = google::dense_hash_map<uint32_t, word_ptr, word_id_hasher_t>;
+
+		struct hash_t : public hashtable_t
 		{
 			hash_t()
+				: hashtable_t(64 * 1024) // XXX: reasonable default for a timed slice, i guess?
 			{
 				this->set_empty_key(PINBA_INTERNAL___UINT32_MAX);
 			}
 		};
 
-		hash_t ht;
-	};
-	using timeslice_ptr = boost::intrusive_ptr<timeslice_t>;
+		repacker_dictionary_t *const d;
+		hash_t                       ht;
 
-	using word_to_id_hash_t = google::dense_hash_map<str_ref, word_ptr, dictionary_word_hasher_t>;
+		explicit wordslice_t(repacker_dictionary_t *dict)
+			: d(dict)
+		{
+		}
+	};
+	using wordslice_ptr = boost::intrusive_ptr<wordslice_t>;
+
+	// kind of a hack of accomodate storing special str_refs as deleted/empty keys
+	struct word_hash_equal_t
+	{
+		bool operator()(str_ref l, str_ref r) const
+		{
+			if ((l.size() == r.size()) && (l.size() == 0))
+				return l.data() == r.data();
+			return l == r;
+		}
+	};
+
+	struct word_to_id_hash_t : public google::dense_hash_map<str_ref, word_ptr, dictionary_word_hasher_t, word_hash_equal_t>
+	{
+		word_to_id_hash_t()
+		{
+			this->set_empty_key(str_ref{});
+			this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
+		}
+	};
 
 public: // cba
 
@@ -314,15 +433,14 @@ public: // cba
 
 	word_to_id_hash_t          word_to_id;
 
-	std::deque<timeslice_ptr>  slices;
-	timeslice_ptr              curr_slice;
+	std::deque<wordslice_ptr>  slices;
+	wordslice_ptr              curr_slice;
 
 public:
 
 	repacker_dictionary_t(dictionary_t *dict)
 		: d(dict)
 	{
-		word_to_id.set_empty_key(str_ref{});
 	}
 
 	uint32_t get_or_add(str_ref const word)
@@ -334,27 +452,26 @@ public:
 		auto const it = word_to_id.find(word);
 		if (word_to_id.end() != it)
 		{
-			this->add_to_current_timeslice(it->second.get());
+			this->add_to_current_wordslice(it->second.get());
 			return it->second->id;
 		}
 
 		// cache miss - slowpath
-		// can't store `word' in our local word_to_id directly, since it's supposed to be freed quickly by the calling code
-		// so dictionary copies the string, and we store str_ref to that copy here
-		str_ref real_string = {};
-		uint32_t const word_id = d->get_or_add_pessimistic(word, &real_string);
+		word_ptr w = [&]() {
+			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word);
+			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str });
+		}();
 
-		word_ptr w = meow::make_intrusive<word_t>(word_id, real_string);
-		this->add_to_current_timeslice(w.get());
+		word_to_id.insert({ str_ref { w->str }, w});
+		this->add_to_current_wordslice(w.get());
 
-		word_to_id.insert({real_string, w});
-		return word_id;
+		return w->id;
 	}
 
-	void add_to_current_timeslice(word_t *w)
+	void add_to_current_wordslice(word_t *w)
 	{
 		if (!curr_slice)
-			curr_slice = meow::make_intrusive<timeslice_t>();
+			curr_slice = meow::make_intrusive<wordslice_t>(this);
 
 		word_ptr& ts_word = curr_slice->ht[w->id];
 		if (!ts_word)
@@ -363,14 +480,25 @@ public:
 		}
 	}
 
-	void start_new_timeslice()
+	wordslice_t* current_wordslice()
 	{
-		auto const ts = meow::make_intrusive<timeslice_t>();
-		slices.push_back(ts);
+		if (!curr_slice)
+			curr_slice = meow::make_intrusive<wordslice_t>(this);
+
+		return curr_slice.get();
+	}
+
+	void start_new_wordslice()
+	{
+		auto const ts = meow::make_intrusive<wordslice_t>(this);
+
+		if (curr_slice)
+			slices.push_back(curr_slice);
+
 		curr_slice = ts;
 	}
 
-	void detach_timeslice(timeslice_ptr ts)
+	void release_wordslice(wordslice_t *ts)
 	{
 		auto const it = [this, &ts]()
 		{
@@ -407,6 +535,9 @@ public:
 		}
 	}
 };
+
+using repacker_dslice_t   = repacker_dictionary_t::wordslice_t;
+using repacker_dslice_ptr = repacker_dictionary_t::wordslice_ptr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
