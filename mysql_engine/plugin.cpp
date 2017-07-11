@@ -143,6 +143,7 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		std::string result;
 		ff::fmt(result, "n_handlers: {0}, n_shares: {1}, n_views: {2}\n", cnt.n_handlers, cnt.n_shares, cnt.n_handlers);
 		ff::fmt(result, "n_raw_batches: {0}, n_packet_batches: {1}\n", (uint64_t)obj.n_raw_batches, (uint64_t)obj.n_packet_batches);
+		ff::fmt(result, "n_repacker_wordslices: {0}\n", (uint64_t)obj.n_repacker_dict_ws);
 		ff::fmt(result, "n_report_snapshots: {0}, n_report_ticks: {1}\n", (uint64_t)obj.n_report_snapshots, (uint64_t)obj.n_report_ticks);
 		ff::fmt(result, "n_coord_requests: {0}\n", (uint64_t)obj.n_coord_requests);
 

@@ -448,6 +448,10 @@ public:
 		if (!word)
 			return 0;
 
+		// TODO: can optimize this, by storing a `is this word already in current wordslice' bit in `word'
+		//       will need to reset those bits on current wordslice change
+		//       basically trading extra hash lookup on every call for hash scan every wordslice change
+
 		// fastpath - local lookup
 		auto const it = word_to_id.find(word);
 		if (word_to_id.end() != it)

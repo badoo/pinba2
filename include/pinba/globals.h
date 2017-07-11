@@ -62,7 +62,7 @@ struct pinba_stats_t
 	struct {
 		std::atomic<uint64_t> n_raw_batches      = {0};
 		std::atomic<uint64_t> n_packet_batches   = {0};
-		// std::atomic<uint64_t> n_reports          = {0};
+		std::atomic<uint64_t> n_repacker_dict_ws = {0};
 		std::atomic<uint64_t> n_report_snapshots = {0};
 		std::atomic<uint64_t> n_report_ticks     = {0};
 		std::atomic<uint64_t> n_coord_requests   = {0};

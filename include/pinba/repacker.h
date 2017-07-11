@@ -20,8 +20,6 @@ struct repacker_conf_t
 
 	size_t       nn_input_buffer;  // NN_RCVBUF for nn_input connection
 
-	// dictionary_t dictionary;    // dictionary to use when repacking requests
-
 	uint32_t     n_threads;        // threads to start
 
 	uint32_t     batch_size;       // max packets in batch
