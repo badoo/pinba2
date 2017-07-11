@@ -427,7 +427,7 @@ struct repacker_dictionary_t : private boost::noncopyable
 		}
 	};
 
-public: // cba
+public: // FIXME
 
 	dictionary_t       *d;
 
@@ -468,6 +468,104 @@ public:
 		return w->id;
 	}
 
+	wordslice_ptr current_wordslice()
+	{
+		if (!curr_slice)
+			curr_slice = meow::make_intrusive<wordslice_t>(this);
+
+		return curr_slice;
+	}
+
+	void start_new_wordslice()
+	{
+		if (!curr_slice)
+		{
+			curr_slice = meow::make_intrusive<wordslice_t>(this);
+			return;
+		}
+
+		if (!curr_slice->ht.empty())
+		{
+			slices.emplace_back(std::move(curr_slice));
+			curr_slice = meow::make_intrusive<wordslice_t>(this);
+		}
+	}
+
+	void reap_unused_wordslices()
+	{
+		// move all wordslices that are only references from `slices' to the end of the range
+		auto const erased_begin = std::remove_if(slices.begin(), slices.end(), [](wordslice_ptr& ws)
+		{
+			return (ws->use_count() == 1);
+		});
+
+		// fastpath exit if nothing to do
+		if (erased_begin == slices.end())
+			return;
+
+		// returns the list of words to remove from upstream dictionary
+		auto const retire_wordslice = [&](std::vector<word_ptr> *out_words_to_erase, wordslice_t *ws) -> void
+		{
+			// reduce refcounts to all words in this slice
+			for (auto& ws_pair : ws->ht)
+			{
+				// this class is single-threaded, so noone is modifying refcount while we're on it
+				word_ptr& w = ws_pair.second;
+				assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
+
+				if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `ws_pair.second` reference the word
+				{
+					// erase from local hash
+					size_t const erased_count = word_to_id.erase(w->str); // this destroys w
+					assert(erased_count == 1);
+
+					// try moving, to avoid jerking refcount back-n-forth
+					assert(w->use_count() == 1);
+					out_words_to_erase->emplace_back(std::move(w));
+				}
+				else
+				{
+					word_t *wptr = w.get();          // save
+					w.reset();                       // just deref as usual, if it no delete is needed
+					assert(wptr->use_count() >= 2);  // some other wordslice must still be holding a ref
+				}
+			}
+		};
+
+		// gather the list of words to erase from upstream dictionary
+		auto const words_to_erase = [&]() -> std::vector<word_ptr>
+		{
+			std::vector<word_ptr> words_to_erase;
+
+			for (auto it = erased_begin; it != slices.end(); ++it)
+			{
+				wordslice_ptr& ws = *it;
+				retire_wordslice(&words_to_erase, ws.get());
+			}
+
+			return words_to_erase; // should move
+		}();
+
+		// remember to erase wordslice, since we don't need them anymore
+		slices.erase(erased_begin, slices.end());
+
+		// TODO: code from here and on does NOT depend on `this' anymore,
+		//       so it can be run in separate thread to reduce blocking
+
+		// now deref in upstream dictionary
+		for (auto const& w : words_to_erase)
+		{
+			// tell global dictionary that we've erased the word
+			// XXX: are we immune to ABA problem here (since word ids are reused by global dictionary!)?
+			//      should be, since `word_id`s are unique in this hash
+			d->erase_word___ref(w->id);
+		}
+
+		// here `words_to_erase' is destroyed and all word_ptr's are released, freeing memory
+	}
+
+private:
+
 	void add_to_current_wordslice(word_t *w)
 	{
 		if (!curr_slice)
@@ -480,60 +578,46 @@ public:
 		}
 	}
 
-	wordslice_t* current_wordslice()
+#if 0
+	void release_wordslice(wordslice_t *ws)
 	{
-		if (!curr_slice)
-			curr_slice = meow::make_intrusive<wordslice_t>(this);
-
-		return curr_slice.get();
-	}
-
-	void start_new_wordslice()
-	{
-		auto const ts = meow::make_intrusive<wordslice_t>(this);
-
-		if (curr_slice)
-			slices.push_back(curr_slice);
-
-		curr_slice = ts;
-	}
-
-	void release_wordslice(wordslice_t *ts)
-	{
-		auto const it = [this, &ts]()
+		auto const it = [this, &ws]()
 		{
 			for (auto it = slices.begin(); it != slices.end(); ++it)
 			{
-				if (*it == ts)
+				if ((*it).get() == ws)
 					return it;
 			}
 
-			assert(!"detach_timeslice: must have found the ts");
+			assert(!"detach_wordslice: must have found the ws");
 		}();
 
-		// remove timeslice early, we've got a ref to it in `ts` anyway
-		slices.erase(it);
-
 		// now reduce refcounts to all words in there
-		for (auto& ts_pair : ts->ht)
+		for (auto& ws_pair : ws->ht)
 		{
-			word_t *w = ts_pair.second.get();
+			// save on incrementing ref count, before checking for erase
+			// this class is single-threaded, so noone is modifying refcount while we're on it
+			word_t *w = ws_pair.second.get();
+			assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
 
-			assert(w->use_count() >= 2); // at least `this->word_to_id` and `ts_item` must reference the word
-			ts_pair.second.reset();
+			ws_pair.second.reset();      // remove 'wordslice -> word' reference
 
-			if (w->use_count() == 1) // only `this->word_to_id' references the word, should erase
+			if (w->use_count() == 1)     // only `this->word_to_id` reference the word, should erase
 			{
-				size_t const erased_count = word_to_id.erase(w->str);
+				// erase from local hash
+				size_t const erased_count = word_to_id.erase(w->str); // this destroys w
 				assert(erased_count == 1);
 
-				// w is invalid here
+				// w is invalid here, but ws_pair.first (aka word_id) is still valid
 
-				// TODO: tell global dictionary that we've erased the word
-				//       are we immune to ABA problem here (since word ids are reused by global dictionary!)?
+				// tell global dictionary that we've erased the word
+				// XXX: are we immune to ABA problem here (since word ids are reused by global dictionary!)?
+				//      should be, since `word_id`s are unique in this hash
+				d->erase_word___ref(ws_pair.first);
 			}
 		}
 	}
+#endif
 };
 
 using repacker_dslice_t   = repacker_dictionary_t::wordslice_t;

@@ -28,6 +28,15 @@ struct nmsg_message_t : public nmsg_message_ex_t<nmsg_message_t>
 	virtual ~nmsg_message_t() {} // an absolute must have, to properly delete children
 };
 
+template<int ID>
+struct nmsg_message__with_id_t : public nmsg_message_t
+{
+	nmsg_message__with_id_t()
+	{
+		this->type = ID;
+	}
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct nmsg_socket_t : private boost::noncopyable

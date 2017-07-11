@@ -28,11 +28,21 @@ struct repacker_conf_t
 	duration_t   batch_timeout;    // max delay between batches
 };
 
+struct repacker_state_t : public meow::ref_counted_t
+{
+	virtual ~repacker_state_t() {}
+	virtual void merge_other(repacker_state_t&) = 0;
+};
+using repacker_state_ptr = boost::intrusive_ptr<repacker_state_t>;
+
 struct packet_batch_t : public nmsg_message_ex_t<packet_batch_t>
 {
-	struct nmpa_s  nmpa;
-	uint32_t       packet_count;
-	packet_t      **packets;
+	struct nmpa_s       nmpa;
+	uint32_t            packet_count;
+	packet_t            **packets;
+
+	repacker_state_ptr  repacker_state; // can be empty
+
 
 	packet_batch_t(size_t max_packets, size_t nmpa_block_sz)
 		: packet_count{0}
