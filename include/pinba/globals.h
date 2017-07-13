@@ -38,6 +38,25 @@ struct dictionary_t;
 struct repacker_state_t;
 using repacker_state_ptr = std::shared_ptr<repacker_state_t>;
 
+struct repacker_state_t : private boost::noncopyable
+{
+	virtual ~repacker_state_t() {}
+	virtual repacker_state_ptr clone() = 0;
+	virtual void               merge_other(repacker_state_t&) = 0;
+};
+using repacker_state_ptr = std::shared_ptr<repacker_state_t>;
+
+inline void repacker_state___merge_to_from(repacker_state_ptr& to, repacker_state_ptr const& from)
+{
+	if (!from)
+		return;
+
+	if (!to)
+		to = from->clone();
+	else
+		to->merge_other(*from);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct collector_stats_t

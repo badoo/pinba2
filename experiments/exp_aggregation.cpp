@@ -10,7 +10,56 @@
 #include "pinba/report_by_packet.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+struct rstate_t
+{
+	repacker_state_ptr rs;
 
+	rstate_t() {}
+
+	rstate_t(rstate_t const& other)
+	{
+		if (other.rs)
+			rs = other.rs->clone();
+	}
+
+	rstate_t(rstate_t&& other)
+	{
+		if (other.rs)
+			rs = std::move(other->rs);
+	}
+
+	rstate_t& operator=(rstate_t const& other)
+	{
+		if (other.rs)
+			rs = other.rs->clone();
+		return *this;
+	}
+
+	rstate_t& operator=(rstate_t&& other)
+	{
+		if (other.rs)
+			rs = std::move(other->rs);
+		return *this;
+	}
+
+	void merge_other(rstate_t const& other)
+	{
+		if (!other.rs)
+			return;
+
+		if (!rs)
+		{
+			rs = other.rs->clone();
+			return;
+		}
+
+		rs->merge_other(*other.rs);
+	}
+};
+*/
+
+/*
 struct report_tick_t : public meow::ref_counted_t
 {
 	repacker_state_ptr repacker_state;
@@ -18,10 +67,19 @@ struct report_tick_t : public meow::ref_counted_t
 	virtual ~report_tick_t() {}
 };
 using report_tick_ptr = boost::intrusive_ptr<report_tick_t>;
+*/
+
 
 struct repacker_state_test_t : public repacker_state_t
 {
 	std::string dummy;
+
+	virtual repacker_state_ptr clone() override
+	{
+		auto result = std::make_shared<repacker_state_test_t>();
+		result->dummy = dummy;
+		return result;
+	}
 
 	virtual void merge_other(repacker_state_t& other_ref) override
 	{
@@ -40,6 +98,7 @@ struct repacker_state_test_t : public repacker_state_t
 	}
 };
 
+/*
 struct report_agg_t : private boost::noncopyable
 {
 	virtual ~report_agg_t() {}
@@ -64,7 +123,7 @@ struct report_history_t : private boost::noncopyable
 	virtual report_snapshot_ptr get_snapshot() = 0;
 };
 using report_history_ptr = std::shared_ptr<report_history_t>;
-
+*/
 struct new_report_t : private boost::noncopyable
 {
 	virtual ~new_report_t() {}
@@ -79,7 +138,7 @@ using new_report_ptr = std::shared_ptr<new_report_t>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // history impls
-
+/*
 struct report_history_ringbuffer_t : private boost::noncopyable
 {
 	struct item_t
@@ -119,7 +178,7 @@ private:
 	uint32_t      max_ticks_;
 	ringbuffer_t  ringbuffer_;
 };
-
+*/
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // packet specific
 
@@ -253,6 +312,11 @@ public:
 		ring_.append(std::move(tick));
 	}
 
+	virtual report_estimates_t get_estimates() override
+	{
+		return {};
+	}
+
 	virtual report_snapshot_ptr get_snapshot() override
 	{
 		struct snapshot_traits
@@ -266,8 +330,7 @@ public:
 
 			// merge from src ringbuffer to snapshot data
 			static void merge_ticks_into_data(
-				  pinba_globals_t *globals
-				, report_info_t& rinfo
+				  report_snapshot_ctx_t *snapshot_ctx
 				, src_ticks_t& ticks
 				, hashtable_t& to
 				, report_snapshot_t::prepare_type_t ptype)
@@ -276,12 +339,12 @@ public:
 					ticks.clear();
 				);
 
-				for (auto const& tick : ticks)
+				for (auto const& tick_base : ticks)
 				{
-					if (!tick.data)
+					if (!tick_base)
 						continue;
 
-					auto const& src = static_cast<report_tick___by_packet_t const&>(*tick.data);
+					auto const& src = static_cast<report_tick___by_packet_t const&>(*tick_base);
 					auto      & dst = to[0];
 
 					dst.data.req_count   += src.data.req_count;
@@ -292,7 +355,7 @@ public:
 					dst.data.traffic     += src.data.traffic;
 					dst.data.mem_used    += src.data.mem_used;
 
-					if (rinfo.hv_enabled)
+					if (snapshot_ctx->rinfo.hv_enabled)
 					{
 						dst.hv.merge_other(src.hv);
 					}
@@ -300,7 +363,8 @@ public:
 			}
 		};
 
-		return meow::make_unique<report_snapshot__impl_t<snapshot_traits>>(globals_, ring_.get_ringbuffer(), rinfo_);
+		using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
+		return meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_}, ring_.get_ringbuffer());
 	}
 
 private:
@@ -364,6 +428,11 @@ public:
 		}
 	}
 
+	virtual report_estimates_t get_estimates() override
+	{
+		return {};
+	}
+
 	virtual report_snapshot_ptr get_snapshot() override
 	{
 		struct snapshot_traits
@@ -377,8 +446,7 @@ public:
 
 			// merge from src ringbuffer to snapshot data
 			static void merge_ticks_into_data(
-				  pinba_globals_t *globals
-				, report_info_t& rinfo
+				  report_snapshot_ctx_t *snapshot_ctx
 				, src_ticks_t& ticks
 				, hashtable_t& to
 				, report_snapshot_t::prepare_type_t ptype)
@@ -386,7 +454,8 @@ public:
 			}
 		};
 
-		auto snapshot = meow::make_unique<report_snapshot__impl_t<snapshot_traits>>(globals_, rinfo_);
+		using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
+		auto snapshot = meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_}, ring_.get_ringbuffer());
 
 		// merge everything now
 		// no need to copy ringbuffer, since we're inside our own thread
@@ -397,15 +466,9 @@ public:
 
 			for (auto const& ring_elt : ring_.get_ringbuffer())
 			{
-				auto const *src_tick = static_cast<report_tick___by_packet_t const*>(ring_elt.data.get());
+				auto const *src_tick = static_cast<report_tick___by_packet_t const*>(ring_elt.get());
 
-				if (src_tick->repacker_state)
-				{
-					if (!snapshot->repacker_state)
-						snapshot->repacker_state = src_tick->repacker_state;
-					else
-						snapshot->repacker_state->merge_other(*src_tick->repacker_state);
-				}
+				repacker_state___merge_to_from(snapshot->repacker_state, src_tick->repacker_state);
 
 				if (rinfo_.hv_enabled)
 					dst.hv.merge_other(src_tick->hv);

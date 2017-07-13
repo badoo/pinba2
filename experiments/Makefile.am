@@ -28,7 +28,6 @@ LIBS = \
 noinst_PROGRAMS = \
 	exp_collector \
 	exp_packet_repack \
-	exp_report \
 	exp_bloom_filter \
 	exp_nanomsg_broadcast \
 	exp_nanomsg_connect \
@@ -49,10 +48,6 @@ exp_collector_SOURCES = \
 
 exp_packet_repack_SOURCES = \
 	exp_packet_repack.cpp \
-	#
-
-exp_report_SOURCES = \
-	exp_report.cpp \
 	#
 
 exp_bloom_filter_SOURCES = \

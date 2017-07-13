@@ -25,7 +25,7 @@ namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 	template<size_t NKeys>
-	struct report___by_timer_t : public report_t
+	struct report___by_timer_t : public report_old_t
 	{
 		typedef report_key_impl_t<NKeys>      key_t;
 		typedef report_row_data___by_timer_t  data_t;
@@ -759,6 +759,9 @@ namespace { namespace aux {
 
 report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_timer_t const& conf)
 {
+	return {};
+
+#if 0
 	constexpr size_t max_keys = PINBA_LIMIT___MAX_KEY_PARTS;
 	size_t const n_keys = conf.keys.size();
 
@@ -777,4 +780,5 @@ report_ptr create_report_by_timer(pinba_globals_t *globals, report_conf___by_tim
 
 	#undef CASE
 	}
+#endif
 }

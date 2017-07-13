@@ -198,9 +198,20 @@ namespace { namespace aux {
 
 	public:
 
+		repacker_state_impl_t()
+		{
+		}
+
 		repacker_state_impl_t(repacker_dslice_ptr ds)
 		{
 			dict_slices.emplace_back(std::move(ds));
+		}
+
+		virtual repacker_state_ptr clone() override
+		{
+			auto result = std::make_shared<repacker_state_impl_t>();
+			result->dict_slices = dict_slices;
+			return result;
 		}
 
 		virtual void merge_other(repacker_state_t& other_ref) override
