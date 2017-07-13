@@ -4,6 +4,7 @@
 #include "pinba/report.h"
 #include "pinba/histogram.h"
 #include "pinba/packet.h"
+#include "pinba/repacker.h"
 #include "pinba/report.h"
 #include "pinba/report_util.h"
 #include "pinba/report_by_packet.h"
@@ -12,6 +13,8 @@
 
 struct report_tick_t : public meow::ref_counted_t
 {
+	repacker_state_ptr repacker_state;
+
 	virtual ~report_tick_t() {}
 };
 using report_tick_ptr = boost::intrusive_ptr<report_tick_t>;
@@ -95,99 +98,7 @@ private:
 	uint32_t      max_ticks_;
 	ringbuffer_t  ringbuffer_;
 };
-#if 0
-struct report_history___default_t : public report_history_t
-{
-	using ring_t       = report_history_ringbuffer_t;
-	using ringbuffer_t = ring_t::ringbuffer_t;
 
-	using snapshot_ctor_func_t = std::function<report_snapshot_ptr(pinba_globals_t*, ringbuffer_t&, report_info_t const&)>;
-
-public:
-
-	report_history___default_t(pinba_globals_t *globals, report_info_t const& rinfo)
-		: globals_(globals)
-		, stats_(nullptr)
-		, rinfo_(rinfo)
-		, history_(rinfo.tick_count)
-	{
-	}
-
-	virtual void stats_init(report_stats_t *stats) override
-	{
-		stats_ = stats;
-	}
-
-	void set_snapshot_ctor(snapshot_ctor_func_t const& func)
-	{
-		snapshot_ctor_ = func;
-	}
-
-	virtual void merge_tick(report_tick_ptr tick)
-	{
-		history_.append(std::move(tick));
-	}
-
-	virtual report_snapshot_ptr get_snapshot() override
-	{
-		return snapshot_ctor_(globals_, history_.get_ringbuffer(), rinfo_);
-	}
-
-private:
-	pinba_globals_t            *globals_;
-	report_stats_t             *stats_;
-	report_info_t              rinfo_;
-
-	history_t                  history_;
-	snapshot_ctor_func_t       snapshot_ctor_;
-};
-#endif
-
-#if 0
-struct report_history___merged_window_t : public report_history_t
-{
-	struct item_t
-	{
-		report_tick_ptr data;
-	};
-
-	using ringbuffer_t = std::vector<item_t>;
-
-public:
-
-	report_history___merged_window_t(pinba_globals_t *globals, report_info_t const& rinfo)
-		: globals_(globals)
-		, stats_(nullptr)
-		, rinfo_(rinfo)
-	{
-	}
-
-	virtual void stats_init(report_stats_t *stats) override
-	{
-		stats_ = stats;
-	}
-
-	virtual void merge_tick(report_tick_ptr tick)
-	{
-		ringbuffer_.emplace_back(item_t{std::move(tick)});
-		if (ringbuffer_.size() > rinfo_.tick_count)
-			ringbuffer_.erase(ringbuffer_.begin()); // XXX: O(n)
-	}
-
-	virtual report_snapshot_ptr get_snapshot() override
-	{
-		throw std::runtime_error("not implemented");
-		// return snapshot_ctor_(globals_, ringbuffer_, rinfo_);
-	}
-
-private:
-	pinba_globals_t            *globals_;
-	report_stats_t             *stats_;
-	report_info_t              rinfo_;
-
-	ringbuffer_t               ringbuffer_;
-};
-#endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // packet specific
 

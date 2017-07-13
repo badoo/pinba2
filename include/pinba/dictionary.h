@@ -403,6 +403,12 @@ struct repacker_dictionary_t : private boost::noncopyable
 		explicit wordslice_t(repacker_dictionary_t *dict)
 			: d(dict)
 		{
+			PINBA_STATS_(objects).n_repacker_dict_ws++;
+		}
+
+		~wordslice_t()
+		{
+			PINBA_STATS_(objects).n_repacker_dict_ws--;
 		}
 	};
 	using wordslice_ptr = boost::intrusive_ptr<wordslice_t>;
@@ -581,47 +587,6 @@ private:
 			ts_word.reset(w); // increments refcount here
 		}
 	}
-
-#if 0
-	void release_wordslice(wordslice_t *ws)
-	{
-		auto const it = [this, &ws]()
-		{
-			for (auto it = slices.begin(); it != slices.end(); ++it)
-			{
-				if ((*it).get() == ws)
-					return it;
-			}
-
-			assert(!"detach_wordslice: must have found the ws");
-		}();
-
-		// now reduce refcounts to all words in there
-		for (auto& ws_pair : ws->ht)
-		{
-			// save on incrementing ref count, before checking for erase
-			// this class is single-threaded, so noone is modifying refcount while we're on it
-			word_t *w = ws_pair.second.get();
-			assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
-
-			ws_pair.second.reset();      // remove 'wordslice -> word' reference
-
-			if (w->use_count() == 1)     // only `this->word_to_id` reference the word, should erase
-			{
-				// erase from local hash
-				size_t const erased_count = word_to_id.erase(w->str); // this destroys w
-				assert(erased_count == 1);
-
-				// w is invalid here, but ws_pair.first (aka word_id) is still valid
-
-				// tell global dictionary that we've erased the word
-				// XXX: are we immune to ABA problem here (since word ids are reused by global dictionary!)?
-				//      should be, since `word_id`s are unique in this hash
-				d->erase_word___ref(ws_pair.first);
-			}
-		}
-	}
-#endif
 };
 
 using repacker_dslice_t   = repacker_dictionary_t::wordslice_t;

@@ -12,6 +12,7 @@
 #include <boost/noncopyable.hpp>
 
 #include <meow/error.hpp>
+#include <meow/intrusive_ptr.hpp>
 #include <meow/str_ref.hpp>
 #include <meow/std_unique_ptr.hpp>
 #include <meow/format/format.hpp>
@@ -35,6 +36,11 @@ typedef meow::error_t pinba_error_t;
 
 struct nmsg_ticker_t;
 struct dictionary_t;
+
+struct repacker_state_t;
+using repacker_state_ptr = boost::intrusive_ptr<repacker_state_t>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct collector_stats_t
 {

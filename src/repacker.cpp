@@ -200,13 +200,7 @@ namespace { namespace aux {
 
 		repacker_state_impl_t(repacker_dslice_ptr ds)
 		{
-			PINBA_STATS_(objects).n_repacker_dict_ws++;
 			dict_slices.emplace_back(std::move(ds));
-		}
-
-		~repacker_state_impl_t()
-		{
-			PINBA_STATS_(objects).n_repacker_dict_ws--;
 		}
 
 		virtual void merge_other(repacker_state_t& other_ref) override

@@ -31,7 +31,6 @@ struct repacker_state_t : public meow::ref_counted_t
 	virtual ~repacker_state_t() {}
 	virtual void merge_other(repacker_state_t&) = 0;
 };
-using repacker_state_ptr = boost::intrusive_ptr<repacker_state_t>;
 
 struct packet_batch_t : public nmsg_message_ex_t<packet_batch_t>
 {
