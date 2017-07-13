@@ -9,6 +9,7 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/sparse_hash_map>
 
+#include <meow/stopwatch.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -234,9 +235,14 @@ private:
 		if (this->is_prepared())
 			return;
 
+		meow::stopwatch_t sw;
+
 		Traits::merge_ticks_into_data(this, ticks_, data_, ptype);
 
 		prepared_ = true;
+
+		if (this->stats)
+			this->stats->last_snapshot_merge_d = duration_from_timeval(sw.stamp());
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();
