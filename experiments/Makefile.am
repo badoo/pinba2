@@ -36,6 +36,11 @@ noinst_PROGRAMS = \
 	exp_nanomsg_poller \
 	exp_percentiles \
 	exp_protobuf_nmpa \
+	exp_aggregation \
+	#
+
+exp_aggregation_SOURCES = \
+	exp_aggregation.cpp \
 	#
 
 exp_collector_SOURCES = \

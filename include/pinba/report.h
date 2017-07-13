@@ -75,6 +75,8 @@ struct report_estimates_t
 	uint64_t  mem_used  = 0;
 };
 
+// FIXME: pointers in this struct must either be ref counted, or copies
+//        since report might be destroyed, while this struct is alive still (in other thread as well)
 struct report_state_t
 {
 	uint32_t             id;
@@ -154,7 +156,22 @@ typedef std::unique_ptr<report_snapshot_t> report_snapshot_ptr;
 void debug_dump_report_snapshot(FILE*, report_snapshot_t*, str_ref name = {});
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+#if 0
+struct report_agg_t : private boost::noncopyable
+{
+	virtual ~report_agg_t() {}
 
+	virtual void stats_init(report_stats_t *stats) = 0;
+
+	virtual void ticks_init(timeval_t curr_tv) = 0;
+	virtual void tick_now(timeval_t curr_tv) = 0;
+
+	virtual void add(packet_t*) = 0;
+	virtual void add_multi(packet_t**, uint32_t) = 0;
+
+	virtual report_estimates_t  get_estimates() = 0;
+};
+#endif
 struct report_t : private boost::noncopyable
 {
 	virtual ~report_t() {}

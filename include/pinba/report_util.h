@@ -179,7 +179,24 @@ struct report_snapshot__impl_t : public report_snapshot_t
 	using hashtable_t = typename Traits::hashtable_t;
 	using iterator_t  = typename hashtable_t::iterator;
 
+public: // intentional, internal use only
+
+	hashtable_t      data_;      // real data we iterate over
+	bool             prepared_;  // has data been prepared?
+	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
+	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
+	pinba_globals_t  *globals_;  // globals for logging / dictionary
+
 public:
+
+	report_snapshot__impl_t(pinba_globals_t *globals, report_info_t const& rinfo)
+		: data_()
+		, prepared_(false)
+		, ticks_()
+		, rinfo_(rinfo)
+		, globals_(globals)
+	{
+	}
 
 	report_snapshot__impl_t(pinba_globals_t *globals, src_ticks_t const& ticks, report_info_t const& rinfo)
 		: data_()
@@ -187,7 +204,6 @@ public:
 		, ticks_(ticks)
 		, rinfo_(rinfo)
 		, globals_(globals)
-		// , snapshot_d(globals->dictionary())
 	{
 	}
 
@@ -326,15 +342,6 @@ private:
 		auto const& it = iterator_from_position(pos);
 		return Traits::hv_at_position(data_, it);
 	}
-
-private:
-	hashtable_t      data_;      // real data we iterate over
-	bool             prepared_;  // has data been prepared?
-	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
-	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
-	pinba_globals_t  *globals_;  // globals for logging / dictionary
-
-	// snapshot_dictionary_t snapshot_d;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
