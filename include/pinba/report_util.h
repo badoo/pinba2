@@ -181,11 +181,12 @@ struct report_snapshot__impl_t : public report_snapshot_t
 
 public: // intentional, internal use only
 
-	hashtable_t      data_;      // real data we iterate over
-	bool             prepared_;  // has data been prepared?
-	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
-	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
-	pinba_globals_t  *globals_;  // globals for logging / dictionary
+	hashtable_t         data_;           // real data we iterate over
+	bool                prepared_;       // has data been prepared?
+	src_ticks_t         ticks_;          // ticks we merge our data from (in other thread potentially)
+	report_info_t       rinfo_;          // report info, immutable copy taken in ctor
+	pinba_globals_t     *globals_;       // globals for logging / dictionary
+	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks
 
 public:
 

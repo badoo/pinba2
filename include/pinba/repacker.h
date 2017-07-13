@@ -26,7 +26,7 @@ struct repacker_conf_t
 	duration_t   batch_timeout;    // max delay between batches
 };
 
-struct repacker_state_t : public meow::ref_counted_t
+struct repacker_state_t : private boost::noncopyable
 {
 	virtual ~repacker_state_t() {}
 	virtual void merge_other(repacker_state_t&) = 0;

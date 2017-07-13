@@ -316,7 +316,7 @@ namespace { namespace aux {
 			auto const try_send_batch = [&](packet_batch_ptr& batch)
 			{
 				// attach state, that was active while producing this batch
-				batch->repacker_state = meow::make_intrusive<repacker_state_impl_t>(r_dictionary.current_wordslice());
+				batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
 
 				// and start a new one, if requested
 				// XXX: doing it here, means that given 0 traffic, we'll not reset state

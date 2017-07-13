@@ -19,6 +19,27 @@ struct report_tick_t : public meow::ref_counted_t
 };
 using report_tick_ptr = boost::intrusive_ptr<report_tick_t>;
 
+struct repacker_state_test_t : public repacker_state_t
+{
+	std::string dummy;
+
+	virtual void merge_other(repacker_state_t& other_ref) override
+	{
+		auto const& other = static_cast<repacker_state_test_t const&>(other_ref);
+		dummy += std::move(other.dummy);
+	}
+
+	repacker_state_test_t()
+	{
+		ff::fmt(dummy, "{0} ", this);
+	}
+
+	~repacker_state_test_t()
+	{
+		ff::fmt(stdout, "{0}; dummy: {1}\n", __func__, dummy);
+	}
+};
+
 struct report_agg_t : private boost::noncopyable
 {
 	virtual ~report_agg_t() {}
@@ -374,13 +395,20 @@ public:
 
 			dst.data = merged_data_;
 
-			if (rinfo_.hv_enabled)
+			for (auto const& ring_elt : ring_.get_ringbuffer())
 			{
-				for (auto const& ring_elt : ring_.get_ringbuffer())
+				auto const *src_tick = static_cast<report_tick___by_packet_t const*>(ring_elt.data.get());
+
+				if (src_tick->repacker_state)
 				{
-					auto const *src_tick = static_cast<report_tick___by_packet_t const*>(ring_elt.data.get());
-					dst.hv.merge_other(src_tick->hv);
+					if (!snapshot->repacker_state)
+						snapshot->repacker_state = src_tick->repacker_state;
+					else
+						snapshot->repacker_state->merge_other(*src_tick->repacker_state);
 				}
+
+				if (rinfo_.hv_enabled)
+					dst.hv.merge_other(src_tick->hv);
 			}
 		}
 
@@ -526,6 +554,8 @@ int main(int argc, char const *argv[])
 	auto const finish_and_print_tick = [&]()
 	{
 		report_tick_ptr tick_base = r_agg->tick_now(os_unix::clock_monotonic_now());
+		tick_base->repacker_state = std::make_shared<repacker_state_test_t>();
+
 		auto const *tick = static_cast<report_tick___by_packet_t const*>(tick_base.get());
 
 		auto const *data = &tick->data;
