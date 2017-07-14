@@ -185,7 +185,28 @@ namespace { namespace aux {
 
 			virtual report_estimates_t get_estimates() override
 			{
-				return {};
+				report_estimates_t result = {};
+
+				if (!ring_.get_ringbuffer().empty())
+				{
+					auto const& tick = static_cast<tick_t const&>(*ring_.get_ringbuffer().back());
+					result.row_count = tick.ht.size();
+				}
+
+				result.mem_used += sizeof(*this);
+				for (auto const& tick_base : ring_.get_ringbuffer())
+				{
+					auto const& tick = static_cast<tick_t const&>(*tick_base);
+					result.mem_used += sizeof(tick);
+					result.mem_used += tick.ht.bucket_count() * sizeof(*tick.ht.begin());
+					for (auto const& ht_pair : tick.ht)
+					{
+						histogram_t const& hv = ht_pair.second.hv;
+						result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
+					}
+				}
+
+				return result;
 			}
 
 		public: // snapshot

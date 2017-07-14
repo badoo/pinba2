@@ -537,7 +537,25 @@ namespace { namespace aux {
 
 			virtual report_estimates_t get_estimates() override
 			{
-				return {};
+				report_estimates_t result = {};
+
+				if (!ring_.get_ringbuffer().empty())
+				{
+					auto const& tick = static_cast<history_tick_t const&>(*ring_.get_ringbuffer().back());
+					result.row_count = tick.items.size();
+				}
+
+				result.mem_used += sizeof(*this);
+				for (auto const& tick_base : ring_.get_ringbuffer())
+				{
+					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
+					result.mem_used += sizeof(tick);
+					result.mem_used += tick.items.capacity() * sizeof(*tick.items.begin());
+					for (flat_histogram_t const& hv : tick.hvs)
+						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
+				}
+
+				return result;
 			}
 
 		public: // snapshot

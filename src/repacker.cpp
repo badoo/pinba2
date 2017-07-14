@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <meow/defer.hpp>
+#include <meow/stopwatch.hpp>
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
@@ -335,7 +336,6 @@ namespace { namespace aux {
 				//      that's probably fine anyway, since no traffic = no memory usage
 				if (r_dictionary_need_new_wordslice)
 				{
-					LOG_DEBUG(globals_->logger(), "{0}; creating dictionary wordslice", thr_name);
 					r_dictionary.start_new_wordslice();
 					r_dictionary_need_new_wordslice = false;
 				}
@@ -380,11 +380,11 @@ namespace { namespace aux {
 			// reap old dictionary wordslices periodically
 			poller.ticker(1 * d_second, [&](timeval_t now)
 			{
-				LOG_DEBUG(globals_->logger(), "{0}; reaping old dictionary wordslices", thr_name);
+				meow::stopwatch_t sw;
 
 				r_dictionary.reap_unused_wordslices();
 
-				LOG_DEBUG(globals_->logger(), "{0}; wordslices reap complete", thr_name);
+				LOG_DEBUG(globals_->logger(), "{0}; reaping old dictionary wordslices, took {0}", thr_name, sw.stamp());
 			});
 
 			// start new dictionary wordslices periodically
