@@ -384,7 +384,7 @@ namespace { namespace aux {
 
 				r_dictionary.reap_unused_wordslices();
 
-				LOG_DEBUG(globals_->logger(), "{0}; reaping old dictionary wordslices, took {0}", thr_name, sw.stamp());
+				LOG_DEBUG(globals_->logger(), "{0}; reaping old dictionary wordslices, took {1}", thr_name, sw.stamp());
 			});
 
 			// start new dictionary wordslices periodically
