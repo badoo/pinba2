@@ -527,7 +527,12 @@ namespace { namespace aux {
 									state->id        = rhost->id();
 									state->stats     = rhost->stats();
 									state->info      = rhost->report()->info();
-									state->estimates = rhost->report_agg()->get_estimates(); // FIXME: get history stats here!
+
+									auto const a_est = rhost->report_agg()->get_estimates();
+									auto const h_est = rhost->report_history()->get_estimates();
+
+									state->estimates.row_count = h_est.row_count ? h_est.row_count : a_est.row_count;
+									state->estimates.mem_used = h_est.mem_used + a_est.mem_used;
 								});
 
 								auto response = meow::make_intrusive<coordinator_response___report_state_t>();
