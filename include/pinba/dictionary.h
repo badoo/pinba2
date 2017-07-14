@@ -372,6 +372,12 @@ struct repacker_dictionary_t : private boost::noncopyable
 			: id(i)
 			, str(s)
 		{
+			PINBA_STATS_(objects).n_repacker_dict_words++;
+		}
+
+		~word_t()
+		{
+			PINBA_STATS_(objects).n_repacker_dict_words--;
 		}
 	};
 	using word_ptr = boost::intrusive_ptr<word_t>;
