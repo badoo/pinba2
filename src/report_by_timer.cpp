@@ -509,7 +509,7 @@ namespace { namespace aux {
 				stats_ = stats;
 			}
 
-			virtual void merge_tick(report_tick_ptr tick_base)
+			virtual void merge_tick(report_tick_ptr tick_base) override
 			{
 				// re-process tick data, for more compact storage
 				auto const *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src

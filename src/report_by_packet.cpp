@@ -145,7 +145,7 @@ namespace { namespace aux {
 			stats_ = stats;
 		}
 
-		virtual void merge_tick(report_tick_ptr tick)
+		virtual void merge_tick(report_tick_ptr tick) override
 		{
 			ring_.append(std::move(tick));
 		}

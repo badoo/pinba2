@@ -245,7 +245,7 @@ namespace { namespace aux {
 			return report_agg_.get();
 		}
 
-		virtual report_history_t* report_history() const
+		virtual report_history_t* report_history() const override
 		{
 			return report_history_.get();
 		}
