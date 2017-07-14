@@ -150,8 +150,8 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				STORE_FIELD(7,  vars_->udp_recv_packets);
 				STORE_FIELD(8,  vars_->udp_packet_decode_err);
 				STORE_FIELD(9,  vars_->udp_batch_send_total);
-				STORE_FIELD(10,  vars_->udp_batch_send_err);
-				STORE_FIELD(11,  vars_->udp_packet_send_total);
+				STORE_FIELD(10, vars_->udp_batch_send_err);
+				STORE_FIELD(11, vars_->udp_packet_send_total);
 				STORE_FIELD(12, vars_->udp_packet_send_err);
 				STORE_FIELD(13, vars_->udp_ru_utime);
 				STORE_FIELD(14, vars_->udp_ru_stime);

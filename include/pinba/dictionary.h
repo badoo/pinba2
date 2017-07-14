@@ -128,6 +128,12 @@ struct dictionary_t : private boost::noncopyable
 		{
 		}
 
+		void set(uint32_t i, str_ref s)
+		{
+			id = i;
+			str = s.str();
+		}
+
 		void clear()
 		{
 			refcount = 0;
@@ -212,7 +218,7 @@ public:
 		assert((word_id <= words.size()) && "word_id > wordlist.size(), bad word_id reference");
 
 		word_t const *w = &words[word_id - 1];
-		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
+		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
 
 		return str_ref { w->str }; // TODO: optimize pointer deref here (string::size(), etc.)
 	}
@@ -231,12 +237,16 @@ public:
 		uint32_t const word_offset = word_id - 1;
 
 		word_t *w = &words[word_offset];
-		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
+		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
 
-		if (0 == --w->refcount)
+		LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2}", __func__, w->str, w->refcount);
+
+		if (0 == --w->refcount) // only we reference this word
 		{
 			size_t const n_erased = hash.erase(str_ref { w->str });
 			assert((n_erased == 1) && "must have erased something here");
+
+			mem_used_by_word_strings -= w->str.size();
 
 			freelist.push_back(word_offset);
 			w->clear();
@@ -282,6 +292,8 @@ public:
 		if (!word)
 			return {};
 
+		// TODO: not sure how to build fastpath here, since we need to increment refcount
+
 		scoped_write_lock_t lock_(mtx_);
 
 		word_t *w = this->get_or_add___wrlocked(word);
@@ -304,15 +316,28 @@ private:
 
 		mem_used_by_word_strings += word.size();
 
-		// word_id starts with 1, since 0 is reserved for empty
-		assert((words.size() + 1) < size_t(INT_MAX));
-		auto const word_id = static_cast<uint32_t>(words.size() + 1);
+		word_t *w = [this, word]()
+		{
+			if (!freelist.empty())
+			{
+				// freelist stores values already adjusted for 0 being reserved
+				uint32_t const word_id = freelist.back();
+				freelist.pop_back();
 
-		// insert new element
-		words.emplace_back(word_id, word);
+				words[word_id].set(word_id, word);
+				return &words[word_id];
+			}
+			else
+			{
+				// word_id starts with 1, since 0 is reserved for empty
+				assert((words.size() + 1) < size_t(INT_MAX));
+				uint32_t const word_id = static_cast<uint32_t>(words.size() + 1);
 
-		// ptr to constructed word, with word->str that's going to be alive for long
-		word_t *w = &words.back();
+				words.emplace_back(word_id, word);
+				return &words.back();
+
+			}
+		}();
 
 		hash.insert({ str_ref { w->str }, w });
 
@@ -512,7 +537,8 @@ public:
 		// move all wordslices that are only references from `slices' to the end of the range
 		auto const erased_begin = std::partition(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		{
-			return (ws->use_count() == 1);
+			LOG_DEBUG(PINBA_LOOGGER_, "{0}; ws: {1}, uc: {2}", __func__, ws.get(), ws->use_count());
+			return (ws->use_count() != 1);
 		});
 
 		// fastpath exit if nothing to do
@@ -529,10 +555,12 @@ public:
 				word_ptr& w = ws_pair.second;
 				assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
 
+				LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
+
 				if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `ws_pair.second` reference the word
 				{
 					// erase from local hash
-					size_t const erased_count = word_to_id.erase(w->str); // this destroys w
+					size_t const erased_count = word_to_id.erase(w->str);
 					assert(erased_count == 1);
 
 					// try moving, to avoid jerking refcount back-n-forth

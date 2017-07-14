@@ -358,6 +358,12 @@ namespace { namespace aux {
 			// resetable periodic event, to 'idly' send batch at regular intervals
 			auto batch_send_tick = poller.ticker_with_reset(conf_->batch_timeout, [&](timeval_t now)
 			{
+				if (r_dictionary_need_new_wordslice)
+				{
+					r_dictionary.start_new_wordslice();
+					r_dictionary_need_new_wordslice = false;
+				}
+
 				if (!batch || batch->packet_count == 0)
 					return;
 

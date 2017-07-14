@@ -176,8 +176,8 @@ typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 pinba_globals_t*  pinba_globals();
 pinba_globals_t*  pinba_globals_init(pinba_options_t*);
 
-#define PINBA_STATS_(x)  (pinba_globals()->stats()->x)
-#define PINBA_LOOGGER_() (pinba_globals()->logger)
+#define PINBA_STATS_(x) (pinba_globals()->stats()->x)
+#define PINBA_LOOGGER_  (pinba_globals()->logger())
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
