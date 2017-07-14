@@ -73,6 +73,7 @@ namespace { namespace aux {
 				: globals_(globals)
 				, stats_(nullptr)
 				, conf_(conf)
+				, tick_(meow::make_intrusive<tick_t>())
 			{
 			}
 
