@@ -98,6 +98,8 @@ namespace { namespace aux {
 		report_history_ptr     report_history_;
 		report_stats_t         stats_;
 
+		repacker_state_ptr     repacker_state_;
+
 	public:
 
 		report_host___new_thread_t(pinba_globals_t *globals, report_host_conf_t const& conf)
@@ -171,8 +173,9 @@ namespace { namespace aux {
 					.ticker(tick_interval, [this](timeval_t now)
 					{
 						report_tick_ptr tick = report_agg_->tick_now(now);
+						tick->repacker_state = std::move(repacker_state_);
+
 						report_history_->merge_tick(tick);
-						// report_history_->merge_tick(tick, std::move(repacker_state));
 
 						timeval_t const curr_tv    = os_unix::clock_monotonic_now();
 						timeval_t const curr_rt_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
@@ -195,6 +198,8 @@ namespace { namespace aux {
 
 						stats_.batches_recv_total += 1;
 						stats_.packets_recv_total += batch->packet_count;
+
+						repacker_state___merge_to_from(repacker_state_, batch->repacker_state);
 
 						report_agg_->add_multi(batch->packets, batch->packet_count);
 					})
