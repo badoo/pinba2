@@ -515,6 +515,9 @@ namespace { namespace aux {
 				auto const *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src
 				auto          h_tick = meow::make_intrusive<history_tick_t>();      // dst
 
+				// remember to grab repacker_state
+				h_tick->repacker_state = std::move(agg_tick->repacker_state);
+
 				// can MOVE items, since the format is intentionally the same
 				h_tick->items = std::move(agg_tick->items);
 

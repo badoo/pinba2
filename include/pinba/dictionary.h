@@ -510,7 +510,6 @@ public:
 	void reap_unused_wordslices()
 	{
 		// move all wordslices that are only references from `slices' to the end of the range
-		// auto const erased_begin = std::remove_if(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		auto const erased_begin = std::partition(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		{
 			return (ws->use_count() == 1);
