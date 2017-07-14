@@ -258,7 +258,7 @@ namespace { namespace aux {
 				tick_ht_.clear();
 				tick_ht_.resize(0);
 
-				return std::move(result);
+				return result;
 			}
 
 			virtual report_estimates_t get_estimates() override
@@ -757,12 +757,12 @@ namespace { namespace aux {
 			return &rinfo_;
 		}
 
-		virtual report_agg_ptr create_aggregator()
+		virtual report_agg_ptr create_aggregator() override
 		{
 			return std::make_shared<aggregator_t>(globals_, conf_);
 		}
 
-		virtual report_history_ptr create_history()
+		virtual report_history_ptr create_history() override
 		{
 			return std::make_shared<history_t>(globals_, rinfo_);
 		}
