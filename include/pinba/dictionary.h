@@ -504,7 +504,8 @@ public:
 	void reap_unused_wordslices()
 	{
 		// move all wordslices that are only references from `slices' to the end of the range
-		auto const erased_begin = std::remove_if(slices.begin(), slices.end(), [](wordslice_ptr& ws)
+		// auto const erased_begin = std::remove_if(slices.begin(), slices.end(), [](wordslice_ptr& ws)
+		auto const erased_begin = std::partition(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		{
 			return (ws->use_count() == 1);
 		});
@@ -536,7 +537,7 @@ public:
 				else
 				{
 					word_t *wptr = w.get();          // save
-					w.reset();                       // just deref as usual, if it no delete is needed
+					w.reset();                       // just deref as usual, if no delete is needed
 					assert(wptr->use_count() >= 2);  // some other wordslice must still be holding a ref
 				}
 			}
