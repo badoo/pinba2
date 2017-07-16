@@ -230,9 +230,10 @@ public:
 		uint32_t const word_offset = word_id - 1;
 
 		word_t *w = &words[word_offset];
-		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
+		assert(w->id == word_id);
+		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
 
-		LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2}", __func__, w->str, w->refcount);
+		LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2} {3}", __func__, w->str, w->id, w->refcount);
 
 		if (0 == --w->refcount)
 		{
