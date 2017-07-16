@@ -242,7 +242,7 @@ public:
 
 			mem_used_by_word_strings -= w->str.size();
 
-			freelist.push_back(word_offset);
+			freelist.push_back(word_id);
 			w->clear();
 		}
 	}
@@ -314,11 +314,11 @@ private:
 		{
 			if (!freelist.empty())
 			{
-				// freelist stores values already adjusted for 0 being reserved
 				uint32_t const word_id = freelist.back();
 				freelist.pop_back();
 
-				word_t *w = &words[word_id];
+				// remember to subtract 1 from word_id, mon
+				word_t *w = &words[word_id - 1];
 
 				assert((w->id == 0) && "word must be empty, while present in freelist");
 				assert((w->str.empty()) && "word must be empty, while present in freelist");
