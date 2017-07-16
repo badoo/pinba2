@@ -390,7 +390,7 @@ namespace { namespace aux {
 			});
 
 			// reap old dictionary wordslices periodically
-			poller.ticker(500 * d_millisecond, [&](timeval_t now)
+			poller.ticker(250 * d_millisecond, [&](timeval_t now)
 			{
 				meow::stopwatch_t sw;
 
