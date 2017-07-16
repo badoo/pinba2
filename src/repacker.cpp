@@ -225,7 +225,6 @@ namespace { namespace aux {
 				if (it == dict_slices.end())
 				{
 					dict_slices.emplace_back(std::move(other_ds));
-					other_ds.reset();
 				}
 			}
 		}
@@ -384,17 +383,19 @@ namespace { namespace aux {
 			});
 
 			// reap old dictionary wordslices periodically
-			poller.ticker(1 * d_second, [&](timeval_t now)
+			poller.ticker(500 * d_millisecond, [&](timeval_t now)
 			{
 				meow::stopwatch_t sw;
 
-				r_dictionary.reap_unused_wordslices();
+				auto const reap_stats = r_dictionary.reap_unused_wordslices();
 
-				LOG_DEBUG(globals_->logger(), "{0}; reaping old dictionary wordslices, took {1}", thr_name, sw.stamp());
+				LOG_DEBUG(globals_->logger(),
+					"{0}; reaping old dictionary wordslices; time: {1}, slices: {2}, words_local: {3}, words_global: {4}",
+					thr_name, sw.stamp(), reap_stats.reaped_slices, reap_stats.reaped_words_local, reap_stats.reaped_words_global);
 			});
 
 			// start new dictionary wordslices periodically
-			poller.ticker(2 * d_second, [&](timeval_t now)
+			poller.ticker(1 * d_second, [&](timeval_t now)
 			{
 				r_dictionary_need_new_wordslice = true;
 			});

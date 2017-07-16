@@ -90,13 +90,6 @@ struct scoped_write_lock_t : private boost::noncopyable
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct dictionary_get_result_t
-{
-	uint32_t id;
-	uint32_t found : 1;
-};
-static_assert(sizeof(uint64_t) == sizeof(dictionary_get_result_t), "no padding expected");
-
 struct dictionary_word_hasher_t
 {
 	inline uint64_t operator()(str_ref const& key) const
@@ -241,7 +234,7 @@ public:
 
 		LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2}", __func__, w->str, w->refcount);
 
-		if (0 == --w->refcount) // only we reference this word
+		if (0 == --w->refcount)
 		{
 			size_t const n_erased = hash.erase(str_ref { w->str });
 			assert((n_erased == 1) && "must have erased something here");
@@ -292,7 +285,7 @@ public:
 		if (!word)
 			return {};
 
-		// TODO: not sure how to build fastpath here, since we need to increment refcount
+		// TODO: not sure how to build fastpath here, since we need to increment refcount on return
 
 		scoped_write_lock_t lock_(mtx_);
 
@@ -324,8 +317,13 @@ private:
 				uint32_t const word_id = freelist.back();
 				freelist.pop_back();
 
-				words[word_id].set(word_id, word);
-				return &words[word_id];
+				word_t *w = &words[word_id];
+
+				assert((w->id == 0) && "word must be empty, while present in freelist");
+				assert((w->str.empty()) && "word must be empty, while present in freelist");
+
+				w->set(word_id, word);
+				return w;
 			}
 			else
 			{
@@ -428,11 +426,9 @@ struct repacker_dictionary_t : private boost::noncopyable
 			}
 		};
 
-		repacker_dictionary_t *const d;
-		hash_t                       ht;
+		hash_t ht;
 
-		explicit wordslice_t(repacker_dictionary_t *dict)
-			: d(dict)
+		explicit wordslice_t()
 		{
 			PINBA_STATS_(objects).n_repacker_dict_ws++;
 		}
@@ -466,7 +462,7 @@ struct repacker_dictionary_t : private boost::noncopyable
 
 public: // FIXME
 
-	dictionary_t       *d;
+	dictionary_t               *d;
 
 	word_to_id_hash_t          word_to_id;
 
@@ -512,7 +508,7 @@ public:
 	wordslice_ptr current_wordslice()
 	{
 		if (!curr_slice)
-			curr_slice = meow::make_intrusive<wordslice_t>(this);
+			curr_slice = meow::make_intrusive<wordslice_t>();
 
 		return curr_slice;
 	}
@@ -521,60 +517,40 @@ public:
 	{
 		if (!curr_slice)
 		{
-			curr_slice = meow::make_intrusive<wordslice_t>(this);
+			curr_slice = meow::make_intrusive<wordslice_t>();
 			return;
 		}
 
 		if (!curr_slice->ht.empty())
 		{
 			slices.emplace_back(std::move(curr_slice));
-			curr_slice = meow::make_intrusive<wordslice_t>(this);
+			curr_slice = meow::make_intrusive<wordslice_t>();
 		}
 	}
 
-	void reap_unused_wordslices()
+	struct reap_stats_t
 	{
-		// move all wordslices that are only references from `slices' to the end of the range
+		uint64_t reaped_slices;
+		uint64_t reaped_words_local;
+		uint64_t reaped_words_global;
+	};
+
+	// reaps all wordslices that are only referenced from this object
+	reap_stats_t reap_unused_wordslices()
+	{
+		reap_stats_t result = {};
+
+		// move all wordslices that are only referenced from `slices' to the end of the range
 		auto const erased_begin = std::partition(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		{
 			LOG_DEBUG(PINBA_LOOGGER_, "{0}; ws: {1}, uc: {2}", __func__, ws.get(), ws->use_count());
+			assert(ws->use_count() >= 1); // sanity
 			return (ws->use_count() != 1);
 		});
 
 		// fastpath exit if nothing to do
 		if (erased_begin == slices.end())
-			return;
-
-		// returns the list of words to remove from upstream dictionary
-		auto const retire_wordslice = [&](std::vector<word_ptr> *out_words_to_erase, wordslice_t *ws) -> void
-		{
-			// reduce refcounts to all words in this slice
-			for (auto& ws_pair : ws->ht)
-			{
-				// this class is single-threaded, so noone is modifying refcount while we're on it
-				word_ptr& w = ws_pair.second;
-				assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
-
-				LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
-
-				if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `ws_pair.second` reference the word
-				{
-					// erase from local hash
-					size_t const erased_count = word_to_id.erase(w->str);
-					assert(erased_count == 1);
-
-					// try moving, to avoid jerking refcount back-n-forth
-					assert(w->use_count() == 1);
-					out_words_to_erase->emplace_back(std::move(w));
-				}
-				else
-				{
-					word_t *wptr = w.get();          // save
-					w.reset();                       // just deref as usual, if no delete is needed
-					assert(wptr->use_count() >= 2);  // some other wordslice must still be holding a ref
-				}
-			}
-		};
+			return result;
 
 		// gather the list of words to erase from upstream dictionary
 		auto const words_to_erase = [&]() -> std::vector<word_ptr>
@@ -584,10 +560,43 @@ public:
 			for (auto it = erased_begin; it != slices.end(); ++it)
 			{
 				wordslice_ptr& ws = *it;
-				retire_wordslice(&words_to_erase, ws.get());
+
+				result.reaped_slices      +=1;
+				result.reaped_words_local += ws->ht.size();
+
+				// reduce refcounts to all words in this slice
+				for (auto& ws_pair : ws->ht)
+				{
+					// this class is single-threaded, so noone is modifying refcount while we're on it
+					word_ptr& w = ws_pair.second;
+					assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
+
+					// LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
+
+					if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `ws_pair.second` reference the word
+					{
+						result.reaped_words_global += 1;
+
+						LOG_DEBUG(PINBA_LOOGGER_, "reap_unused_wordslices; erase global '{0}' {1} {2}", w->str, w->id, w->use_count());
+
+						// erase from local hash
+						size_t const erased_count = word_to_id.erase(w->str);
+						assert(erased_count == 1);
+
+						// try moving, to avoid jerking refcount back-n-forth
+						assert(w->use_count() == 1);
+						words_to_erase.emplace_back(std::move(w));
+					}
+					else
+					{
+						word_t *wptr = w.get();          // save
+						w.reset();                       // just deref as usual, if no delete is needed
+						assert(wptr->use_count() >= 2);  // some other wordslice must still be holding a ref
+					}
+				}
 			}
 
-			return words_to_erase; // should move
+			return words_to_erase;
 		}();
 
 		// remember to erase wordslice, since we don't need them anymore
@@ -606,6 +615,8 @@ public:
 		}
 
 		// here `words_to_erase' is destroyed and all word_ptr's are released, freeing memory
+
+		return result;
 	}
 
 private:
@@ -613,7 +624,7 @@ private:
 	void add_to_current_wordslice(word_t *w)
 	{
 		if (!curr_slice)
-			curr_slice = meow::make_intrusive<wordslice_t>(this);
+			curr_slice = meow::make_intrusive<wordslice_t>();
 
 		word_ptr& ts_word = curr_slice->ht[w->id];
 		if (!ts_word)
