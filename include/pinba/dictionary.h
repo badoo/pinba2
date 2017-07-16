@@ -521,23 +521,27 @@ struct repacker_dictionary_t : private boost::noncopyable
 	using wordslice_ptr = boost::intrusive_ptr<wordslice_t>;
 
 	// kind of a hack of accomodate storing special str_refs as deleted/empty keys
-	struct word_hash_equal_t
-	{
-		bool operator()(str_ref l, str_ref r) const
-		{
-			if ((l.size() == r.size()) && (l.size() == 0))
-				return l.data() == r.data();
-			return l == r;
-		}
-	};
+	// struct word_hash_equal_t
+	// {
+	// 	bool operator()(str_ref l, str_ref r) const
+	// 	{
+	// 		if ((l.size() == r.size()) && (l.size() == 0))
+	// 			return l.data() == r.data();
+	// 		return l == r;
+	// 	}
+	// };
 
-	struct word_to_id_hash_t : public google::dense_hash_map<str_ref, word_ptr, dictionary_word_hasher_t, word_hash_equal_t>
+	// struct word_to_id_hash_t : public google::dense_hash_map<str_ref, word_ptr, dictionary_word_hasher_t, word_hash_equal_t>
+	// {
+	// 	word_to_id_hash_t()
+	// 	{
+	// 		this->set_empty_key(str_ref{});
+	// 		this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
+	// 	}
+	// };
+
+	struct word_to_id_hash_t : public std::unordered_map<str_ref, word_ptr, dictionary_word_hasher_t>
 	{
-		word_to_id_hash_t()
-		{
-			this->set_empty_key(str_ref{});
-			this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
-		}
 	};
 
 public: // FIXME
