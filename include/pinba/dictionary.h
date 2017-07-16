@@ -125,10 +125,10 @@ struct dictionary_t : private boost::noncopyable
 		}
 	};
 
-	static constexpr uint32_t const shard_count   = 16;
-	static constexpr uint32_t const shard_id_bits = 4;          // number of bits in mask below
-	static constexpr uint32_t const shard_id_mask = 0xF0000000; // top 4 bits
-	static constexpr uint32_t const word_id_mask  = 0x0FFFFFFF; // lower 28 bits
+	static constexpr uint32_t const shard_count   = 32;
+	static constexpr uint32_t const shard_id_bits = 5;          // number of bits in mask below
+	static constexpr uint32_t const shard_id_mask = 0xF8000000; // shard_id = top bits
+	static constexpr uint32_t const word_id_mask  = 0x07FFFFFF; // word_id  = lower bits
 
 	struct word_t : private boost::noncopyable
 	{
