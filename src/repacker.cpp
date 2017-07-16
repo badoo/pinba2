@@ -318,26 +318,30 @@ namespace { namespace aux {
 			bool                  r_dictionary_need_new_wordslice = false;
 
 			// batch state
-			auto const create_batch = [this]()
+			auto const create_batch = [&]()
 			{
 				constexpr size_t nmpa_block_size = 64 * 1024;
-				return meow::make_intrusive<packet_batch_t>(conf_->batch_size, nmpa_block_size);
+				auto batch = meow::make_intrusive<packet_batch_t>(conf_->batch_size, nmpa_block_size);
+				batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
+				return batch;
 			};
 
 			auto const try_send_batch = [&](packet_batch_ptr& batch)
 			{
+				r_dictionary.start_new_wordslice(); // make sure batch has only one wordslice
+
 				// attach state, that was active while producing this batch
-				batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
+				// batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
 
 				// and start a new one, if requested
 				// XXX: doing it here, means that given 0 traffic, we'll not reset state
 				//      since try_send_batch() is not called on timer with empty batch (no traffic = empty batch)
 				//      that's probably fine anyway, since no traffic = no memory usage
-				if (r_dictionary_need_new_wordslice)
-				{
-					r_dictionary.start_new_wordslice();
-					r_dictionary_need_new_wordslice = false;
-				}
+				// if (r_dictionary_need_new_wordslice)
+				// {
+				// 	r_dictionary.start_new_wordslice();
+				// 	r_dictionary_need_new_wordslice = false;
+				// }
 
 				++stats_->repacker.batch_send_total;
 				out_sock_.send_message(batch);
@@ -357,11 +361,14 @@ namespace { namespace aux {
 			// resetable periodic event, to 'idly' send batch at regular intervals
 			auto batch_send_tick = poller.ticker_with_reset(conf_->batch_timeout, [&](timeval_t now)
 			{
-				if (r_dictionary_need_new_wordslice)
-				{
-					r_dictionary.start_new_wordslice();
-					r_dictionary_need_new_wordslice = false;
-				}
+				// need to start new wordslice whenever requested, even if not sending batch
+				// MEOW_DEFER(
+				// 	if (r_dictionary_need_new_wordslice)
+				// 	{
+				// 		r_dictionary.start_new_wordslice();
+				// 		r_dictionary_need_new_wordslice = false;
+				// 	}
+				// );
 
 				if (!batch || batch->packet_count == 0)
 					return;
@@ -395,10 +402,10 @@ namespace { namespace aux {
 			});
 
 			// start new dictionary wordslices periodically
-			poller.ticker(1 * d_second, [&](timeval_t now)
-			{
-				r_dictionary_need_new_wordslice = true;
-			});
+			// poller.ticker(1 * d_second, [&](timeval_t now)
+			// {
+			// 	r_dictionary_need_new_wordslice = true;
+			// });
 
 			// shutdown
 			poller.read_nn_socket(shutdown_sock_, [this, &poller, &thr_name](timeval_t now)
@@ -412,7 +419,10 @@ namespace { namespace aux {
 			{
 				// receive in a loop with NN_DONTWAIT since we'd prefer
 				// to process message ASAP and create batches by size limit (and save on polling / getting current time)
-				while (true)
+
+				// while (true)
+				constexpr size_t const max_batches_to_process_at_once = 4;
+				for (size_t i = 0; i < max_batches_to_process_at_once; ++i)
 				{
 					++stats_->repacker.recv_total;
 

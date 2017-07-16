@@ -3,6 +3,7 @@
 
 #include <string>
 #include <deque>
+#include <unordered_map>
 
 #include <pthread.h> // need rwlock, which is only available since C++14
 
@@ -158,6 +159,11 @@ struct dictionary_t : private boost::noncopyable
 			this->set_empty_key(str_ref{});
 			this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
 		}
+	};
+
+	// unordered_map handles intense delete-s better than dense hash
+	struct hash_with_ok_erase_t : public std::unordered_map<str_ref, word_t*, dictionary_word_hasher_t>
+	{
 	};
 
 	// id -> word_t,
