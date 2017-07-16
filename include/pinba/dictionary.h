@@ -233,7 +233,7 @@ public:
 		assert(w->id == word_id);
 		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
 
-		LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2} {3}", __func__, w->str, w->id, w->refcount);
+		// LOG_DEBUG(PINBA_LOOGGER_, "{0}; erasing {1} {2} {3}", __func__, w->str, w->id, w->refcount);
 
 		if (0 == --w->refcount)
 		{
@@ -544,7 +544,7 @@ public:
 		// move all wordslices that are only referenced from `slices' to the end of the range
 		auto const erased_begin = std::partition(slices.begin(), slices.end(), [](wordslice_ptr& ws)
 		{
-			LOG_DEBUG(PINBA_LOOGGER_, "{0}; ws: {1}, uc: {2}", __func__, ws.get(), ws->use_count());
+			// LOG_DEBUG(PINBA_LOOGGER_, "{0}; ws: {1}, uc: {2}", __func__, ws.get(), ws->use_count());
 			assert(ws->use_count() >= 1); // sanity
 			return (ws->use_count() != 1);
 		});
@@ -578,7 +578,7 @@ public:
 					{
 						result.reaped_words_global += 1;
 
-						LOG_DEBUG(PINBA_LOOGGER_, "reap_unused_wordslices; erase global '{0}' {1} {2}", w->str, w->id, w->use_count());
+						// LOG_DEBUG(PINBA_LOOGGER_, "reap_unused_wordslices; erase global '{0}' {1} {2}", w->str, w->id, w->use_count());
 
 						// erase from local hash
 						size_t const erased_count = word_to_id.erase(w->str);
