@@ -1,6 +1,7 @@
 #ifndef PINBA__DICTIONARY_H_
 #define PINBA__DICTIONARY_H_
 
+#include <array>
 #include <string>
 #include <deque>
 #include <unordered_map>
@@ -109,6 +110,26 @@ struct dictionary_memory_t
 
 struct dictionary_t : private boost::noncopyable
 {
+	union word_id_t
+	{
+		struct {
+			uint32_t shard_id : 4;
+			uint32_t word_id  : 28;
+		};
+
+		uint32_t value;
+
+		word_id_t(uint32_t v)
+			: value(v)
+		{
+		}
+	};
+
+	static constexpr uint32_t const shard_count   = 16;
+	static constexpr uint32_t const shard_id_bits = 4;          // number of bits in mask below
+	static constexpr uint32_t const shard_id_mask = 0xF0000000; // top 4 bits
+	static constexpr uint32_t const word_id_mask  = 0x0FFFFFFF; // lower 28 bits
+
 	struct word_t : private boost::noncopyable
 	{
 		uint32_t    refcount;
@@ -175,67 +196,105 @@ struct dictionary_t : private boost::noncopyable
 
 private:
 
-	mutable rw_mutex_t mtx_;
+	struct shard_t
+	{
+		mutable rw_mutex_t    mtx;
 
-	hash_t                hash;
-	words_t               words;
-	std::deque<uint32_t>  freelist;
+		uint32_t              id;
+		hash_t                hash;
+		words_t               words;
+		std::deque<uint32_t>  freelist;
 
-	uint64_t mem_used_by_word_strings = 0;
+		uint64_t              mem_used_by_word_strings;
+	};
+
+	std::array<shard_t, shard_count> shards_;
+
+	// mutable rw_mutex_t mtx_;
+
+	// hash_t                hash;
+	// words_t               words;
+	// std::deque<uint32_t>  freelist;
+
+	// std::atomic<uint64_t> word_count_              = {0};
+	// std::atomic<uint64_t> mem_used_by_word_strings = {0};
 
 public:
 
+	dictionary_t()
+	{
+		for (uint32_t i = 0; i < shard_count; ++i)
+			shards_[i].id = i;
+	}
+
 	uint32_t size() const
 	{
-		scoped_read_lock_t lock_(mtx_);
-		return words.size();
+		uint32_t result = 0;
+
+		for (auto const& shard : shards_)
+		{
+			scoped_read_lock_t lock_(shard.mtx);
+			result += shard.words.size();
+		}
+		return result;
 	}
 
 	dictionary_memory_t memory_used() const
 	{
-		scoped_read_lock_t lock_(mtx_);
+		dictionary_memory_t result = {};
 
-		return dictionary_memory_t {
-			.hash_bytes     = hash.bucket_count() * sizeof(*hash.begin()),
-			.wordlist_bytes = words.size() * sizeof(*words.begin()),
-			.freelist_bytes = freelist.size() * sizeof(*freelist.begin()),
-			.strings_bytes  = mem_used_by_word_strings,
-		};
+		for (auto const& shard : shards_)
+		{
+			scoped_read_lock_t lock_(shard.mtx);
+
+			result.hash_bytes     += shard.hash.bucket_count() * sizeof(*shard.hash.begin());
+			result.wordlist_bytes += shard.words.size() * sizeof(*shard.words.begin());
+			result.freelist_bytes += shard.freelist.size() * sizeof(*shard.freelist.begin());
+			result.strings_bytes  += shard.mem_used_by_word_strings;
+		}
+
+		return result;
 	}
 
 public:
 
 	// get transient work, caller must make sure it stays valid while using
-	str_ref get_word___noref(uint32_t word_id) const
+	str_ref get_word___noref(uint32_t word_N) const
 	{
-		if (word_id == 0)
+		if (word_N == 0)
 			return {};
 
+		shard_t const *shard   = &shards_[word_N & shard_id_mask];
+		uint32_t const word_id = (word_N & word_id_mask);
+
 		// can use only READ lock, here, since word refcount is not incremented
-		scoped_read_lock_t lock_(mtx_);
+		scoped_read_lock_t lock_(shard->mtx);
 
-		assert((word_id <= words.size()) && "word_id > wordlist.size(), bad word_id reference");
+		assert((word_id <= shard->words.size()) && "word_id > wordlist.size(), bad word_id reference");
 
-		word_t const *w = &words[word_id - 1];
+		word_t const *w = &shard->words[word_id - 1];
 		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
 
 		return str_ref { w->str }; // TODO: optimize pointer deref here (string::size(), etc.)
 	}
 
-	void erase_word___ref(uint32_t word_id) // pair to get_or_add___ref()
+	void erase_word___ref(uint32_t word_N) // pair to get_or_add___ref()
 	{
-		if (word_id == 0)
+		if (word_N == 0)
 			return; // allow for some leeway
+
+		shard_t *shard         = &shards_[word_N & shard_id_mask];
+		uint32_t const word_id = (word_N & word_id_mask);
 
 		// TODO: not worth using rlock just for quick assert that should never fire
 		//       but might be worth using it for refcount check (in case it's atomic) and upgrade only after
-		scoped_write_lock_t lock_(mtx_);
+		scoped_write_lock_t lock_(shard->mtx);
 
-		assert((word_id <= words.size()) && "word_id > wordlist.size(), bad word_id reference");
+		assert((word_id <= shard->words.size()) && "word_id > wordlist.size(), bad word_id reference");
 
 		uint32_t const word_offset = word_id - 1;
 
-		word_t *w = &words[word_offset];
+		word_t *w = &shard->words[word_offset];
 		assert(w->id == word_id);
 		assert(!w->str.empty() && "got empty word ptr from wordlist, dangling word_id reference");
 
@@ -243,12 +302,12 @@ public:
 
 		if (0 == --w->refcount)
 		{
-			size_t const n_erased = hash.erase(str_ref { w->str });
+			size_t const n_erased = shard->hash.erase(str_ref { w->str });
 			assert((n_erased == 1) && "must have erased something here");
 
-			mem_used_by_word_strings -= w->str.size();
+			shard->mem_used_by_word_strings -= w->str.size();
 
-			freelist.push_back(word_id);
+			shard->freelist.push_back(word_id);
 			w->clear();
 		}
 	}
@@ -259,11 +318,13 @@ public:
 		if (!word)
 			return {};
 
+		shard_t *shard = get_shard_for_word(word);
+
 		// fastpath
-		scoped_read_lock_t lock_(mtx_);
+		scoped_read_lock_t lock_(shard->mtx);
 		{
-			auto it = hash.find(word);
-			if (hash.end() != it)
+			auto it = shard->hash.find(word);
+			if (shard->hash.end() != it)
 			{
 				// no need to increment here, refcount should be >= 2 already
 				// and caller MUST NOT try erasing this word without getting it ref'd
@@ -274,7 +335,7 @@ public:
 		// slowpath
 		lock_.upgrade_to_wrlock();
 
-		word_t *w = this->get_or_add___wrlocked(word);
+		word_t *w = this->get_or_add___wrlocked(shard, word);
 		w->refcount += 2;
 
 		return w;
@@ -294,9 +355,11 @@ public:
 
 		// TODO: not sure how to build fastpath here, since we need to increment refcount on return
 
-		scoped_write_lock_t lock_(mtx_);
+		shard_t *shard = get_shard_for_word(word);
 
-		word_t *w = this->get_or_add___wrlocked(word);
+		scoped_write_lock_t lock_(shard->mtx);
+
+		word_t *w = this->get_or_add___wrlocked(shard, word);
 		w->refcount += 1;
 
 		return w;
@@ -304,27 +367,33 @@ public:
 
 private:
 
+	shard_t* get_shard_for_word(str_ref word)
+	{
+		uint64_t const hash_value = dictionary_word_hasher_t()(word);
+		return &shards_[hash_value % shard_count];
+	}
+
 	// get or create a word, REFCOUNT IS NOT MODIFIED, i.e. even if just created -> refcount == 0
-	word_t* get_or_add___wrlocked(str_ref const word)
+	word_t* get_or_add___wrlocked(shard_t *shard, str_ref const word)
 	{
 		// re-check word existence, might've appeated while upgrading the lock
-		auto it = hash.find(word);
-		if (hash.end() != it)
+		auto it = shard->hash.find(word);
+		if (shard->hash.end() != it)
 			return it->second;
 
 		// need to insert, going to be really slow, mon
 
-		mem_used_by_word_strings += word.size();
+		shard->mem_used_by_word_strings += word.size();
 
-		word_t *w = [this, word]()
+		word_t *w = [&]()
 		{
-			if (!freelist.empty())
+			if (!shard->freelist.empty())
 			{
-				uint32_t const word_id = freelist.back();
-				freelist.pop_back();
+				uint32_t const word_id = shard->freelist.back();
+				shard->freelist.pop_back();
 
 				// remember to subtract 1 from word_id, mon
-				word_t *w = &words[word_id - 1];
+				word_t *w = &shard->words[word_id - 1];
 
 				assert((w->id == 0) && "word must be empty, while present in freelist");
 				assert((w->str.empty()) && "word must be empty, while present in freelist");
@@ -335,16 +404,16 @@ private:
 			else
 			{
 				// word_id starts with 1, since 0 is reserved for empty
-				assert((words.size() + 1) < size_t(INT_MAX));
-				uint32_t const word_id = static_cast<uint32_t>(words.size() + 1);
+				assert(((shard->words.size() + 1) & word_id_mask) != 0);
+				uint32_t const word_id = static_cast<uint32_t>(shard->words.size() + 1) | (shard->id << (32 - shard_id_bits));
 
-				words.emplace_back(word_id, word);
-				return &words.back();
+				shard->words.emplace_back(word_id, word);
+				return &shard->words.back();
 
 			}
 		}();
 
-		hash.insert({ str_ref { w->str }, w });
+		shard->hash.insert({ str_ref { w->str }, w });
 
 		return w;
 	}

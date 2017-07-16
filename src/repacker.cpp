@@ -224,7 +224,7 @@ namespace { namespace aux {
 				auto const it = std::find(dict_slices.begin(), dict_slices.end(), other_ds);
 				if (it == dict_slices.end())
 				{
-					dict_slices.emplace_back(std::move(other_ds));
+					dict_slices.emplace_back(other_ds);
 				}
 			}
 		}
