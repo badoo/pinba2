@@ -208,7 +208,7 @@ private:
 		uint64_t              mem_used_by_word_strings;
 	};
 
-	std::array<shard_t, shard_count> shards_;
+	mutable std::array<shard_t, shard_count> shards_;
 
 	// mutable rw_mutex_t mtx_;
 
@@ -259,40 +259,38 @@ public:
 public:
 
 	// get transient work, caller must make sure it stays valid while using
-	str_ref get_word___noref(uint32_t word_N) const
+	str_ref get_word___noref(uint32_t word_id) const
 	{
-		if (word_N == 0)
+		if (word_id == 0)
 			return {};
 
-		shard_t const *shard   = &shards_[word_N & shard_id_mask];
-		uint32_t const word_id = (word_N & word_id_mask);
+		shard_t const *shard   = get_shard_for_word_id(word_id);
+		uint32_t const word_offset = (word_id & word_id_mask) - 1;
 
 		// can use only READ lock, here, since word refcount is not incremented
 		scoped_read_lock_t lock_(shard->mtx);
 
-		assert((word_id <= shard->words.size()) && "word_id > wordlist.size(), bad word_id reference");
+		assert((word_offset < shard->words.size()) && "word_offset >= wordlist.size(), bad word_id reference");
 
-		word_t const *w = &shard->words[word_id - 1];
+		word_t const *w = &shard->words[word_offset];
 		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
 
 		return str_ref { w->str }; // TODO: optimize pointer deref here (string::size(), etc.)
 	}
 
-	void erase_word___ref(uint32_t word_N) // pair to get_or_add___ref()
+	void erase_word___ref(uint32_t word_id) // pair to get_or_add___ref()
 	{
-		if (word_N == 0)
+		if (word_id == 0)
 			return; // allow for some leeway
 
-		shard_t *shard         = &shards_[word_N & shard_id_mask];
-		uint32_t const word_id = (word_N & word_id_mask);
+		shard_t *shard = get_shard_for_word_id(word_id);
+		uint32_t const word_offset = (word_id & word_id_mask) - 1;
 
 		// TODO: not worth using rlock just for quick assert that should never fire
 		//       but might be worth using it for refcount check (in case it's atomic) and upgrade only after
 		scoped_write_lock_t lock_(shard->mtx);
 
-		assert((word_id <= shard->words.size()) && "word_id > wordlist.size(), bad word_id reference");
-
-		uint32_t const word_offset = word_id - 1;
+		assert((word_offset < shard->words.size()) && "word_offset >= wordlist.size(), bad word_id reference");
 
 		word_t *w = &shard->words[word_offset];
 		assert(w->id == word_id);
@@ -367,7 +365,12 @@ public:
 
 private:
 
-	shard_t* get_shard_for_word(str_ref word)
+	shard_t* get_shard_for_word_id(uint32_t word_id) const
+	{
+		return &shards_[(word_id & shard_id_mask) >> (32 - shard_id_bits)];
+	}
+
+	shard_t* get_shard_for_word(str_ref word) const
 	{
 		uint64_t const hash_value = dictionary_word_hasher_t()(word);
 		return &shards_[hash_value % shard_count];
@@ -393,7 +396,8 @@ private:
 				shard->freelist.pop_back();
 
 				// remember to subtract 1 from word_id, mon
-				word_t *w = &shard->words[word_id - 1];
+				uint32_t const word_offset = (word_id & word_id_mask) - 1;
+				word_t *w = &shard->words[word_offset];
 
 				assert((w->id == 0) && "word must be empty, while present in freelist");
 				assert((w->str.empty()) && "word must be empty, while present in freelist");
