@@ -500,7 +500,8 @@ struct repacker_dictionary_t : private boost::noncopyable
 		struct hash_t : public hashtable_t
 		{
 			hash_t()
-				: hashtable_t(64 * 1024) // XXX: reasonable default for a timed slice, i guess?
+				// setting large-ish default size eats way too much memory (megabytes per slice)
+				// : hashtable_t(64 * 1024) // XXX: reasonable default for a timed slice, i guess?
 			{
 				this->set_empty_key(PINBA_INTERNAL___UINT32_MAX);
 			}
