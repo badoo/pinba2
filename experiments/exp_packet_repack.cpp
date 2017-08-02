@@ -202,8 +202,8 @@ static inline size_t nmpa_user_space_used(const struct nmpa_s *nmpa)
 	return ret;
 }
 
-template<class D>
-inline void dump_packet(str_packet_t *packet, D const *d, struct nmpa_s *nmpa)
+template<class SinkT, class D>
+inline void dump_packet(SinkT& sink, str_packet_t *packet, D const *d, struct nmpa_s *nmpa)
 {
 	auto const n_timer_tags = [&]()
 	{
@@ -213,15 +213,15 @@ inline void dump_packet(str_packet_t *packet, D const *d, struct nmpa_s *nmpa)
 		return result;
 	}();
 
-	ff::fmt(stderr, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
-	ff::fmt(stderr, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
-	ff::fmt(stderr, "p: {0}, {1}, {2}, n_timers: {3}, n_tags: {4}, n_timer_tags: {5}\n",
+	ff::fmt(sink, "memory: {0}, {1}\n", nmpa_mem_used(nmpa), nmpa_user_space_used(nmpa));
+	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packet->timers[0]), sizeof(packed_tag_t));
+	ff::fmt(sink, "p: {0}, {1}, {2}, n_timers: {3}, n_tags: {4}, n_timer_tags: {5}\n",
 		packet->host, packet->server, packet->script,
 		packet->timer_count, packet->tag_count, n_timer_tags);
 
 	for (uint32_t i = 0; i < packet->tag_count; i++)
 	{
-		ff::fmt(stdout, "  [{0}]: {1}:{2} -> {3}\n",
+		ff::fmt(sink, "  [{0}]: {1}:{2} -> {3}\n",
 			i,
 			packet->tag_name_ids[i], d->get_word(packet->tag_name_ids[i]),
 			packet->tag_values[i]);
@@ -231,15 +231,15 @@ inline void dump_packet(str_packet_t *packet, D const *d, struct nmpa_s *nmpa)
 	{
 		auto const& t = packet->timers[i];
 
-		ff::fmt(stdout, "  t[{0}]: {{ {1}, {2}, {3} }\n", i, t.value, t.ru_utime, t.ru_stime);
+		ff::fmt(sink, "  t[{0}]: {{ {1}, {2}, {3} }\n", i, t.value, t.ru_utime, t.ru_stime);
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
 			auto const name_id = t.tag_name_ids[j];
 			auto const value = t.tag_values[j];
 
-			ff::fmt(stdout, "    {0}:{1} -> {2}\n", name_id, d->get_word(name_id), value);
+			ff::fmt(sink, "    {0}:{1} -> {2}\n", name_id, d->get_word(name_id), value);
 		}
-		ff::fmt(stdout, "\n");
+		ff::fmt(sink, "\n");
 	}
 }
 
@@ -401,7 +401,7 @@ try
 	uint8_t buf[64*1024] = {0};
 	int const buf_sz = fread(buf, 1, sizeof(buf), f);
 
-	ff::fmt(stderr, "got packet {0} bytes\n", buf_sz);
+	ff::fmt(stdout, "got packet {0} bytes\n", buf_sz);
 
 	auto *req = [](uint8_t const *buf, size_t buf_sz)
 	{
@@ -419,10 +419,25 @@ try
 			throw std::runtime_error("packet decode failed\n");
 		}
 
-		ff::fmt(stderr, "decoded size {0} bytes, dict_size: {1}\n", nmpa_user_space_used(&local_nmpa), req->n_dictionary);
+		ff::fmt(stdout, "decoded size {0} bytes, dict_size: {1}\n", nmpa_user_space_used(&local_nmpa), req->n_dictionary);
 
 		return req;
 	}(buf, buf_sz);
+
+	// unpack + global dictionary repack + dump
+	{
+		Pinba__Request *request = pinba__request__unpack(&pba, buf_sz, buf);
+		if (request == NULL) {
+			throw std::runtime_error("packet decode failed\n");
+		}
+
+		dictionary_t g_dictionary;
+
+		packet_t *packet = pinba_request_to_packet(request, &g_dictionary, &nmpa);
+
+		debug_dump_packet(stdout, packet, &g_dictionary, &nmpa);
+		nmpa_empty(&nmpa);
+	}
 
 	// just unpack + print
 	{
@@ -432,12 +447,12 @@ try
 		}
 
 		PINBA_PACKER___FOR_EACH_TIMER(request, {
-			ff::fmt(stderr, " t[{0}]: {1}\n", i, timer.value);
+			ff::fmt(stdout, " t[{0}]: {1}\n", i, timer.value);
 		});
 
 		str_packet_t *packet = pinba_request_to_str_packet(request, &d, &nmpa);
 
-		dump_packet(packet, &d, &nmpa);
+		dump_packet(stdout, packet, &d, &nmpa);
 		nmpa_empty(&nmpa);
 	}
 
@@ -458,7 +473,7 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+		ff::fmt(stdout, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
 			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
@@ -473,7 +488,7 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+		ff::fmt(stdout, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
 			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
@@ -494,7 +509,7 @@ try
 		}
 
 		auto const elapsed = sw.stamp();
-		ff::fmt(stderr, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
+		ff::fmt(stdout, "{0}; {1} iterations, elapsed: {2}, {3} req/sec\n",
 			name, n_iterations, elapsed, (double)n_iterations / timeval_to_double(elapsed));
 	};
 
@@ -511,6 +526,6 @@ try
 }
 catch (std::exception const& e)
 {
-	ff::fmt(stderr, "error: {0}\n", e.what());
+	ff::fmt(stdout, "error: {0}\n", e.what());
 	return 1;
 }

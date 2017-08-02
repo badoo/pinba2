@@ -170,40 +170,47 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		return result;
 	}();
 
-	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packed_timer_t), sizeof(packed_tag_t));
-	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
-		packet->host_id, d->get_word___noref(packet->host_id),
-		packet->server_id, d->get_word___noref(packet->server_id),
-		packet->script_id, d->get_word___noref(packet->script_id),
-		packet->timer_count, packet->tag_count, n_timer_tags);
+	ff::fmt(sink, "p: {0}, n_req_tags: {1}, n_timers: {2}, n_timer_tags: {3}\n",
+		packet, packet->tag_count, packet->timer_count, n_timer_tags);
+
+	ff::fmt(sink, "host: {0} [{1}], server: {2} [{3}], script: {4} [{5}]\n",
+		d->get_word(packet->host_id), packet->host_id,
+		d->get_word(packet->server_id), packet->server_id,
+		d->get_word(packet->script_id), packet->script_id);
+
+	ff::fmt(sink, "req_time: {0}, ru_u: {1}, ru_s: {2}, schema: {3} [{4}], status: {5} [{6}], mem_footprint: {7}, traffic: {8}\n",
+		packet->request_time, packet->ru_utime, packet->ru_stime,
+		d->get_word(packet->schema_id), packet->schema_id,
+		d->get_word(packet->status), packet->status,
+		packet->mem_used, packet->traffic);
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
 	{
 		auto const name_id = packet->tag_name_ids[i];
 		auto const value_id = packet->tag_value_ids[i];
-		ff::fmt(sink, "  tag[{0}]: {{ {1}:{2} -> {3}:{4} }\n",
+		ff::fmt(sink, "  tag[{0}]: {{ [{1}] {2} -> {3} [{4}] }\n",
 			i,
-			name_id, d->get_word___noref(name_id),
-			value_id, d->get_word___noref(value_id));
+			name_id, d->get_word(name_id),
+			d->get_word(value_id), value_id);
 	}
-	ff::fmt(sink, "\n");
 
 	for (unsigned i = 0; i < packet->timer_count; i++)
 	{
 		auto const& t = packet->timers[i];
 
-		ff::fmt(sink, "  t[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
+		ff::fmt(sink, "  timer[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
 			auto const name_id = t.tag_name_ids[j];
 			auto const value_id = t.tag_value_ids[j];
 
-			ff::fmt(sink, "    {0}:{1} -> {2}:{3}\n",
-				name_id, d->get_word___noref(name_id),
-				value_id, d->get_word___noref(value_id));
+			ff::fmt(sink, "    [{0}] {1} -> {2} [{3}]\n",
+				name_id, d->get_word(name_id),
+				d->get_word(value_id), value_id);
 		}
-		ff::fmt(sink, "\n");
 	}
+
+	ff::fmt(sink, "\n");
 
 	return sink;
 }

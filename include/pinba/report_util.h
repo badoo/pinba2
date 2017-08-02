@@ -144,7 +144,7 @@ std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t con
 
 	for (size_t i = 0; i < k.size(); ++i)
 	{
-		ff::fmt(result, "{0}{1}<{2}>", (i == 0) ? "" : "|", k[i], dict->get_word___noref(k[i]));
+		ff::fmt(result, "{0}{1}<{2}>", (i == 0) ? "" : "|", k[i], dict->get_word(k[i]));
 	}
 
 	return result;
@@ -328,7 +328,7 @@ private:
 		{
 			// str_ref const word = dictionary()->get_word(k[i]);
 			// str_ref const word = snapshot_d.get_word(k[i]);
-			str_ref const word = dictionary()->get_word___noref(k[i]); // FIXME
+			str_ref const word = dictionary()->get_word(k[i]); // FIXME
 			result.push_back(word);
 		}
 		return result;

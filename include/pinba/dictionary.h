@@ -259,7 +259,7 @@ public:
 public:
 
 	// get transient work, caller must make sure it stays valid while using
-	str_ref get_word___noref(uint32_t word_id) const
+	str_ref get_word(uint32_t word_id) const
 	{
 		if (word_id == 0)
 			return {};
@@ -342,6 +342,9 @@ public:
 	// compatibility wrapper, allows using dictionary_t and repacker_dictionary_t without changing code much
 	uint32_t get_or_add(str_ref const word)
 	{
+		if (!word)
+			return 0;
+
 		return this->get_or_add___permanent(word)->id;
 	}
 
