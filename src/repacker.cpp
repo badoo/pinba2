@@ -448,6 +448,23 @@ namespace { namespace aux {
 						// packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
 						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
 
+						if (globals_->options()->packet_debug)
+						{
+							static double curr_fraction = 1.0; // to start dumping immediately
+
+							if (curr_fraction >= 1.0)
+							{
+								auto sink = meow::logging::logger_as_sink(*globals_->logger(), meow::logging::log_level::info, meow::line_mode::prefix);
+								debug_dump_packet(sink, packet, globals_->dictionary(), &batch->nmpa);
+
+								curr_fraction = globals_->options()->packet_debug_fraction;
+							}
+							else
+							{
+								curr_fraction += globals_->options()->packet_debug_fraction;
+							}
+						}
+
 						// append to current batch
 						batch->packets[batch->packet_count] = packet;
 						batch->packet_count++;

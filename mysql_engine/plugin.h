@@ -27,6 +27,8 @@ struct pinba_variables_t
 	unsigned  repacker_batch_timeout_ms = 0;
 	unsigned  coordinator_input_buffer  = 0;
 	unsigned  report_input_buffer       = 0;
+	char      packet_debug              = 0;
+	double    packet_debug_fraction     = 0.01;
 };
 
 pinba_variables_t* pinba_variables();
