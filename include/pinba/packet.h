@@ -171,12 +171,15 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		return result;
 	}();
 
-	ff::fmt(sink, "p: {0}, {1}, {2}, {3}\n", packet, sizeof(*packet), sizeof(packed_timer_t), sizeof(packed_tag_t));
-	ff::fmt(sink, "p: {0}:{1}, {2}:{3}, {4}:{5}, n_timers: {6}, n_tags: {7}, n_timer_tags: {8}\n",
+	ff::fmt(sink, "p: {0}, host: {0}:{1}, script: {2}:{3}, server: {4}:{5}\n",
+		packet,
 		packet->host_id, d->get_word(packet->host_id),
 		packet->server_id, d->get_word(packet->server_id),
-		packet->script_id, d->get_word(packet->script_id),
-		packet->timer_count, packet->tag_count, n_timer_tags);
+		packet->script_id, d->get_word(packet->script_id));
+
+	ff::fmt(sink, "status: {0}, mem_footprint: {1}, traffic: {2}, n_req_tags: {3}, n_timers: {4}, n_timer_tags: {5}\n",
+		packet->status, packet->mem_used, packet->traffic,
+		packet->tag_count, packet->timer_count, n_timer_tags);
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
 	{
@@ -187,13 +190,12 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 			name_id, d->get_word(name_id),
 			value_id, d->get_word(value_id));
 	}
-	ff::fmt(sink, "\n");
 
 	for (unsigned i = 0; i < packet->timer_count; i++)
 	{
 		auto const& t = packet->timers[i];
 
-		ff::fmt(sink, "  t[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
+		ff::fmt(sink, "  timer[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
 			auto const name_id = t.tag_name_ids[j];
@@ -203,8 +205,9 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 				name_id, d->get_word(name_id),
 				value_id, d->get_word(value_id));
 		}
-		ff::fmt(sink, "\n");
 	}
+
+	ff::fmt(sink, "\n");
 
 	return sink;
 }
