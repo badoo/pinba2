@@ -61,6 +61,11 @@ namespace { namespace aux {
 			return options_;
 		}
 
+		virtual pinba_options_t* options_mutable() override
+		{
+			return options_;
+		}
+
 		virtual dictionary_t*  dictionary() const override
 		{
 			return dictionary_.get();
@@ -149,6 +154,11 @@ namespace { namespace aux {
 		virtual pinba_options_t const* options() const override
 		{
 			return globals_->options();
+		}
+
+		virtual pinba_options_t* options_mutable() override
+		{
+			return globals_->options_mutable();
 		}
 
 		virtual pinba_error_t add_report(report_ptr report) override

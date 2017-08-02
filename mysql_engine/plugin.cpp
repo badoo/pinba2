@@ -287,6 +287,9 @@ static int pinba_engine_init(void *p)
 			.report_input_buffer      = pinba_variables()->report_input_buffer,
 
 			.logger                   = logger,
+
+			.packet_debug             = (bool)pinba_variables()->packet_debug,
+			.packet_debug_fraction    = pinba_variables()->packet_debug_fraction,
 		};
 
 		pinba_MYSQL__instance = [&]()
@@ -478,6 +481,54 @@ static MYSQL_SYSVAR_UINT(report_input_buffer,
 	8 * 1024,
 	0);
 
+static MYSQL_SYSVAR_BOOL(packet_debug,
+	pinba_variables()->packet_debug,
+	PLUGIN_VAR_RQCMDARG,
+	"dump incoming packets to log (at INFO level)",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
+	{
+		long long tmp;
+		int const is_null = value->val_int(value, &tmp);
+
+		*static_cast<char*>(res_for_update) = (char)((is_null) ? 0 : tmp);
+
+		return 0;
+	},
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
+	{
+		char const saved_val = *(char*)saved_from_update;
+
+		P_E_->options_mutable()->packet_debug = (bool)saved_val;
+		*static_cast<char*>(out_to_mysql) = saved_val;
+	},
+	0);
+
+static MYSQL_SYSVAR_DOUBLE(packet_debug_fraction,
+	pinba_variables()->packet_debug_fraction,
+	PLUGIN_VAR_RQCMDARG,
+	"fraction of incoming packets to dump (when packet_debug) is set",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
+	{
+		double tmp;
+		int const is_null = value->val_real(value, &tmp);
+
+		*static_cast<double*>(res_for_update) = (is_null) ? 0.01 : tmp;
+
+		return 0;
+	},
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
+	{
+		double const saved_val = *(double*)saved_from_update;
+
+		P_E_->options_mutable()->packet_debug_fraction = saved_val;
+		*static_cast<double*>(out_to_mysql) = saved_val;
+
+	},
+	0.01, // def: every 100th
+	0.000000001,
+	1.0,
+	0);
+
 static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(port),
 	MYSQL_SYSVAR(address),
@@ -490,6 +541,8 @@ static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(repacker_batch_timeout_ms),
 	MYSQL_SYSVAR(coordinator_input_buffer),
 	MYSQL_SYSVAR(report_input_buffer),
+	MYSQL_SYSVAR(packet_debug),
+	MYSQL_SYSVAR(packet_debug_fraction),
 	NULL
 };
 

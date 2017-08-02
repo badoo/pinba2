@@ -20,6 +20,7 @@ struct pinba_engine_t : private boost::noncopyable
 
 	virtual pinba_globals_t*       globals() const = 0;
 	virtual pinba_options_t const* options() const = 0;
+	virtual pinba_options_t*       options_mutable() = 0;
 
 	virtual pinba_error_t add_report(report_ptr) = 0;
 	virtual pinba_error_t delete_report(str_ref name) = 0;

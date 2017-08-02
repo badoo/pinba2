@@ -131,6 +131,9 @@ struct pinba_options_t
 	uint32_t    report_input_buffer;
 
 	pinba_logger_ptr logger;
+
+	bool        packet_debug;           // dump arriving packets to log (at info level)
+	double      packet_debug_fraction;  // probability of dumping a single packet (aka, 0.01 = dump roughly every 100th)
 };
 
 struct pinba_globals_t : private boost::noncopyable
@@ -142,6 +145,7 @@ struct pinba_globals_t : private boost::noncopyable
 
 	virtual pinba_logger_t*  logger() const = 0;
 	virtual pinba_options_t const* options() const = 0;
+	virtual pinba_options_t*       options_mutable() = 0;
 	virtual dictionary_t*  dictionary() const = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
@@ -151,7 +155,8 @@ pinba_globals_t*  pinba_globals();
 pinba_globals_t*  pinba_globals_init(pinba_options_t*);
 
 #define PINBA_STATS_(x)  (pinba_globals()->stats()->x)
-#define PINBA_LOOGGER_() (pinba_globals()->logger)
+#define PINBA_LOGGER_      (pinba_globals()->logger())
+#define PINBA_OPTIONS_(x)  (pinba_globals()->options()->x)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
