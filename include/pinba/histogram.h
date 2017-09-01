@@ -214,6 +214,9 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	if (percentile == 0.) // 0'th percentile is always 0
 		return {0};
 
+	if (hv.items_total() == 0) // no values in histogram, nothing to do
+		return {0};
+
 	uint32_t const required_sum = [&]()
 	{
 		uint32_t const res = std::ceil(hv.items_total() * percentile / 100.0);
@@ -238,13 +241,9 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	auto const map_end = map.end();
 
 	uint32_t current_sum = 0;
-	uint32_t bucket_id   = 0;
 
-	for (; current_sum < required_sum; bucket_id++)
+	for (uint32_t bucket_id = 0; bucket_id < conf.bucket_count; bucket_id++)
 	{
-		// infinity checked before the loop
-		assert(bucket_id < conf.bucket_count);
-
 		auto const it = map.find(bucket_id);
 		if (it == map_end)
 		{
@@ -276,6 +275,11 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 			return conf.bucket_d * bucket_id + d;
 		}
 	}
+
+	// dump map contents to stderr, as we're going to die anyway
+	ff::fmt(stderr, "{0} internal failure, dumping histogram: {1} values\n", __func__, map.size());
+	for (auto const& pair : map)
+		ff::fmt(stderr, "[{0}] -> {1}\n", pair.first, pair.second);
 
 	assert(!"must not be reached");
 	// return conf.bucket_d * conf.bucket_count;
@@ -350,6 +354,11 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 			return conf.bucket_d * bucket_id + d;
 		}
 	}
+
+	// dump hv contents to stderr, as we're going to die anyway
+	ff::fmt(stderr, "{0} internal failure, dumping histogram: {1} values\n", __func__, hv.values.size());
+	for (auto const& item : hv.values)
+		ff::fmt(stderr, "[{0}] -> {1}\n", item.bucket_id, item.value);
 
 	assert(!"must not be reached");
 	// return conf.bucket_d * conf.bucket_count;
