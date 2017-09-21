@@ -110,6 +110,8 @@ struct dictionary_memory_t
 
 struct dictionary_t : private boost::noncopyable
 {
+/*
+// TODO: rebuild sharding with this struct, instead of handmade bit-fiddling
 	union word_id_t
 	{
 		struct {
@@ -124,6 +126,8 @@ struct dictionary_t : private boost::noncopyable
 		{
 		}
 	};
+	static_assert(sizeof(word_id_t) == sizeof(uint32_t), "no padding expected");
+*/
 
 	static constexpr uint32_t const shard_count   = 32;
 	static constexpr uint32_t const shard_id_bits = 5;          // number of bits in mask below
@@ -209,15 +213,6 @@ private:
 	};
 
 	mutable std::array<shard_t, shard_count> shards_;
-
-	// mutable rw_mutex_t mtx_;
-
-	// hash_t                hash;
-	// words_t               words;
-	// std::deque<uint32_t>  freelist;
-
-	// std::atomic<uint64_t> word_count_              = {0};
-	// std::atomic<uint64_t> mem_used_by_word_strings = {0};
 
 public:
 
