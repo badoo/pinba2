@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS `pinba`.`active` (
-  `id` int unsigned NOT NULL,
+  `id` int(10) unsigned NOT NULL,
   `table_name` varchar(128) NOT NULL,
   `internal_name` varchar(128) NOT NULL,
   `kind` varchar(64) NOT NULL,
