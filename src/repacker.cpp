@@ -312,10 +312,8 @@ namespace { namespace aux {
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 			);
 
-			// dictionary and thread-local cache for it
-			// dictionary_t *dictionary = globals_->dictionary();
+			// thread-local cache for global shared dictionary
 			repacker_dictionary_t r_dictionary { globals_->dictionary() };
-			bool                  r_dictionary_need_new_wordslice = false;
 
 			// batch state
 			auto const create_batch = [&]()
@@ -329,19 +327,6 @@ namespace { namespace aux {
 			auto const try_send_batch = [&](packet_batch_ptr& batch)
 			{
 				r_dictionary.start_new_wordslice(); // make sure batch has only one wordslice
-
-				// attach state, that was active while producing this batch
-				// batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
-
-				// and start a new one, if requested
-				// XXX: doing it here, means that given 0 traffic, we'll not reset state
-				//      since try_send_batch() is not called on timer with empty batch (no traffic = empty batch)
-				//      that's probably fine anyway, since no traffic = no memory usage
-				// if (r_dictionary_need_new_wordslice)
-				// {
-				// 	r_dictionary.start_new_wordslice();
-				// 	r_dictionary_need_new_wordslice = false;
-				// }
 
 				++stats_->repacker.batch_send_total;
 				out_sock_.send_message(batch);
@@ -361,15 +346,6 @@ namespace { namespace aux {
 			// resetable periodic event, to 'idly' send batch at regular intervals
 			auto batch_send_tick = poller.ticker_with_reset(conf_->batch_timeout, [&](timeval_t now)
 			{
-				// need to start new wordslice whenever requested, even if not sending batch
-				// MEOW_DEFER(
-				// 	if (r_dictionary_need_new_wordslice)
-				// 	{
-				// 		r_dictionary.start_new_wordslice();
-				// 		r_dictionary_need_new_wordslice = false;
-				// 	}
-				// );
-
 				if (!batch || batch->packet_count == 0)
 					return;
 
@@ -390,6 +366,8 @@ namespace { namespace aux {
 			});
 
 			// reap old dictionary wordslices periodically
+			// 250ms is hand-tuned with a synthetic test at ~400k random 32byte strings/sec
+			// might be made tunable, but no need for now
 			poller.ticker(250 * d_millisecond, [&](timeval_t now)
 			{
 				meow::stopwatch_t sw;
@@ -401,12 +379,6 @@ namespace { namespace aux {
 					thr_name, sw.stamp(), reap_stats.reaped_slices, reap_stats.reaped_words_local, reap_stats.reaped_words_global);
 			});
 
-			// start new dictionary wordslices periodically
-			// poller.ticker(1 * d_second, [&](timeval_t now)
-			// {
-			// 	r_dictionary_need_new_wordslice = true;
-			// });
-
 			// shutdown
 			poller.read_nn_socket(shutdown_sock_, [this, &poller, &thr_name](timeval_t now)
 			{
@@ -417,15 +389,13 @@ namespace { namespace aux {
 			// process incoming packets
 			poller.read_nn_socket(input_sock, [&](timeval_t now)
 			{
-				// receive in a loop with NN_DONTWAIT since we'd prefer
-				// to process message ASAP and create batches by size limit (and save on polling / getting current time)
+				constexpr size_t const max_batches_per_poll_iteration = 4;
 
-				// while (true)
-				constexpr size_t const max_batches_to_process_at_once = 4;
-				for (size_t i = 0; i < max_batches_to_process_at_once; ++i)
+				for (size_t i = 0; i < max_batches_per_poll_iteration; ++i)
 				{
 					++stats_->repacker.recv_total;
 
+					// receive in a loop with NN_DONTWAIT to avoid hanging here when we're out of incoming data
 					auto const req = input_sock.recv<raw_request_ptr>(thr_name, NN_DONTWAIT);
 					if (!req) { // EAGAIN
 						++stats_->repacker.recv_eagain;
@@ -436,7 +406,11 @@ namespace { namespace aux {
 					{
 						++stats_->repacker.recv_packets;
 
-						auto *pb_req = req->requests[i]; // non-const here
+						 // non-const, since pinba_validate_request() might change the packet
+						auto *pb_req = req->requests[i];
+
+						// validation should not fail, generally.
+						// pinba is expected to be mostly receiving traffic from trusted sources (your code, mon!)
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)
 						{
@@ -445,7 +419,6 @@ namespace { namespace aux {
 							continue;
 						}
 
-						// packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
 						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
 
 						if (globals_->options()->packet_debug)
