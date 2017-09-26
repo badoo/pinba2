@@ -24,7 +24,7 @@ namespace pinba {
 
 	public:
 
-		fixlen_bloom_t()
+		constexpr fixlen_bloom_t()
 		{
 			static_assert(std::is_standard_layout<self_t>::value, "don't mess with fixlen_bloom_t<>");
 		}
@@ -48,7 +48,7 @@ namespace pinba {
 
 	private:
 
-		static inline uint32_t bloom___rot32(uint32_t v, unsigned s)
+		static constexpr inline uint32_t bloom___rot32(uint32_t v, unsigned s)
 		{
 			return (v >> s) | (v << (32 - s));
 		}

@@ -157,7 +157,8 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 	p->ru_stime     = duration_from_float(r->ru_stime);
 
 	// bloom should be somewhere close to the top
-	p->timer_bloom = (timertag_bloom_t*)nmpa_calloc(nmpa, sizeof(timertag_bloom_t)); // NOTE: no ctor is called here!
+	p->timer_bloom = (timertag_bloom_t*)nmpa_alloc(nmpa, sizeof(timertag_bloom_t));
+	new (p->timer_bloom) timertag_bloom_t();
 
 	// timers
 	p->timer_count = r->n_timer_value;
