@@ -46,6 +46,11 @@ namespace pinba {
 			return (bits_ & other.bits_) == other.bits_;
 		}
 
+		std::string to_string() const
+		{
+			return bits_.to_string();
+		}
+
 	private:
 
 		static constexpr inline uint32_t bloom___rot32(uint32_t v, unsigned s)

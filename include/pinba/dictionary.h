@@ -313,20 +313,13 @@ public:
 
 		shard_t *shard = get_shard_for_word(word);
 
-		// fastpath
-		scoped_read_lock_t lock_(shard->mtx);
-		{
-			auto it = shard->hash.find(word);
-			if (shard->hash.end() != it)
-			{
-				// no need to increment here, refcount should be >= 2 already
-				// and caller MUST NOT try erasing this word without getting it ref'd
-				return it->second;
-			}
-		}
+		// MUST make work permanent here (aka increment refcount) -> no fastpath
+		// as word might've been non-permanent (word from traffic before report creation for example)
+		//
+		// also if word already exists as permanent, we still increment refcount by 2
+		// this is not an issue, since permanent words are not to be removed anyway (any refcount would work)
 
-		// slowpath
-		lock_.upgrade_to_wrlock();
+		scoped_write_lock_t lock_(shard->mtx);
 
 		word_t *w = this->get_or_add___wrlocked(shard, word);
 		w->refcount += 2;
@@ -507,7 +500,7 @@ struct repacker_dictionary_t : private boost::noncopyable
 
 		hash_t ht;
 
-		explicit wordslice_t()
+		wordslice_t()
 		{
 			PINBA_STATS_(objects).n_repacker_dict_ws++;
 		}

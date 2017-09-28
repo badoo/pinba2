@@ -374,9 +374,9 @@ namespace { namespace aux {
 
 				auto const reap_stats = r_dictionary.reap_unused_wordslices();
 
-				LOG_DEBUG(globals_->logger(),
-					"{0}; reaping old dictionary wordslices; time: {1}, slices: {2}, words_local: {3}, words_global: {4}",
-					thr_name, sw.stamp(), reap_stats.reaped_slices, reap_stats.reaped_words_local, reap_stats.reaped_words_global);
+				// LOG_DEBUG(globals_->logger(),
+				// 	"{0}; reaping old dictionary wordslices; time: {1}, slices: {2}, words_local: {3}, words_global: {4}",
+				// 	thr_name, sw.stamp(), reap_stats.reaped_slices, reap_stats.reaped_words_local, reap_stats.reaped_words_global);
 			});
 
 			// shutdown

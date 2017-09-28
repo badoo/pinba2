@@ -169,10 +169,10 @@ struct pinba_globals_t : private boost::noncopyable
 	virtual pinba_stats_t* stats() = 0;             // get shared stats and obey the rules
 	// virtual pinba_stats_t  stats_copy() const = 0;  // get your own private copy and use it without locking
 
-	virtual pinba_logger_t*  logger() const = 0;
+	virtual pinba_logger_t*        logger() const = 0;
 	virtual pinba_options_t const* options() const = 0;
 	virtual pinba_options_t*       options_mutable() = 0;
-	virtual dictionary_t*  dictionary() const = 0;
+	virtual dictionary_t*          dictionary() const = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 

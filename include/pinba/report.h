@@ -212,27 +212,6 @@ struct report_t : private boost::noncopyable
 };
 using report_ptr = std::shared_ptr<report_t>;
 
-// FIXME: remove this
-struct report_old_t : private boost::noncopyable
-{
-	virtual ~report_old_t() {}
-
-	virtual str_ref name() const = 0;
-	virtual report_info_t const* info() const = 0;
-
-	virtual void stats_init(report_stats_t *stats) = 0;
-
-	virtual void ticks_init(timeval_t curr_tv) = 0;
-	virtual void tick_now(timeval_t curr_tv) = 0;
-
-	virtual void add(packet_t*) = 0;
-	virtual void add_multi(packet_t**, uint32_t) = 0;
-
-	virtual report_estimates_t  get_estimates() = 0;
-	virtual report_snapshot_ptr get_snapshot() = 0;
-};
-typedef std::shared_ptr<report_old_t> report_old_ptr;
-
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 #endif // PINBA__REPORT_H_
