@@ -152,6 +152,7 @@ struct pinba_options_t
 	uint32_t    repacker_input_buffer;
 	uint32_t    repacker_batch_messages;
 	duration_t  repacker_batch_timeout;
+	bool        repacker_enable_blooms;
 
 	uint32_t    coordinator_input_buffer;
 	uint32_t    report_input_buffer;

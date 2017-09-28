@@ -131,7 +131,7 @@ request_validate_result_t pinba_validate_request(Pinba__Request *r)
 }
 
 template<class D>
-static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, struct nmpa_s *nmpa)
+static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, bool enable_bloom)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
@@ -157,8 +157,11 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 	p->ru_stime     = duration_from_float(r->ru_stime);
 
 	// bloom should be somewhere close to the top
-	p->timer_bloom = (timertag_bloom_t*)nmpa_alloc(nmpa, sizeof(timertag_bloom_t));
-	new (p->timer_bloom) timertag_bloom_t();
+	if (enable_bloom)
+	{
+		p->timer_bloom = (timertag_bloom_t*)nmpa_alloc(nmpa, sizeof(timertag_bloom_t));
+		new (p->timer_bloom) timertag_bloom_t();
+	}
 
 	// timers
 	p->timer_count = r->n_timer_value;
@@ -184,7 +187,8 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 			uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
 			for (unsigned i = 0; i < r->n_timer_tag_name; i++)
 			{
-				p->timer_bloom->add(td[r->timer_tag_name[i]]);
+				if (enable_bloom)
+					p->timer_bloom->add(td[r->timer_tag_name[i]]);
 
 				timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
 				timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
@@ -217,13 +221,13 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 	return p;
 }
 
-packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa)
+packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom)
 {
-	return pinba_request_to_packet___impl(r, d, nmpa);
+	return pinba_request_to_packet___impl(r, d, nmpa, enable_bloom);
 }
 
 
-packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa)
+packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom)
 {
-	return pinba_request_to_packet___impl(r, d, nmpa);
+	return pinba_request_to_packet___impl(r, d, nmpa, enable_bloom);
 }

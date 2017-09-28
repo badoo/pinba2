@@ -419,7 +419,7 @@ namespace { namespace aux {
 							continue;
 						}
 
-						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
+						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa, conf_->enable_blooms);
 
 						if (globals_->options()->packet_debug)
 						{

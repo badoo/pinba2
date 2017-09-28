@@ -433,7 +433,7 @@ try
 
 		dictionary_t g_dictionary;
 
-		packet_t *packet = pinba_request_to_packet(request, &g_dictionary, &nmpa);
+		packet_t *packet = pinba_request_to_packet(request, &g_dictionary, &nmpa, true);
 
 		debug_dump_packet(stdout, packet, &g_dictionary, &nmpa);
 		nmpa_empty(&nmpa);

@@ -32,6 +32,7 @@ int main(int argc, char const *argv[])
 		.repacker_input_buffer    = 16 * 1024,
 		.repacker_batch_messages  = 1024,
 		.repacker_batch_timeout   = 100 * d_millisecond,
+		.repacker_enable_blooms   = true,
 
 		.coordinator_input_buffer = 128,
 		.report_input_buffer      = 32,
