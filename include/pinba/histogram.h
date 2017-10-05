@@ -149,7 +149,9 @@ public:
 			map_[bucket_id] += increment_by;
 		}
 		else
+		{
 			inf_value_ += increment_by;
+		}
 
 		items_total_ += increment_by;
 	}

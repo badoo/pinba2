@@ -677,6 +677,10 @@ private:
 
 				if ((field_index >= percentile_field_min) && (field_index < percentile_field_max))
 					return true;
+
+				// raw histogram goes after percentiles
+				if (field_index == percentile_field_max)
+					return true;
 			}
 			return false;
 		}();
@@ -866,6 +870,54 @@ private:
 				continue;
 			}
 			findex -= n_percentile_fields;
+
+			// raw histogram field, if present and if percentiles are enabled
+			unsigned const n_histogram_fields = 1;
+			if (findex < n_histogram_fields)
+			{
+				auto const *histogram = snapshot_->get_histogram(row_pos);
+				if (histogram != nullptr)
+				{
+					auto const hv_data = [&]() -> std::string
+					{
+						std::string result;
+
+						uint32_t const hv_min_ms = 0; // FIXME: track lower bound
+						uint32_t const hv_max_ms = ((rinfo->hv_bucket_count * rinfo->hv_bucket_d) / d_millisecond).nsec;
+
+						ff::fmt(result, "hv={0}:{1}:{2};", hv_min_ms, hv_max_ms, rinfo->hv_bucket_count);
+						ff::fmt(result, "values=[");
+
+						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<histogram_t const*>(histogram);
+
+							auto const& hv_map = hv->map_cref();
+							for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+							{
+								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+							}
+						}
+						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
+
+							auto const& hvalues = hv->values;
+							for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
+							{
+								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+							}
+						}
+
+						ff::fmt(result, "]");
+
+						return result;
+					}();
+
+					(*field)->set_notnull();
+					(*field)->store(hv_data.data(), (uint)hv_data.size(), &my_charset_bin);
+				}
+			}
 
 		} // loop over all fields
 
