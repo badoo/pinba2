@@ -897,6 +897,9 @@ private:
 							{
 								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
 							}
+
+							if (hv->inf_value() > 0)
+								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->inf_value());
 						}
 						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
@@ -907,6 +910,9 @@ private:
 							{
 								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
 							}
+
+							if (hv->inf_value > 0)
+								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->inf_value);
 						}
 
 						ff::fmt(result, "]");
