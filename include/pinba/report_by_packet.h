@@ -38,6 +38,7 @@ struct report_conf___by_packet_t
 
 	uint32_t    hv_bucket_count;  // number of histogram buckets, each bucket is hv_bucket_d 'wide'
 	duration_t  hv_bucket_d;      // width of each hv_bucket
+	duration_t  hv_min_value;     // lower bound time (upper_bound = min_time + bucket_d*bucket_count)
 
 public: // packet filtering
 

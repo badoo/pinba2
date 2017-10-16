@@ -104,6 +104,7 @@ int main(int argc, char const *argv[])
 			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
 			.hv_bucket_d     = 1 * d_microsecond,
+			.hv_min_value    = {0},
 
 			.filters = {
 				report_conf___by_request_t::make_filter___by_max_time(1 * d_second),
@@ -125,6 +126,7 @@ int main(int argc, char const *argv[])
 			.tick_count      = 60,
 			.hv_bucket_count = 1 * 1000 * 1000,
 			.hv_bucket_d     = 1 * d_microsecond,
+			.hv_min_value    = {0},
 
 			.filters = {
 				report_conf___by_timer_t::make_filter___by_max_time(1 * d_second),

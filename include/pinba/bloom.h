@@ -31,6 +31,11 @@ namespace pinba {
 
 		void add(uint32_t value)
 		{
+			// TODO: could just take log2(N) bits from uint64_t word here, to get rid of extra hashing
+			//       for 128 bit bloom, need 7 bits for position, so could take 3 times 7 bits
+			//       from diff parts of the 64bit hash result
+			//
+			//       this does not work with all values of N, but can work around that
 			bits_.set(bloom___hash(value) % bits_.size());
 			bits_.set(bloom___hash(value ^ bloom___rot32(value, 13)) % bits_.size());
 			bits_.set(bloom___hash(value ^ bloom___rot32(value, 25)) % bits_.size());
@@ -68,6 +73,7 @@ namespace pinba {
 } // namespace pinba {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+// TODO: experiment with diff bloom sizes
 struct timertag_bloom_t : public pinba::fixlen_bloom_t<128> {};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

@@ -895,11 +895,14 @@ private:
 							auto const& hv_map = hv->map_cref();
 							for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
 							{
-								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first + 1, it->second);
 							}
 
-							if (hv->inf_value() > 0)
-								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->inf_value());
+							if (hv->negative_inf() > 0)
+								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", 0, hv->negative_inf());
+
+							if (hv->positive_inf() > 0)
+								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->positive_inf());
 						}
 						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
@@ -908,11 +911,14 @@ private:
 							auto const& hvalues = hv->values;
 							for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 							{
-								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id + 1, it->value);
 							}
 
-							if (hv->inf_value > 0)
-								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->inf_value);
+							if (hv->negative_inf > 0)
+								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", 0, hv->negative_inf);
+
+							if (hv->positive_inf > 0)
+								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->positive_inf);
 						}
 
 						ff::fmt(result, "]");

@@ -45,9 +45,9 @@ namespace { namespace aux {
 				data.mem_used   += packet->mem_used;
 			}
 
-			void hv_increment(packet_t *packet, uint32_t hv_bucket_count, duration_t hv_bucket_d)
+			void hv_increment(packet_t *packet, histogram_conf_t const& hv_conf)
 			{
-				hv.increment({hv_bucket_count, hv_bucket_d}, packet->request_time);
+				hv.increment(hv_conf, packet->request_time);
 			}
 		};
 
@@ -75,6 +75,11 @@ namespace { namespace aux {
 				, conf_(conf)
 				, tick_(meow::make_intrusive<tick_t>())
 			{
+				hv_conf_ = histogram_conf_t {
+					.bucket_count = conf.hv_bucket_count,
+					.bucket_d     = conf.hv_bucket_d,
+					.min_value    = conf.hv_min_value,
+				};
 			}
 
 			virtual void stats_init(report_stats_t *stats) override
@@ -136,7 +141,7 @@ namespace { namespace aux {
 
 				if (conf_.hv_bucket_count > 0)
 				{
-					item.hv_increment(packet, conf_.hv_bucket_count, conf_.hv_bucket_d);
+					item.hv_increment(packet, hv_conf_);
 				}
 
 				stats_->packets_aggregated++;
@@ -153,6 +158,7 @@ namespace { namespace aux {
 			report_stats_t               *stats_;
 			report_conf___by_request_t   conf_;
 
+			histogram_conf_t             hv_conf_;
 			boost::intrusive_ptr<tick_t> tick_;
 		};
 
@@ -337,10 +343,10 @@ namespace { namespace aux {
 				.tick_count      = conf_.tick_count,
 				.n_key_parts     = (uint32_t)conf_.keys.size(),
 				.hv_enabled      = (conf_.hv_bucket_count > 0),
-				// .hv_kind         = HISTOGRAM_KIND__HASHTABLE,
 				.hv_kind         = HISTOGRAM_KIND__FLAT,
 				.hv_bucket_count = conf_.hv_bucket_count,
 				.hv_bucket_d     = conf_.hv_bucket_d,
+				.hv_min_value    = conf_.hv_min_value,
 			};
 		}
 

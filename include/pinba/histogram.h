@@ -20,6 +20,7 @@ struct histogram_conf_t
 {
 	uint32_t    bucket_count;
 	duration_t  bucket_d;
+	duration_t  min_value;
 };
 
 struct histogram_hasher_t // TODO: try std::hash here, should be good for uint32_t
@@ -70,22 +71,25 @@ struct histogram_t
 
 private:
 	map_t     map_;
-	uint32_t  items_total_; // total number of measurements, includes inf
-	uint32_t  inf_value_;
+	uint32_t  value_count_; // total number of measurements, includes inf
+	uint32_t  negative_inf_;
+	uint32_t  positive_inf_;
 
 public:
 
 	histogram_t()
 		: map_()
-		, items_total_(0)
-		, inf_value_(0)
+		, value_count_(0)
+		, negative_inf_(0)
+		, positive_inf_(0)
 	{
 	}
 
 	histogram_t(histogram_t const& other)
 		: map_(other.map_)
-		, items_total_(other.items_total_)
-		, inf_value_(other.inf_value_)
+		, value_count_(other.value_count_)
+		, negative_inf_(other.negative_inf_)
+		, positive_inf_(other.positive_inf_)
 	{
 	}
 
@@ -98,8 +102,19 @@ public:
 	void operator=(histogram_t&& other) noexcept
 	{
 		map_.swap(other.map_);
-		std::swap(items_total_, other.items_total_);
-		std::swap(inf_value_, other.inf_value_);
+		std::swap(value_count_, other.value_count_);
+		std::swap(negative_inf_, other.negative_inf_);
+		std::swap(positive_inf_, other.positive_inf_);
+	}
+
+	void clear()
+	{
+		map_.clear();
+		map_.resize(0);
+
+		value_count_  = 0;
+		negative_inf_ = 0;
+		positive_inf_ = 0;
 	}
 
 	map_t const& map_cref() const noexcept
@@ -107,22 +122,19 @@ public:
 		return map_;
 	}
 
-	uint32_t items_total() const noexcept
+	uint32_t value_count() const noexcept
 	{
-		return items_total_;
+		return value_count_;
 	}
 
-	uint32_t bucket_value(uint32_t id) const noexcept
+	uint32_t negative_inf() const noexcept
 	{
-		auto const it = map_.find(id);
-		return (it == map_.end())
-				? 0
-				: it->second;
+		return negative_inf_;
 	}
 
-	uint32_t inf_value() const noexcept
+	uint32_t positive_inf() const noexcept
 	{
-		return inf_value_;
+		return positive_inf_;
 	}
 
 	void merge_other(histogram_t const& other)
@@ -130,36 +142,47 @@ public:
 		for (auto const& pair : other.map_)
 			map_[pair.first] += pair.second;
 
-		items_total_ += other.items_total_;
-		inf_value_ += other.inf_value_;
+		value_count_ += other.value_count_;
+		negative_inf_ += other.negative_inf_;
+		positive_inf_ += other.positive_inf_;
 	}
 
 	void increment(histogram_conf_t const& conf, duration_t d, uint32_t increment_by = 1)
 	{
-		uint32_t bucket_id = d.nsec / conf.bucket_d.nsec;
+		// buckets are open on the left, and closed on the right side, i.e. "(from, to]"
+		// [negative_inf]   -> (-inf, min_value]
+		// [0]              -> (min_value, min_value+bucket_d]
+		// [1]              -> (min_value+bucket_d, min_value+bucket_d*2]
+		// ....
+		// [bucket_count-1] -> (min_value+bucket_d*(bucket_count-1), min_value+bucket_d*bucket_count]
+		// [positive_inf]   -> (max_value, +inf)
 
-		if (bucket_id < conf.bucket_count)
+		d -= conf.min_value;
+
+		if (d.nsec <= 0) // <=, since we fit upper-bound match to prev bucket
 		{
-			if (bucket_id > 0) // try fit exact upper-bound match to previous bucket
-			{
-				if (d == bucket_id * conf.bucket_d)
-					bucket_id -= 1;
-			}
-
-			map_[bucket_id] += increment_by;
+			negative_inf_ += increment_by;
 		}
 		else
 		{
-			inf_value_ += increment_by;
+			uint32_t bucket_id = d.nsec / conf.bucket_d.nsec;
+			assert((bucket_id > 0) && "zero bucket is checked above");
+
+			if (bucket_id < conf.bucket_count)
+			{
+				// try fit exact upper-bound match to previous bucket
+				if (d == bucket_id * conf.bucket_d)
+					bucket_id -= 1;
+
+				map_[bucket_id] += increment_by;
+			}
+			else
+			{
+				positive_inf_ += increment_by;
+			}
 		}
 
-		items_total_ += increment_by;
-	}
-
-	void clear()
-	{
-		map_.clear();
-		map_.resize(0);
+		value_count_ += increment_by;
 	}
 };
 
@@ -183,15 +206,17 @@ typedef std::vector<histogram_value_t> histogram_values_t;
 struct flat_histogram_t
 {
 	histogram_values_t  values;
-	uint32_t            total_value;
-	uint32_t            inf_value;
+	uint32_t            value_count;
+	uint32_t            negative_inf;
+	uint32_t            positive_inf;
 };
-static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+2*sizeof(uint32_t)), "flat_histogram_t must have no padding");
+static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+4*sizeof(uint32_t)), "flat_histogram_t must have no padding");
 
 inline void histogram___convert_ht_to_flat(histogram_t const& ht, flat_histogram_t *flat)
 {
-	flat->total_value = ht.items_total();
-	flat->inf_value   = ht.inf_value();
+	flat->value_count  = ht.value_count();
+	flat->negative_inf = ht.negative_inf();
+	flat->positive_inf = ht.positive_inf();
 
 	flat->values.clear();
 	flat->values.reserve(ht.map_cref().size());
@@ -213,32 +238,33 @@ inline flat_histogram_t histogram___convert_ht_to_flat(histogram_t const& ht)
 
 inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& conf, double percentile)
 {
-	if (percentile == 0.) // 0'th percentile is always 0
-		return {0};
+	if (percentile == 0.)
+		return conf.min_value;
 
-	if (hv.items_total() == 0) // no values in histogram, nothing to do
-		return {0};
+	if (hv.value_count() == 0) // no values in histogram, nothing to do
+		return conf.min_value;
 
 	uint32_t const required_sum = [&]()
 	{
-		uint32_t const res = std::ceil(hv.items_total() * percentile / 100.0);
+		uint32_t const res = std::ceil(hv.value_count() * percentile / 100.0);
 
-		return (res > hv.items_total())
-				? hv.items_total()
+		return (res > hv.value_count())
+				? hv.value_count()
 				: res;
 	}();
 
-	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.items_total(), required_sum);
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count(), required_sum);
 
-	// fastpath - are we going to hit infinity bucket?
-	if (required_sum > (hv.items_total() - hv.inf_value()))
-	{
-		// ff::fmt(stdout, "[{0}] inf fastpath, need {1}, got histogram for {2} values\n",
-		// 	bucket_id, required_sum, (hv.items_total() - hv.inf_value()));
-		return conf.bucket_d * conf.bucket_count;
-	}
+	// fastpath - are we in negative_inf?, <= here !
+	if (required_sum <= hv.negative_inf())
+		return conf.min_value;
+
+	// fastpath - are we going to hit positive_inf?
+	if (required_sum > (hv.value_count() - hv.positive_inf()))
+		return conf.min_value + conf.bucket_d * conf.bucket_count;
 
 
+	// slowpath - shut up and calculate
 	auto const& map = hv.map_cref();
 	auto const map_end = map.end();
 
@@ -266,7 +292,7 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
 		{
 			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
-			return conf.bucket_d * (bucket_id + 1);
+			return conf.min_value + conf.bucket_d * (bucket_id + 1);
 		}
 
 		// incomplete bucket, interpolate, assuming flat time distribution within bucket
@@ -274,59 +300,57 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 			duration_t const d = conf.bucket_d * need_values / next_has_values;
 
 			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
-			return conf.bucket_d * bucket_id + d;
+			return conf.min_value + conf.bucket_d * bucket_id + d;
 		}
 	}
 
 	// dump map contents to stderr, as we're going to die anyway
-	ff::fmt(stderr, "{0} internal failure, dumping histogram: {1} values\n", __func__, map.size());
-	for (auto const& pair : map)
-		ff::fmt(stderr, "[{0}] -> {1}\n", pair.first, pair.second);
+	{
+		ff::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
+		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, value_count: {3}, hv_size: {4}\n",
+			__func__, hv.negative_inf(), hv.positive_inf(), hv.value_count(), hv.map_cref().size());
+
+		for (auto const& pair : map)
+			ff::fmt(stderr, "  [{0}] -> {1}\n", pair.first, pair.second);
+	}
 
 	assert(!"must not be reached");
-	// return conf.bucket_d * conf.bucket_count;
 }
 
 
 inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t const& conf, double percentile)
 {
-	if (percentile == 0.) // 0'th percentile is always 0
-		return {0};
+	if (percentile == 0.)
+		return conf.min_value;
 
-	if (hv.total_value == 0) // no values in histogram, nothing to do
-		return {0};
+	if (hv.value_count == 0) // no values in histogram, nothing to do
+		return conf.min_value;
 
 	uint32_t const required_sum = [&]()
 	{
-		uint32_t const res = std::ceil(hv.total_value * percentile / 100.0);
+		uint32_t const res = std::ceil(hv.value_count * percentile / 100.0);
 
-		return (res > hv.total_value)
-				? hv.total_value
+		return (res > hv.value_count)
+				? hv.value_count
 				: res;
 	}();
 
-	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.total_value, required_sum);
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count, required_sum);
 
 	// fastpath - very low percentile, nothing to do
 	if (required_sum == 0)
-		return {0};
+		return conf.min_value;
 
-	// fastpath - are we going to hit infinity bucket?
-	if (required_sum > (hv.total_value - hv.inf_value))
-	{
-		// ff::fmt(stdout, "inf fastpath; need {0}, got histogram for {1} values\n",
-		// 	required_sum, (hv.total_value - hv.inf_value));
-		return conf.bucket_d * conf.bucket_count;
-	}
+	// fastpath - are we going to hit negative infinity?
+	if (required_sum <= hv.negative_inf)
+		return conf.min_value;
 
-	// fastpath - we need everything, except inf (aka p100 or very-very close to it)
-	// get upper-bound for max nonzero bucket
-	if (required_sum == (hv.total_value - hv.inf_value))
-	{
-		// ff::fmt(stdout, "  >> p100 fastpath; taking upper-bound for bucket {0}\n", hv.values.back().key());
-		return (hv.values.back().bucket_id + 1) * conf.bucket_d;
-	}
+	// fastpath - are we going to hit positive infinity?
+	if (required_sum > (hv.value_count - hv.positive_inf))
+		return conf.min_value + conf.bucket_d * conf.bucket_count;
 
+
+	// slowpath - shut up and calculate
 	uint32_t current_sum = 0;
 
 	for (auto const& item : hv.values)
@@ -345,7 +369,7 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
 		{
 			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
-			return conf.bucket_d * (bucket_id + 1);
+			return conf.min_value + conf.bucket_d * (bucket_id + 1);
 		}
 
 		// incomplete bucket, interpolate, assuming flat time distribution within bucket
@@ -353,17 +377,21 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 			duration_t const d = conf.bucket_d * need_values / next_has_values;
 
 			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
-			return conf.bucket_d * bucket_id + d;
+			return conf.min_value + conf.bucket_d * bucket_id + d;
 		}
 	}
 
 	// dump hv contents to stderr, as we're going to die anyway
-	ff::fmt(stderr, "{0} internal failure, dumping histogram: {1} values\n", __func__, hv.values.size());
-	for (auto const& item : hv.values)
-		ff::fmt(stderr, "[{0}] -> {1}\n", item.bucket_id, item.value);
+	{
+		ff::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
+		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, value_count: {3}, hv_size: {4}\n",
+			__func__, hv.negative_inf, hv.positive_inf, hv.value_count, hv.values.size());
+
+		for (auto const& item : hv.values)
+			ff::fmt(stderr, "[{0}] -> {1}\n", item.bucket_id, item.value);
+	}
 
 	assert(!"must not be reached");
-	// return conf.bucket_d * conf.bucket_count;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

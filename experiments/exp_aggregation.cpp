@@ -589,6 +589,7 @@ int main(int argc, char const *argv[])
 		.tick_count      = 60,
 		.hv_bucket_count = 1000000,
 		.hv_bucket_d     = 1 * d_microsecond,
+		.hv_min_value    = {0},
 		.filters         = {},
 	};
 
@@ -602,6 +603,7 @@ int main(int argc, char const *argv[])
 		.hv_kind         = HISTOGRAM_KIND__HASHTABLE,
 		.hv_bucket_count = r_conf.hv_bucket_count,
 		.hv_bucket_d     = r_conf.hv_bucket_d,
+		.hv_min_value    = {0},
 	};
 
 	report_stats_t r_stats = {};

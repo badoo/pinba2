@@ -33,6 +33,7 @@ struct report_info_t
 	int         hv_kind;      // HISTOGRAM_KIND__*
 	uint32_t    hv_bucket_count;
 	duration_t  hv_bucket_d;
+	duration_t  hv_min_value;
 };
 
 struct report_stats_t

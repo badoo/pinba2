@@ -214,7 +214,7 @@ namespace { namespace aux {
 				if (conf_.hv_bucket_count > 0)
 				{
 					histogram_t& hv = tick_->hvs[offset];
-					hv.increment({conf_.hv_bucket_count, conf_.hv_bucket_d}, (timer->value / timer->hit_count));
+					hv.increment(hv_conf_, (timer->value / timer->hit_count));
 				}
 			}
 
@@ -229,6 +229,12 @@ namespace { namespace aux {
 			{
 				// key info
 				ki_.from_config(conf);
+
+				hv_conf_ = histogram_conf_t {
+					.bucket_count = conf.hv_bucket_count,
+					.bucket_d     = conf.hv_bucket_d,
+					.min_value    = conf.hv_min_value,
+				};
 
 				// bloom
 				{
@@ -475,6 +481,7 @@ namespace { namespace aux {
 			uint64_t                     packet_unqiue_;
 
 			key_info_t                   ki_;
+			histogram_conf_t             hv_conf_;
 			timertag_bloom_t             timer_bloom_;
 
 			boost::intrusive_ptr<tick_t> tick_;
@@ -655,8 +662,9 @@ namespace { namespace aux {
 					for (auto const *src_hv_values : row->saved_hv)
 					{
 						flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, src_hv_values);
-						row->merged_hv.total_value += src->total_value;
-						row->merged_hv.inf_value   += src->inf_value;
+						row->merged_hv.value_count  += src->value_count;
+						row->merged_hv.negative_inf += src->negative_inf;
+						row->merged_hv.positive_inf += src->positive_inf;
 					}
 
 					// clear source
@@ -765,6 +773,7 @@ namespace { namespace aux {
 				.hv_kind         = HISTOGRAM_KIND__FLAT,
 				.hv_bucket_count = conf_.hv_bucket_count,
 				.hv_bucket_d     = conf_.hv_bucket_d,
+				.hv_min_value    = conf_.hv_min_value,
 			};
 		}
 
