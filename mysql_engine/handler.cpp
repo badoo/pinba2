@@ -882,8 +882,8 @@ private:
 					{
 						std::string result;
 
-						uint32_t const hv_min_ms = 0; // FIXME: track lower bound
-						uint32_t const hv_max_ms = ((rinfo->hv_bucket_count * rinfo->hv_bucket_d) / d_millisecond).nsec;
+						uint32_t const hv_min_ms = (rinfo->hv_min_value / d_millisecond).nsec;
+						uint32_t const hv_max_ms = hv_min_ms + ((rinfo->hv_bucket_count * rinfo->hv_bucket_d) / d_millisecond).nsec;
 
 						ff::fmt(result, "hv={0}:{1}:{2};", hv_min_ms, hv_max_ms, rinfo->hv_bucket_count);
 						ff::fmt(result, "values=[");
@@ -895,14 +895,14 @@ private:
 							auto const& hv_map = hv->map_cref();
 							for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
 							{
-								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first + 1, it->second);
+								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
 							}
 
 							if (hv->negative_inf() > 0)
-								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", 0, hv->negative_inf());
+								ff::fmt(result, "{0}min:{1}", hv_map.empty() ? "" : ", ", hv->negative_inf());
 
 							if (hv->positive_inf() > 0)
-								ff::fmt(result, "{0}{1}:{2}", hv_map.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->positive_inf());
+								ff::fmt(result, "{0}max:{1}", hv_map.empty() ? "" : ", ", hv->positive_inf());
 						}
 						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
@@ -911,14 +911,14 @@ private:
 							auto const& hvalues = hv->values;
 							for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 							{
-								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id + 1, it->value);
+								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
 							}
 
 							if (hv->negative_inf > 0)
-								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", 0, hv->negative_inf);
+								ff::fmt(result, "{0}min:{1}", hvalues.empty() ? "" : ", ", hv->negative_inf);
 
 							if (hv->positive_inf > 0)
-								ff::fmt(result, "{0}{1}:{2}", hvalues.empty() ? "" : ", ", rinfo->hv_bucket_count, hv->positive_inf);
+								ff::fmt(result, "{0}max:{1}", hvalues.empty() ? "" : ", ", hv->positive_inf);
 						}
 
 						ff::fmt(result, "]");

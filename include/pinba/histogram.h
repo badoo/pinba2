@@ -244,13 +244,10 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	if (hv.value_count() == 0) // no values in histogram, nothing to do
 		return conf.min_value;
 
-	uint32_t const required_sum = [&]()
+	uint32_t required_sum = [&]()
 	{
 		uint32_t const res = std::ceil(hv.value_count() * percentile / 100.0);
-
-		return (res > hv.value_count())
-				? hv.value_count()
-				: res;
+		return (res > hv.value_count()) ? hv.value_count() : res;
 	}();
 
 	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count(), required_sum);
@@ -262,6 +259,9 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	// fastpath - are we going to hit positive_inf?
 	if (required_sum > (hv.value_count() - hv.positive_inf()))
 		return conf.min_value + conf.bucket_d * conf.bucket_count;
+
+	// already past negative_inf, adjust
+	required_sum -= hv.negative_inf();
 
 
 	// slowpath - shut up and calculate
@@ -326,13 +326,10 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 	if (hv.value_count == 0) // no values in histogram, nothing to do
 		return conf.min_value;
 
-	uint32_t const required_sum = [&]()
+	uint32_t required_sum = [&]()
 	{
 		uint32_t const res = std::ceil(hv.value_count * percentile / 100.0);
-
-		return (res > hv.value_count)
-				? hv.value_count
-				: res;
+		return (res > hv.value_count) ? hv.value_count : res;
 	}();
 
 	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count, required_sum);
@@ -348,6 +345,9 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 	// fastpath - are we going to hit positive infinity?
 	if (required_sum > (hv.value_count - hv.positive_inf))
 		return conf.min_value + conf.bucket_d * conf.bucket_count;
+
+	// already past negative_inf, adjust
+	required_sum -= hv.negative_inf;
 
 
 	// slowpath - shut up and calculate
