@@ -106,7 +106,7 @@ namespace { namespace aux {
 				auto const hv_values_v = meow::split_ex(hv_range_s, ":");
 
 				if (hv_values_v.size() != 3)
-					return ff::fmt_err("3 integer parts expected");
+					return ff::fmt_err("3 integer parts split by ':' expected");
 
 				// LOG_DEBUG(P_L_, "hv_values_v = {{ {0}, {1}, {2} }", hv_values_v[0], hv_values_v[1], hv_values_v[2]);
 
@@ -504,6 +504,7 @@ namespace { namespace aux {
 		conf->tick_count      = vcf.tick_count;
 		conf->hv_bucket_count = vcf.hv_bucket_count;
 		conf->hv_bucket_d     = vcf.hv_bucket_d;
+		conf->hv_min_value    = vcf.hv_min_value;
 
 		for (auto const& key_name : vcf.keys)
 		{
@@ -591,6 +592,7 @@ namespace { namespace aux {
 		conf->tick_count      = vcf.tick_count;
 		conf->hv_bucket_count = vcf.hv_bucket_count;
 		conf->hv_bucket_d     = vcf.hv_bucket_d;
+		conf->hv_min_value    = vcf.hv_min_value;
 
 		for (auto const& key_name : vcf.keys)
 		{

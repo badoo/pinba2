@@ -846,17 +846,23 @@ private:
 				// protect against percentile field in report without percentiles
 				if (histogram != nullptr)
 				{
+					histogram_conf_t const hv_conf = {
+						.bucket_count = rinfo->hv_bucket_count,
+						.bucket_d     = rinfo->hv_bucket_d,
+						.min_value    = rinfo->hv_min_value,
+					};
+
 					auto const percentile_d = [&]() -> duration_t
 					{
 						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<histogram_t const*>(histogram);
-							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+							return get_percentile(*hv, hv_conf, percentiles[findex]);
 						}
 						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
-							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+							return get_percentile(*hv, hv_conf, percentiles[findex]);
 						}
 
 						assert(!"must not be reached");
