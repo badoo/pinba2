@@ -5,7 +5,7 @@
 #include <cassert>
 
 #include <atomic>
-#include <memory>      // unique_ptr
+#include <memory>      // unique_ptr, shared_ptr
 #include <mutex>
 #include <vector>
 
@@ -19,6 +19,8 @@
 #include <meow/logging/log_write.hpp>
 #include <meow/unix/time.hpp>
 
+#include "pinba/limits.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace ff = meow::format;
@@ -31,8 +33,31 @@ typedef meow::error_t pinba_error_t;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct nmsg_ticker_t;
 struct dictionary_t;
+
+struct repacker_state_t;
+using repacker_state_ptr = std::shared_ptr<repacker_state_t>;
+
+struct repacker_state_t : private boost::noncopyable
+{
+	virtual ~repacker_state_t() {}
+	virtual repacker_state_ptr clone() = 0;
+	virtual void               merge_other(repacker_state_t&) = 0;
+};
+using repacker_state_ptr = std::shared_ptr<repacker_state_t>;
+
+inline void repacker_state___merge_to_from(repacker_state_ptr& to, repacker_state_ptr const& from)
+{
+	if (!from)
+		return;
+
+	if (!to)
+		to = from->clone();
+	else
+		to->merge_other(*from);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct collector_stats_t
 {
@@ -58,12 +83,13 @@ struct pinba_stats_t
 	timeval_t start_realtime_tv   = {0,0};  // can show to user, etc.
 
 	struct {
-		std::atomic<uint64_t> n_raw_batches      = {0};
-		std::atomic<uint64_t> n_packet_batches   = {0};
-		// std::atomic<uint64_t> n_reports          = {0};
-		std::atomic<uint64_t> n_report_snapshots = {0};
-		std::atomic<uint64_t> n_report_ticks     = {0};
-		std::atomic<uint64_t> n_coord_requests   = {0};
+		std::atomic<uint64_t> n_raw_batches         = {0};
+		std::atomic<uint64_t> n_packet_batches      = {0};
+		std::atomic<uint64_t> n_repacker_dict_words = {0};
+		std::atomic<uint64_t> n_repacker_dict_ws    = {0};
+		std::atomic<uint64_t> n_report_snapshots    = {0};
+		std::atomic<uint64_t> n_report_ticks        = {0};
+		std::atomic<uint64_t> n_coord_requests      = {0};
 	// 	std::atomic<uint64_t> n_ = {0};
 	// 	std::atomic<uint64_t> n_ = {0};
 	} objects;
@@ -126,6 +152,7 @@ struct pinba_options_t
 	uint32_t    repacker_input_buffer;
 	uint32_t    repacker_batch_messages;
 	duration_t  repacker_batch_timeout;
+	bool        repacker_enable_blooms;
 
 	uint32_t    coordinator_input_buffer;
 	uint32_t    report_input_buffer;
@@ -143,10 +170,10 @@ struct pinba_globals_t : private boost::noncopyable
 	virtual pinba_stats_t* stats() = 0;             // get shared stats and obey the rules
 	// virtual pinba_stats_t  stats_copy() const = 0;  // get your own private copy and use it without locking
 
-	virtual pinba_logger_t*  logger() const = 0;
+	virtual pinba_logger_t*        logger() const = 0;
 	virtual pinba_options_t const* options() const = 0;
 	virtual pinba_options_t*       options_mutable() = 0;
-	virtual dictionary_t*  dictionary() const = 0;
+	virtual dictionary_t*          dictionary() const = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 

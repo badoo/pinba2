@@ -43,6 +43,7 @@ struct pinba_view_conf_t : private boost::noncopyable
 
 	uint32_t                    hv_bucket_count;
 	duration_t                  hv_bucket_d;
+	duration_t                  hv_min_value;
 	std::vector<double>         percentiles;
 
 	duration_t                  min_time;    // 0 if unset

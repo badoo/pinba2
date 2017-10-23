@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <meow/defer.hpp>
+#include <meow/stopwatch.hpp>
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
@@ -18,6 +19,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace { namespace aux {
 ////////////////////////////////////////////////////////////////////////////////////////////////
+
 #if 0
 	struct repack_worker_t : private boost::noncopyable
 	{
@@ -191,6 +193,45 @@ namespace { namespace aux {
 #endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+	struct repacker_state_impl_t : public repacker_state_t
+	{
+		std::vector<repacker_dslice_ptr> dict_slices;
+
+	public:
+
+		repacker_state_impl_t()
+		{
+		}
+
+		repacker_state_impl_t(repacker_dslice_ptr ds)
+		{
+			dict_slices.emplace_back(std::move(ds));
+		}
+
+		virtual repacker_state_ptr clone() override
+		{
+			auto result = std::make_shared<repacker_state_impl_t>();
+			result->dict_slices = dict_slices;
+			return result;
+		}
+
+		virtual void merge_other(repacker_state_t& other_ref) override
+		{
+			auto& other = static_cast<repacker_state_impl_t&>(other_ref);
+
+			for (auto& other_ds : other.dict_slices)
+			{
+				auto const it = std::find(dict_slices.begin(), dict_slices.end(), other_ds);
+				if (it == dict_slices.end())
+				{
+					dict_slices.emplace_back(other_ds);
+				}
+			}
+		}
+	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 	struct repacker_impl_t : public repacker_t
 	{
 	public:
@@ -222,19 +263,20 @@ namespace { namespace aux {
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
 				// open and connect to producer in main thread, to make exceptions catch-able easily
-				nmsg_socket_t in_sock;
-				in_sock.open(AF_SP, NN_PULL);
-				in_sock.connect(conf_->nn_input.c_str());
+				nmsg_socket_t input_sock;
+				input_sock
+					.open(AF_SP, NN_PULL)
+					.connect(conf_->nn_input.c_str());
 
 				if (conf_->nn_input_buffer > 0)
-					in_sock.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(raw_request_t) * conf_->nn_input_buffer, conf_->nn_input);
+					input_sock.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(raw_request_t) * conf_->nn_input_buffer, conf_->nn_input);
 
 				// start worker threads
-				// since we're targeting c++11 - can't use lambda capture like 'in_sock = move(in_sock)' here :(
-				int const sock_fd = in_sock.release();
-				std::thread t([this, i, sock_fd]()
+				// since we're targeting c++11 - can't use lambda capture like 'input_sock = move(input_sock)' here :(
+				int const input_fd = input_sock.release();
+				std::thread t([this, i, input_fd]()
 				{
-					nmsg_socket_t sock(sock_fd);
+					nmsg_socket_t sock(input_fd);
 					this->worker_thread(i, sock);
 				});
 
@@ -258,7 +300,7 @@ namespace { namespace aux {
 
 	private:
 
-		void worker_thread(uint32_t thread_id, nmsg_socket_t& in_sock)
+		void worker_thread(uint32_t thread_id, nmsg_socket_t& input_sock)
 		{
 			std::string const thr_name = ff::fmt_str("repacker/{0}", thread_id);
 
@@ -270,22 +312,27 @@ namespace { namespace aux {
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 			);
 
+			// thread-local cache for global shared dictionary
+			repacker_dictionary_t r_dictionary { globals_->dictionary() };
+
 			// batch state
-			auto const create_batch = [this]()
+			auto const create_batch = [&]()
 			{
 				constexpr size_t nmpa_block_size = 64 * 1024;
-				return meow::make_intrusive<packet_batch_t>(conf_->batch_size, nmpa_block_size);
+				auto batch = meow::make_intrusive<packet_batch_t>(conf_->batch_size, nmpa_block_size);
+				batch->repacker_state = std::make_shared<repacker_state_impl_t>(r_dictionary.current_wordslice());
+				return batch;
 			};
 
-			auto const try_send_batch = [this](packet_batch_ptr& b)
+			auto const try_send_batch = [&](packet_batch_ptr& batch)
 			{
+				r_dictionary.start_new_wordslice(); // make sure batch has only one wordslice
+
 				++stats_->repacker.batch_send_total;
-				out_sock_.send_message(b);
+				out_sock_.send_message(batch);
 			};
 
 			packet_batch_ptr batch = create_batch();
-			dictionary_t *dictionary = globals_->dictionary();
-			repacker_dictionary_t r_dictionary { globals_->dictionary() };
 
 			// processing loop
 			nmsg_poller_t poller;
@@ -318,6 +365,20 @@ namespace { namespace aux {
 				stats_->repacker_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
 			});
 
+			// reap old dictionary wordslices periodically
+			// 250ms is hand-tuned with a synthetic test at ~400k random 32byte strings/sec
+			// might be made tunable, but no need for now
+			poller.ticker(250 * d_millisecond, [&](timeval_t now)
+			{
+				meow::stopwatch_t sw;
+
+				auto const reap_stats = r_dictionary.reap_unused_wordslices();
+
+				// LOG_DEBUG(globals_->logger(),
+				// 	"{0}; reaping old dictionary wordslices; time: {1}, slices: {2}, words_local: {3}, words_global: {4}",
+				// 	thr_name, sw.stamp(), reap_stats.reaped_slices, reap_stats.reaped_words_local, reap_stats.reaped_words_global);
+			});
+
 			// shutdown
 			poller.read_nn_socket(shutdown_sock_, [this, &poller, &thr_name](timeval_t now)
 			{
@@ -326,15 +387,16 @@ namespace { namespace aux {
 			});
 
 			// process incoming packets
-			poller.read_nn_socket(in_sock, [&](timeval_t now)
+			poller.read_nn_socket(input_sock, [&](timeval_t now)
 			{
-				// receive in a loop with NN_DONTWAIT since we'd prefer
-				// to process message ASAP and create batches by size limit (and save on polling / getting current time)
-				while (true)
+				constexpr size_t const max_batches_per_poll_iteration = 4;
+
+				for (size_t i = 0; i < max_batches_per_poll_iteration; ++i)
 				{
 					++stats_->repacker.recv_total;
 
-					auto const req = in_sock.recv<raw_request_ptr>(thr_name, NN_DONTWAIT);
+					// receive in a loop with NN_DONTWAIT to avoid hanging here when we're out of incoming data
+					auto const req = input_sock.recv<raw_request_ptr>(thr_name, NN_DONTWAIT);
 					if (!req) { // EAGAIN
 						++stats_->repacker.recv_eagain;
 						break;
@@ -344,7 +406,11 @@ namespace { namespace aux {
 					{
 						++stats_->repacker.recv_packets;
 
-						auto *pb_req = req->requests[i]; // non-const here
+						 // non-const, since pinba_validate_request() might change the packet
+						auto *pb_req = req->requests[i];
+
+						// validation should not fail, generally.
+						// pinba is expected to be mostly receiving traffic from trusted sources (your code, mon!)
 						auto const vr = pinba_validate_request(pb_req);
 						if (vr != request_validate_result::okay)
 						{
@@ -353,8 +419,7 @@ namespace { namespace aux {
 							continue;
 						}
 
-						// packet_t *packet = pinba_request_to_packet(pb_req, dictionary, &batch->nmpa);
-						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
+						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa, conf_->enable_blooms);
 
 						if (globals_->options()->packet_debug)
 						{

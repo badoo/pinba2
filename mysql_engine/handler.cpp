@@ -150,8 +150,8 @@ struct pinba_view___stats_t : public pinba_view___base_t
 				STORE_FIELD(7,  vars_->udp_recv_packets);
 				STORE_FIELD(8,  vars_->udp_packet_decode_err);
 				STORE_FIELD(9,  vars_->udp_batch_send_total);
-				STORE_FIELD(10,  vars_->udp_batch_send_err);
-				STORE_FIELD(11,  vars_->udp_packet_send_total);
+				STORE_FIELD(10, vars_->udp_batch_send_err);
+				STORE_FIELD(11, vars_->udp_packet_send_total);
 				STORE_FIELD(12, vars_->udp_packet_send_err);
 				STORE_FIELD(13, vars_->udp_ru_utime);
 				STORE_FIELD(14, vars_->udp_ru_stime);
@@ -677,6 +677,10 @@ private:
 
 				if ((field_index >= percentile_field_min) && (field_index < percentile_field_max))
 					return true;
+
+				// raw histogram goes after percentiles
+				if (field_index == percentile_field_max)
+					return true;
 			}
 			return false;
 		}();
@@ -842,17 +846,23 @@ private:
 				// protect against percentile field in report without percentiles
 				if (histogram != nullptr)
 				{
+					histogram_conf_t const hv_conf = {
+						.bucket_count = rinfo->hv_bucket_count,
+						.bucket_d     = rinfo->hv_bucket_d,
+						.min_value    = rinfo->hv_min_value,
+					};
+
 					auto const percentile_d = [&]() -> duration_t
 					{
 						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<histogram_t const*>(histogram);
-							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+							return get_percentile(*hv, hv_conf, percentiles[findex]);
 						}
 						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
-							return get_percentile(*hv, { rinfo->hv_bucket_count, rinfo->hv_bucket_d }, percentiles[findex]);
+							return get_percentile(*hv, hv_conf, percentiles[findex]);
 						}
 
 						assert(!"must not be reached");
@@ -866,6 +876,66 @@ private:
 				continue;
 			}
 			findex -= n_percentile_fields;
+
+			// raw histogram field, if present and if percentiles are enabled
+			unsigned const n_histogram_fields = 1;
+			if (findex < n_histogram_fields)
+			{
+				auto const *histogram = snapshot_->get_histogram(row_pos);
+				if (histogram != nullptr)
+				{
+					auto const hv_data = [&]() -> std::string
+					{
+						std::string result;
+
+						uint32_t const hv_min_ms = (rinfo->hv_min_value / d_millisecond).nsec;
+						uint32_t const hv_max_ms = hv_min_ms + ((rinfo->hv_bucket_count * rinfo->hv_bucket_d) / d_millisecond).nsec;
+
+						ff::fmt(result, "hv={0}:{1}:{2};", hv_min_ms, hv_max_ms, rinfo->hv_bucket_count);
+						ff::fmt(result, "values=[");
+
+						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<histogram_t const*>(histogram);
+
+							auto const& hv_map = hv->map_cref();
+							for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+							{
+								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+							}
+
+							if (hv->negative_inf() > 0)
+								ff::fmt(result, "{0}min:{1}", hv_map.empty() ? "" : ", ", hv->negative_inf());
+
+							if (hv->positive_inf() > 0)
+								ff::fmt(result, "{0}max:{1}", hv_map.empty() ? "" : ", ", hv->positive_inf());
+						}
+						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
+
+							auto const& hvalues = hv->values;
+							for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
+							{
+								ff::fmt(result, "{0}{1}:{2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+							}
+
+							if (hv->negative_inf > 0)
+								ff::fmt(result, "{0}min:{1}", hvalues.empty() ? "" : ", ", hv->negative_inf);
+
+							if (hv->positive_inf > 0)
+								ff::fmt(result, "{0}max:{1}", hvalues.empty() ? "" : ", ", hv->positive_inf);
+						}
+
+						ff::fmt(result, "]");
+
+						return result;
+					}();
+
+					(*field)->set_notnull();
+					(*field)->store(hv_data.data(), (uint)hv_data.size(), &my_charset_bin);
+				}
+			}
 
 		} // loop over all fields
 

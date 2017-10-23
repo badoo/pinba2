@@ -9,6 +9,7 @@
 #include <sparsehash/dense_hash_map>
 #include <sparsehash/sparse_hash_map>
 
+#include <meow/stopwatch.hpp>
 #include <meow/hash/hash.hpp>
 #include <meow/hash/hash_impl.hpp>
 #include <meow/format/format_to_string.hpp>
@@ -159,8 +160,7 @@ struct report_snapshot_traits___example
 
 	// merge ticks from src_ticks_t to hashtable_t
 	static void merge_ticks_into_data(
-			  pinba_globals_t *globals
-			, report_info_t& rinfo
+			  report_snapshot_ctx_t *snapshot_ctx
 			, src_ticks_t& ticks
 			, hashtable_t& to
 			, report_snapshot_t::prepare_type_t ptype);
@@ -172,22 +172,49 @@ struct report_snapshot_traits___example
 };
 */
 
+// FIXME: stats pointer in this struct should be refcounted,
+//        since report might get deleted while we're touching snapshot
+struct report_snapshot_ctx_t
+{
+	pinba_globals_t     *globals;        // globals for logging / dictionary
+	report_stats_t      *stats;          // stats that we might want to update
+	report_info_t       rinfo;           // report info, immutable copy taken in ctor
+	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks
+
+	report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri)
+		: globals(g)
+		, stats(st) // TODO:
+		, rinfo(ri)
+	{
+	}
+
+	pinba_logger_t* logger() const
+	{
+		return globals->logger();
+	}
+};
+
 template<class Traits>
-struct report_snapshot__impl_t : public report_snapshot_t
+struct report_snapshot__impl_t
+	: public report_snapshot_t
+	, public report_snapshot_ctx_t
 {
 	using src_ticks_t = typename Traits::src_ticks_t;
 	using hashtable_t = typename Traits::hashtable_t;
 	using iterator_t  = typename hashtable_t::iterator;
 
+public: // intentional, internal use only
+
+	hashtable_t  data_;      // real data we iterate over
+	src_ticks_t  ticks_;     // ticks we merge our data from (in other thread potentially)
+	bool         prepared_;  // has data been prepared?
+
 public:
 
-	report_snapshot__impl_t(pinba_globals_t *globals, src_ticks_t const& ticks, report_info_t const& rinfo)
-		: data_()
-		, prepared_(false)
+	report_snapshot__impl_t(report_snapshot_ctx_t ctx, src_ticks_t const& ticks)
+		: report_snapshot_ctx_t(ctx)
 		, ticks_(ticks)
-		, rinfo_(rinfo)
-		, globals_(globals)
-		, snapshot_d(globals->dictionary())
+		, prepared_(false)
 	{
 	}
 
@@ -195,12 +222,12 @@ private:
 
 	virtual report_info_t const* report_info() const override
 	{
-		return &rinfo_;
+		return &rinfo;
 	}
 
 	virtual dictionary_t const* dictionary() const override
 	{
-		return globals_->dictionary();
+		return globals->dictionary();
 	}
 
 	virtual void prepare(prepare_type_t ptype) override
@@ -208,9 +235,14 @@ private:
 		if (this->is_prepared())
 			return;
 
-		Traits::merge_ticks_into_data(globals_, rinfo_, ticks_, data_, ptype);
+		meow::stopwatch_t sw;
+
+		Traits::merge_ticks_into_data(this, ticks_, data_, ptype);
 
 		prepared_ = true;
+
+		if (this->stats)
+			this->stats->last_snapshot_merge_d = duration_from_timeval(sw.stamp());
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();
@@ -295,7 +327,8 @@ private:
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
 			// str_ref const word = dictionary()->get_word(k[i]);
-			str_ref const word = snapshot_d.get_word(k[i]);
+			// str_ref const word = snapshot_d.get_word(k[i]);
+			str_ref const word = dictionary()->get_word(k[i]); // FIXME
 			result.push_back(word);
 		}
 		return result;
@@ -303,7 +336,7 @@ private:
 
 	virtual int data_kind() const override
 	{
-		return rinfo_.kind;
+		return rinfo.kind;
 	}
 
 	virtual void* get_data(position_t const& pos) override
@@ -314,26 +347,17 @@ private:
 
 	virtual int histogram_kind() const override
 	{
-		return rinfo_.hv_kind;
+		return rinfo.hv_kind;
 	}
 
 	virtual void* get_histogram(position_t const& pos) override
 	{
-		if (!rinfo_.hv_enabled)
+		if (!rinfo.hv_enabled)
 			return nullptr;
 
 		auto const& it = iterator_from_position(pos);
 		return Traits::hv_at_position(data_, it);
 	}
-
-private:
-	hashtable_t      data_;      // real data we iterate over
-	bool             prepared_;  // has data been prepared?
-	src_ticks_t      ticks_;     // ticks we merge our data from (in other thread potentially)
-	report_info_t    rinfo_;     // report info, immutable copy taken in ctor
-	pinba_globals_t  *globals_;  // globals for logging / dictionary
-
-	snapshot_dictionary_t snapshot_d;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -414,6 +438,43 @@ private:
 	uint32_t      tick_count_;
 	ringbuffer_t  ticks_;
 	tick_ptr      curr_tick_;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct report_history_ringbuffer_t : private boost::noncopyable
+{
+	using ringbuffer_t = std::vector<report_tick_ptr>;
+
+public:
+
+	report_history_ringbuffer_t(uint32_t max_ticks)
+		: max_ticks_(max_ticks)
+	{
+	}
+
+	report_tick_ptr append(report_tick_ptr tick)
+	{
+		report_tick_ptr result = {};
+
+		ringbuffer_.emplace_back(std::move(tick));
+		if (ringbuffer_.size() > max_ticks_)
+		{
+			result = std::move(*ringbuffer_.begin());
+			ringbuffer_.erase(ringbuffer_.begin()); // XXX: O(n)
+		}
+
+		return result;
+	}
+
+	ringbuffer_t const& get_ringbuffer() const
+	{
+		return ringbuffer_;
+	}
+
+private:
+	uint32_t      max_ticks_;
+	ringbuffer_t  ringbuffer_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

@@ -25,6 +25,7 @@ struct pinba_variables_t
 	unsigned  repacker_input_buffer     = 0;
 	unsigned  repacker_batch_messages   = 0;
 	unsigned  repacker_batch_timeout_ms = 0;
+	char      repacker_enable_blooms    = 0;
 	unsigned  coordinator_input_buffer  = 0;
 	unsigned  report_input_buffer       = 0;
 	char      packet_debug              = 0;

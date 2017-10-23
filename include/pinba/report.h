@@ -4,6 +4,8 @@
 #include <atomic>
 #include <mutex>
 
+#include <meow/intrusive_ptr.hpp> // ref_counted_t
+
 #include "pinba/globals.h"
 #include "pinba/report_key.h"
 
@@ -31,6 +33,7 @@ struct report_info_t
 	int         hv_kind;      // HISTOGRAM_KIND__*
 	uint32_t    hv_bucket_count;
 	duration_t  hv_bucket_d;
+	duration_t  hv_min_value;
 };
 
 struct report_stats_t
@@ -75,6 +78,8 @@ struct report_estimates_t
 	uint64_t  mem_used  = 0;
 };
 
+// FIXME: pointers in this struct must either be ref counted, or copies
+//        since report might be destroyed, while this struct is alive still (in other thread as well)
 struct report_state_t
 {
 	uint32_t             id;
@@ -155,6 +160,47 @@ void debug_dump_report_snapshot(FILE*, report_snapshot_t*, str_ref name = {});
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+// a slice of aggregated data over a certain time period
+// expected to be immutable, once produced by aggregator
+struct report_tick_t : public meow::ref_counted_t
+{
+	// timeval_t           generation_tv;
+	repacker_state_ptr  repacker_state;
+
+	virtual ~report_tick_t() {}
+};
+using report_tick_ptr = boost::intrusive_ptr<report_tick_t>;
+
+// report part: concerned with packet aggregation and producing ticks
+// multiple instances can be created in different or same threads as needed
+struct report_agg_t : private boost::noncopyable
+{
+	virtual ~report_agg_t() {}
+
+	virtual void stats_init(report_stats_t *stats) = 0;
+
+	virtual void add(packet_t*) = 0;
+	virtual void add_multi(packet_t**, uint32_t) = 0;
+
+	virtual report_tick_ptr     tick_now(timeval_t curr_tv) = 0;
+	virtual report_estimates_t  get_estimates() = 0;
+};
+using report_agg_ptr = std::shared_ptr<report_agg_t>;
+
+// report part: concerned with storing tick history and producing snapshots
+struct report_history_t : private boost::noncopyable
+{
+	virtual ~report_history_t() {}
+
+	virtual void stats_init(report_stats_t *stats) = 0;
+	virtual void merge_tick(report_tick_ptr) = 0;
+
+	virtual report_snapshot_ptr get_snapshot() = 0;
+	virtual report_estimates_t  get_estimates() = 0;
+};
+using report_history_ptr = std::shared_ptr<report_history_t>;
+
+// report, the container, creating all other parts and mainaining configs + info
 struct report_t : private boost::noncopyable
 {
 	virtual ~report_t() {}
@@ -162,18 +208,10 @@ struct report_t : private boost::noncopyable
 	virtual str_ref name() const = 0;
 	virtual report_info_t const* info() const = 0;
 
-	virtual void stats_init(report_stats_t *stats) = 0;
-
-	virtual void ticks_init(timeval_t curr_tv) = 0;
-	virtual void tick_now(timeval_t curr_tv) = 0;
-
-	virtual void add(packet_t*) = 0;
-	virtual void add_multi(packet_t**, uint32_t) = 0;
-
-	virtual report_estimates_t  get_estimates() = 0;
-	virtual report_snapshot_ptr get_snapshot() = 0;
+	virtual report_agg_ptr      create_aggregator() = 0;
+	virtual report_history_ptr  create_history() = 0;
 };
-typedef std::shared_ptr<report_t> report_ptr;
+using report_ptr = std::shared_ptr<report_t>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

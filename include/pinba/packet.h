@@ -67,7 +67,6 @@ struct dictionary_t;
 struct timertag_bloom_t;
 
 
-
 struct packed_tag_t
 {
 	uint32_t name_id;
@@ -250,14 +249,20 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 					// ((negative_float_timer_ru_stime,  "negative_float_timer_ru_stime"))
 					);
 
+// validate that request makes sense and can be used further,
+// i.e. other parts further down the pipeline depend on checks done here
 // this function might change request slightly
 // sometimes it's easier to do it here, than in pinba_request_to_packet()
 request_validate_result_t pinba_validate_request(Pinba__Request *r);
 
+// convert packet from protobuf to internal packed format
+// this is somewhat expensive and complexity scales with the number of tags/timers inside the packet
+// memory for new packet is allocated in nmpa passed and nmpa should persist as long as packet does
+// this function can not fail
 struct dictionary_t;
 struct repacker_dictionary_t;
-packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa);
-packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa);
+packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom);
+packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

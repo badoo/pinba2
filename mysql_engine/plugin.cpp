@@ -127,8 +127,8 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		vars->dictionary_size     = dictionary->size();
 
 		dictionary_memory_t const dmem = dictionary->memory_used();
-		vars->dictionary_mem_hash    = dmem.hash_bytes + dmem.list_bytes + dmem.strings_bytes;
-		vars->dictionary_mem_list    = dmem.list_bytes;
+		vars->dictionary_mem_hash    = dmem.hash_bytes;
+		vars->dictionary_mem_list    = dmem.wordlist_bytes + dmem.freelist_bytes;
 		vars->dictionary_mem_strings = dmem.strings_bytes;
 	}
 
@@ -143,6 +143,7 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 		std::string result;
 		ff::fmt(result, "n_handlers: {0}, n_shares: {1}, n_views: {2}\n", cnt.n_handlers, cnt.n_shares, cnt.n_handlers);
 		ff::fmt(result, "n_raw_batches: {0}, n_packet_batches: {1}\n", (uint64_t)obj.n_raw_batches, (uint64_t)obj.n_packet_batches);
+		ff::fmt(result, "n_repacker_words: {0}, n_repacker_wordslices: {1}\n", (uint64_t)obj.n_repacker_dict_words, (uint64_t)obj.n_repacker_dict_ws);
 		ff::fmt(result, "n_report_snapshots: {0}, n_report_ticks: {1}\n", (uint64_t)obj.n_report_snapshots, (uint64_t)obj.n_report_ticks);
 		ff::fmt(result, "n_coord_requests: {0}\n", (uint64_t)obj.n_coord_requests);
 
@@ -152,8 +153,8 @@ pinba_status_variables_ptr pinba_collect_status_variables()
 
 	// version and build info
 	snprintf(vars->version_info, sizeof(vars->version_info),
-		"%s %s, git: %s, modified: %s",
-		PINBA_PACKAGE_NAME, PINBA_VERSION, PINBA_VCS_FULL_HASH, PINBA_VCS_WC_MODIFIED);
+		"%s %s, git: %s, branch: %s, modified: %s",
+		PINBA_PACKAGE_NAME, PINBA_VERSION, PINBA_VCS_FULL_HASH, PINBA_VCS_BRANCH, PINBA_VCS_WC_MODIFIED);
 
 	snprintf(vars->build_string, sizeof(vars->build_string), "%s", PINBA_BUILD_STRING);
 
@@ -282,6 +283,7 @@ static int pinba_engine_init(void *p)
 			.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
 			.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
 			.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
+			.repacker_enable_blooms   = (bool)pinba_variables()->repacker_enable_blooms,
 
 			.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
 			.report_input_buffer      = pinba_variables()->report_input_buffer,
@@ -459,6 +461,28 @@ static MYSQL_SYSVAR_UINT(repacker_batch_timeout_ms,
 	1000,
 	0);
 
+static MYSQL_SYSVAR_BOOL(repacker_enable_blooms,
+	pinba_variables()->repacker_enable_blooms,
+	PLUGIN_VAR_RQCMDARG,
+	"Enable poor-man's bloom filtering to speed up aggregation",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
+	{
+		long long tmp;
+		int const is_null = value->val_int(value, &tmp);
+
+		*static_cast<char*>(res_for_update) = (char)((is_null) ? 0 : tmp);
+
+		return 0;
+	},
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
+	{
+		char const saved_val = *(char*)saved_from_update;
+
+		P_E_->options_mutable()->repacker_enable_blooms = (bool)saved_val;
+		*static_cast<char*>(out_to_mysql) = saved_val;
+	},
+	1); // default = true
+
 static MYSQL_SYSVAR_UINT(coordinator_input_buffer,
 	pinba_variables()->coordinator_input_buffer,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -539,6 +563,7 @@ static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(repacker_input_buffer),
 	MYSQL_SYSVAR(repacker_batch_messages),
 	MYSQL_SYSVAR(repacker_batch_timeout_ms),
+	MYSQL_SYSVAR(repacker_enable_blooms),
 	MYSQL_SYSVAR(coordinator_input_buffer),
 	MYSQL_SYSVAR(report_input_buffer),
 	MYSQL_SYSVAR(packet_debug),

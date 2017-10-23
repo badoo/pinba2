@@ -45,9 +45,11 @@ namespace { namespace aux {
 		virtual void startup(report_ptr) = 0;
 		virtual void shutdown() = 0;
 
-		virtual uint32_t id() const = 0;
-		virtual report_t* report() const = 0;
-		virtual report_stats_t* stats() = 0;
+		virtual uint32_t           id() const = 0;
+		virtual report_t*          report() const = 0;
+		virtual report_agg_t*      report_agg() const = 0;
+		virtual report_history_t*  report_history() const = 0;
+		virtual report_stats_t*    stats() = 0;
 
 		virtual bool process_batch(packet_batch_ptr) = 0;
 		virtual void execute_in_thread(report_host_call_func_t const&) = 0;
@@ -92,7 +94,11 @@ namespace { namespace aux {
 		std::mutex             shutdown_mtx_;
 
 		report_ptr             report_;
+		report_agg_ptr         report_agg_;
+		report_history_ptr     report_history_;
 		report_stats_t         stats_;
+
+		repacker_state_ptr     repacker_state_;
 
 	public:
 
@@ -154,15 +160,22 @@ namespace { namespace aux {
 					LOG_DEBUG(globals_->logger(), "{0}; exiting", conf_.thread_name);
 				);
 
+				report_agg_ = report_->create_aggregator();
+				report_agg_->stats_init(&stats_);
 
-				report_->stats_init(&stats_);
-				report_->ticks_init(os_unix::clock_monotonic_now());
+				report_history_ = report_->create_history();
+				report_history_->stats_init(&stats_);
+
+				//
 
 				nmsg_poller_t poller;
 				poller
 					.ticker(tick_interval, [this](timeval_t now)
 					{
-						report_->tick_now(now);
+						report_tick_ptr tick = report_agg_->tick_now(now);
+						tick->repacker_state = std::move(repacker_state_);
+
+						report_history_->merge_tick(tick);
 
 						timeval_t const curr_tv    = os_unix::clock_monotonic_now();
 						timeval_t const curr_rt_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
@@ -186,7 +199,9 @@ namespace { namespace aux {
 						stats_.batches_recv_total += 1;
 						stats_.packets_recv_total += batch->packet_count;
 
-						report_->add_multi(batch->packets, batch->packet_count);
+						repacker_state___merge_to_from(repacker_state_, batch->repacker_state);
+
+						report_agg_->add_multi(batch->packets, batch->packet_count);
 					})
 					.read_nn_socket(control_sock_, [this](timeval_t now)
 					{
@@ -228,6 +243,16 @@ namespace { namespace aux {
 		virtual report_t* report() const override
 		{
 			return report_.get();
+		}
+
+		virtual report_agg_t* report_agg() const override
+		{
+			return report_agg_.get();
+		}
+
+		virtual report_history_t* report_history() const override
+		{
+			return report_history_.get();
 		}
 
 		virtual report_stats_t* stats() override
@@ -476,7 +501,7 @@ namespace { namespace aux {
 								report_snapshot_ptr snapshot;
 								host->execute_in_thread([&](report_host_t *rhost)
 								{
-									snapshot = rhost->report()->get_snapshot();
+									snapshot = rhost->report_history()->get_snapshot();
 								});
 
 								auto response = meow::make_intrusive<coordinator_response___report_snapshot_t>();
@@ -502,7 +527,12 @@ namespace { namespace aux {
 									state->id        = rhost->id();
 									state->stats     = rhost->stats();
 									state->info      = rhost->report()->info();
-									state->estimates = rhost->report()->get_estimates();
+
+									auto const a_est = rhost->report_agg()->get_estimates();
+									auto const h_est = rhost->report_history()->get_estimates();
+
+									state->estimates.row_count = h_est.row_count ? h_est.row_count : a_est.row_count;
+									state->estimates.mem_used = h_est.mem_used + a_est.mem_used;
 								});
 
 								auto response = meow::make_intrusive<coordinator_response___report_state_t>();
