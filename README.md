@@ -398,6 +398,8 @@ This table lists all reports known to the engine with additional information abo
 | tick_count | number of ticks, time_window is split into |
 | approx_row_count | approximate row count |
 | approx_mem_used | approximate memory usage |
+| batches_sent | number of packet batches sent from coordinator to report thread |
+| batches_received | number of packet batches received by report thread (if you have != 0 here, you're losing batches and packets) |
 | packets_received | packets received and processed |
 | packets_lost | packets that could not be processed and had to be dropped (aka, report couldn't cope with such packet rate) |
 | packets_aggregated | number of packets that we took useful information from |
