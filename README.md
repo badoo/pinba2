@@ -15,7 +15,6 @@ Key differences from original implementation
 
 - no raw data tables (i.e. requests, timers) support, yet (can be implemented)
     - raw data tables have VERY high memory usage requirements and uses are limited
-- no support for getting raw histogram data (yet)
 - simpler, more flexible report configuration
     - all use cases from original pinba are covered by only 3 kinds of reports (of which you mostly need one: timer)
     - simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
@@ -39,6 +38,7 @@ Key differences from original implementation
 - misc
   - traffic and memory_footprint are measured in bytes (original pinba truncates to kilobytes)
   - no *_percent fields in reports (will add)
+  - raw histogram data is available as an extra field in existing report (not as a separate table)
 
 
 Client libraries
@@ -114,7 +114,7 @@ Data comes in three forms
 **Reports**
 
 Report is a read-only view of incoming data, aggregated within specified time window.
-One can think of it as a table of key/value pairs: `Aggregation_key value` -> `Aggregated_data`.
+One can think of it as a table of key/value pairs: `Aggregation_key value` -> `Aggregated_data` + `Percentiles`.
 
 - `Aggregation_key` - configured when report is created.
     - key *names* are set by the user, *values* for those keys are taken from requests for aggregation
@@ -126,6 +126,7 @@ One can think of it as a table of key/value pairs: `Aggregation_key value` -> `A
     - ex. if `Aggregation_key` is `~host`, there'll be a key/value pair per unique `host` we see in request stream
     - ex. if `Aggregation_key` is `~host,+req_tag`, there'll be a key/value pair per unique `[host, req_tag_value]` pair
 - `Aggregated_data` is report-specific (i.e. a structure with fields like: req_count, hit_count, total_time, etc.).
+- `Percentiles` is a bunch of fields with specific percentiles, calculated over data from `request_time` or `timer_value`
 
 There are 3 kinds of reports: packet, request, timer. The difference between those boils down to
 
@@ -141,7 +142,8 @@ All report tables have same simple structure
 
 - `Aggregation_key`, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
 - `Aggregated_data`, one field per data field (i.e. packet report needs 7 fields)
-- `Percentiles`, one field per configured percentile
+- `Percentiles`, one field per configured percentile (optional)
+- `Histogram`, one text field for raw histogram data that percentiles are calculated from (optional)
 
 ASCII art!
 
@@ -208,6 +210,7 @@ General information about incoming packets
 - just aggregates everything into single item (mostly used to gauge general traffic)
 - Aggregation_key is always empty
 - Aggregated_data is global packet totals: { req_count, timer_count, hit_count, total_time, ru_utime, ru_stime, traffic, memory_footprint }
+- Percentiles are calculated from data in request_time field
 
 Table comment syntax
 
@@ -242,6 +245,7 @@ mysql> select * from info;
 - Aggregation_key is a combination of request_field (host, script, etc.) and request_tags (must NOT have timer_tag keys)
 - Aggregated_data is request-based
     - req_count, req_time_total, req_ru_utime, req_ru_stime, traffic_kb, mem_usage
+- Percentiles are calculated from data in request_time field
 
 Table comment syntax
 
@@ -292,6 +296,7 @@ This is the one you need for 95% uses
 - Aggregation_key is a combination of request_field (host, script, etc.), request_tags and timer_tags (must have at least one timer_tag key)
 - Aggregated_data is timer-based (aka taken from timer data)
     - req_count, timer_hit_count, timer_time_total, timer_ru_utime, timer_ru_stime
+- Percentiles are calculated from data in timer_value
 
 Table comment syntax
 
@@ -632,3 +637,87 @@ mysql> select
 +-------------------+
 1 row in set (0.00 sec)
 ```
+
+Histograms and Percentiles
+--------------------------
+
+TODO (need help describing details here).
+
+You don't need to understand this to use the engine.
+
+For all incoming time data (request_time or timer_value) - we build a histogram representing time values distribution for each 'row' in the report.
+This allows us to calculate percentiles (with some accuracy, that is given by histogram range and bucket count).
+
+So each row in every report that has percentiles configured will have a histogram associated with it.
+When selecting data from that report, the engine processes the histogram to get percentile values.
+
+**Histogram**
+
+config defines the range and bucket count: `hv=<min_value_ms>:<max_value_ms>:<bucket_count>`.
+This defines a histogram with the following structure
+
+```
+given
+  <hv_range>     = <max_value_ms> - <min_value_ms>
+  <bucket_width> = <hv_range> / <bucket_count>
+
+histogram looks like this
+  [negative_infinity bucket] -> number of time values in range (-inf, <min_value_ms>]
+  [0 bucket]                 -> number of time values in range (<min_value_ms>, <min_value_ms> + <bucket_width>]
+  [1 bucket]                 -> number of time values in range (<min_value_ms> + <bucket_width>, <min_value_ms> + <bucket_width> * 2]
+....
+  [last bucket]              -> number of time values in range (<min_value_ms> + <bucket_width> * (<bucket_count> - 1), <min_value_ms> + <bucket_width> * <bucket_count>]
+  [positive_infinity bucket] -> number of time values in range (<max_value_ms>, +inf)
+```
+
+**Things to know about percentile caculation**
+
+- when percentile calculation needs to take 'partial bucket' (i.e. not all values from the bucket) - it interpolates percentile value, assuming uniform distribution within the bucket
+- percentile 0   - is always equal to min_value_ms
+- percentile 100 - is always equal to max_value_ms
+
+**Raw Histogram output format**
+
+Generic format description
+
+```
+hv=<min_value_ms>:<min_value_ms>:<bucket_count>;values=[min:<negative_inf_value>,max:<positive_inf_value>,<bucket_id>:<value>, ...]
+```
+
+Example
+
+```
+// histogram configured with
+//  min_value_ms = 0
+//  min_value_ms = 2000  (aka 2 seconds)
+//  bucket_count = 20000 (so histogram resolution is 2000ms/20000 = 100 microseconds)
+//
+// negative_inf bucket contains 3 values
+// positive_inf bucket contains 3 values
+// and bucket with id = 69, this bucket correspods to bucket (6ms, 7ms]
+//    as buckets are numbered from 0, and (69 + 1)*100microseconds = 7000microseconds = 7milliseconds
+hv=0:2000:20000;values=[min:3,max:3,69:3]
+```
+
+**Percentile caculation example**
+
+Given the histogram above, say we need to calculate percentile 50 (aka median). Aka, the value that is larger than 50% of the values in the 'value set'.
+Our 'value set' is as follows
+
+```
+[ -inf, -inf, -inf, 7ms, 7ms, 7ms, +inf, +inf, +inf ]
+
+or, transforming 'infinities' into min_value_ms and max_value_ms
+
+[ 0ms, 0ms, 0ms, 7ms, 7ms, 7ms, 2000ms, 2000ms, 2000ms ]
+```
+
+- calculate what '50% of all values' means, got 9 values, 50% is 4.5
+- round 4.5 up, take the value of 5th elt -> 7ms is the answer
+- but, taking into account a point from above (we interpolate within bucket, assuming uniform distribution)
+  - actually the transformed value set will look like this
+  ```
+  [ 0ms, 0ms, 0ms, 6.33(3)ms, 6.66(6)ms, 7ms, 2000ms, 2000ms, 2000ms ]
+  ```
+  since we assume uniform distribution, virtually splitting the bucket into N=3 (the number of values in a bucket) sub-buckets
+- so our answer will be 6.66(6) millseconds
