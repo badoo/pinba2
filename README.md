@@ -127,11 +127,13 @@ One can think of it as a table of key/value pairs: `Aggregation_key value` -> `A
     - ex. if `Aggregation_key` is `~host,+req_tag`, there'll be a key/value pair per unique `[host, req_tag_value]` pair
 - `Aggregated_data` is report-specific (i.e. a structure with fields like: req_count, hit_count, total_time, etc.).
 - `Percentiles` is a bunch of fields with specific percentiles, calculated over data from `request_time` or `timer_value`
+- `Histogram` is a field where engine exports raw histogram data (that we calculate percentiles from) in text form
 
 There are 3 kinds of reports: packet, request, timer. The difference between those boils down to
 
 - How `Aggregation_key values`-s are extracted and matched
 - How `Aggregated_data` is populated (i.e. if you aggregate on request tags, there is no need/way to aggregate timer data)
+- What value we use for `Histogram` and `Percentiles`
 
 
 **SQL tables**
@@ -193,7 +195,7 @@ general syntax for comment is as follows (not all reports use all the fields).
     - any of (separate with commas):
         - 'min_time=&lt;milliseconds&gt;'
         - 'max_time=&lt;milliseconds&gt;'
-        - '&lt;tag_spec&gt;=<value&gt;' - check that packet has fields, request or timer tags with given values and accept only those
+        - '&lt;tag_spec&gt;=&lt;value&gt;' - check that packet has fields, request or timer tags with given values and accept only those
     - &lt;tag_spec&gt; is the same as &lt;key_spec&gt; above, i.e. ~request_field,+request_tag,@timer_tag
     - example: min_time=0,max_time=1000,+browser=chrome
         - will accept only requests with request_time in range [0, 1000)ms with request tag 'browser' present and value 'chrome'
@@ -210,7 +212,7 @@ General information about incoming packets
 - just aggregates everything into single item (mostly used to gauge general traffic)
 - Aggregation_key is always empty
 - Aggregated_data is global packet totals: { req_count, timer_count, hit_count, total_time, ru_utime, ru_stime, traffic, memory_footprint }
-- Percentiles are calculated from data in request_time field
+- Histogram and Percentiles are calculated from data in request_time field
 
 Table comment syntax
 
@@ -245,7 +247,7 @@ mysql> select * from info;
 - Aggregation_key is a combination of request_field (host, script, etc.) and request_tags (must NOT have timer_tag keys)
 - Aggregated_data is request-based
     - req_count, req_time_total, req_ru_utime, req_ru_stime, traffic_kb, mem_usage
-- Percentiles are calculated from data in request_time field
+- Histogram and Percentiles are calculated from data in request_time field
 
 Table comment syntax
 
@@ -296,7 +298,7 @@ This is the one you need for 95% uses
 - Aggregation_key is a combination of request_field (host, script, etc.), request_tags and timer_tags (must have at least one timer_tag key)
 - Aggregated_data is timer-based (aka taken from timer data)
     - req_count, timer_hit_count, timer_time_total, timer_ru_utime, timer_ru_stime
-- Percentiles are calculated from data in timer_value
+- Histogram and Percentiles are calculated from data in timer_value
 
 Table comment syntax
 
@@ -323,7 +325,8 @@ mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
       `p75` float NOT NULL,
       `p95` float NOT NULL,
       `p99` float NOT NULL,
-      `p100` float NOT NULL
+      `p100` float NOT NULL,
+      `histogram_data` text NOT NULL
     ) ENGINE=PINBA DEFAULT CHARSET=latin1
       COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 ```
@@ -421,64 +424,68 @@ example
 
 ```sql
 mysql> CREATE TABLE if not exists `active` (
-      `id` int unsigned NOT NULL,
-      `table_name` varchar(128) NOT NULL,
-      `internal_name` varchar(128) NOT NULL,
-      `kind` varchar(64) NOT NULL,
-      `uptime` double unsigned NOT NULL,
-      `time_window_sec` int(10) unsigned NOT NULL,
-      `tick_count` int(10) NOT NULL,
-      `approx_row_count` int(10) unsigned NOT NULL,
-      `approx_mem_used` bigint(20) unsigned NOT NULL,
-      `packets_received` bigint(20) unsigned NOT NULL,
-      `packets_lost` bigint(20) unsigned NOT NULL,
-      `packets_aggregated` bigint(20) unsigned NOT NULL,
-      `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
-      `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
-      `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
-      `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
-      `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
-      `timers_scanned` bigint(20) unsigned NOT NULL,
-      `timers_aggregated` bigint(20) unsigned NOT NULL,
-      `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
-      `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
-      `ru_utime` double NOT NULL,
-      `ru_stime` double NOT NULL,
-      `last_tick_time` double NOT NULL,
-      `last_tick_prepare_duration` double NOT NULL,
-      `last_snapshot_merge_duration` double NOT NULL
+    `id` int(10) unsigned NOT NULL,
+    `table_name` varchar(128) NOT NULL,
+    `internal_name` varchar(128) NOT NULL,
+    `kind` varchar(64) NOT NULL,
+    `uptime` double unsigned NOT NULL,
+    `time_window_sec` int(10) unsigned NOT NULL,
+    `tick_count` int(10) NOT NULL,
+    `approx_row_count` int(10) unsigned NOT NULL,
+    `approx_mem_used` bigint(20) unsigned NOT NULL,
+    `batches_sent` bigint(20) unsigned NOT NULL,
+    `batches_received` bigint(20) unsigned NOT NULL,
+    `packets_received` bigint(20) unsigned NOT NULL,
+    `packets_lost` bigint(20) unsigned NOT NULL,
+    `packets_aggregated` bigint(20) unsigned NOT NULL,
+    `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
+    `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
+    `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
+    `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
+    `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
+    `timers_scanned` bigint(20) unsigned NOT NULL,
+    `timers_aggregated` bigint(20) unsigned NOT NULL,
+    `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
+    `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
+    `ru_utime` double NOT NULL,
+    `ru_stime` double NOT NULL,
+    `last_tick_time` double NOT NULL,
+    `last_tick_prepare_duration` double NOT NULL,
+    `last_snapshot_merge_duration` double NOT NULL
     ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
 mysql> select *, packets_received/uptime as packets_per_sec, ru_utime/uptime utime_per_sec from active\G
 *************************** 1. row ***************************
                           id: 4
-                  table_name: ./pinba/tag_info_pinger_call_from_wwwbmamlan
-               internal_name: ./pinba/tag_info_pinger_call_from_wwwbmamlan
+                  table_name: ./pinba/tag_info_pinger_lookup_hosts
+               internal_name: ./pinba/tag_info_pinger_lookup_hosts
                         kind: report_by_timer_data
-                      uptime: 78719.326400376
+                      uptime: 10969.727857174
              time_window_sec: 60
                   tick_count: 60
-            approx_row_count: 26597
-             approx_mem_used: 142656964
-            packets_received: 5722816025
+            approx_row_count: 299
+             approx_mem_used: 17853360
+                batches_sent: 1040257
+            batches_received: 1040257
+            packets_received: 988809394
                 packets_lost: 0
-          packets_aggregated: 2134622163
-    packets_dropped_by_bloom: 2861694782
-  packets_dropped_by_filters: 726499080
+          packets_aggregated: 437364881
+    packets_dropped_by_bloom: 114079108
+  packets_dropped_by_filters: 437365405
    packets_dropped_by_rfield: 0
      packets_dropped_by_rtag: 0
  packets_dropped_by_timertag: 0
-              timers_scanned: 2134622163
-           timers_aggregated: 2134622163
+              timers_scanned: 437364881
+           timers_aggregated: 437364881
    timers_skipped_by_filters: 0
       timers_skipped_by_tags: 0
-                    ru_utime: 4693.58
-                    ru_stime: 581.832
-              last_tick_time: 1493219654.2556698
-  last_tick_prepare_duration: 0.011075174
-last_snapshot_merge_duration: 0
-             packets_per_sec: 72698.99637978438
-               utime_per_sec: 0.05962423987380031
+                    ru_utime: 182.768
+                    ru_stime: 7.552
+              last_tick_time: 1508859475.6637123
+  last_tick_prepare_duration: 0.0016342540000000001
+last_snapshot_merge_duration: 0.009539584
+             packets_per_sec: 90139.82907090415
+               utime_per_sec: 0.016661124357836562
 1 row in set (0.01 sec)
 ```
 
