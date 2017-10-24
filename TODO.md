@@ -1,18 +1,78 @@
 # Features
 - mysql
-	- [x] engine
-	- [x] report configs (in comments)
-	- [x] table with list of all reports and their data
-	- [x] {won't fix, there is no need currently} table listing all open tables and their state
-	- [ ] raw histogram data tables
 	- [ ] shutdown/clean reports with 'truncate table'
 	- [ ] test with 5.7
 		- [x] build, selects, etc.
 		- [ ] fix status variables (now with perfschema?)
-	- [ ] improve report data sorting, by implementing position() and rnd_pos()
+	- [ ] improve report data sorting performance, by implementing position() and rnd_pos()
 		- [x] position() and rnd_pos() implemeted - this doesn't help at all, 300ms to sort 30k rows is too slow, suspicious
 		- [x] fix double snapshot prepare for order by and group by
 		- [ ] find a way! explain shows 0 rows and ref = NULL, what the f
+- library
+	- [ ] plain-C API
+	- [ ] Go server, wrapping it, with http interface and stuff.
+- [ ] transient memory stats (aka. memory used by data, that was read from the network, and not yet aggregated)
+	- [ ] udp buffers
+	- [ ] udp batches
+	- [ ] repacked batches
+	- [ ] repacker dictionaries
+- docs
+	- [x] README (well, should suffice for now)
+	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
+	- [x] guidelines - how to run mysql with jemalloc
+	- [x] describe configuration options in readme
+	- [ ] document packet fields validation rules and value limits
+	- [ ] internals/tuning guide
+- tools
+	- [x] rtag_* reports support in scripts/convert_mysqldump.php
+	- [ ] hv_* reports support in scripts/convert_mysqldump.php
+- [ ] pthread_setname_np portable detection at runtime {?}
+- [ ] {maybe} raw data support
+- [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
+	- this is debatable, but useful for correct <something>/sec calculations
+
+
+# Performance
+- [ ] develop benchmark harness + learn to use perf like a pro :)
+- [ ] improve dictionaries (multiple choices here)
+	- [ ] make dictionary (refcounted or permanent) runtime configureable
+	- [ ] split permanent dictionary into it's own api, use for all tag names (never refcount them)
+	- [ ] maybe rework dictionaries to be report-based (this virtually eliminates the need for repacker, but will prob require report thread-splitting)
+- [x] recvmmsg() in udp reader (+ settings)
+	- [x] configure support
+	- [ ] try runtime detection with dlsym
+- [ ] {medium} thread cpu + numa affinity
+	- [ ] coordinator (or packet relay for that matter) affinity + priority
+	- [ ] repacker affinity + config support
+	- [ ] udp collector affinity + config support
+	- [ ] doc, how to assign interrupts to cores + numa nodes (links at least)
+- [ ] {easy} check dense_hash_map impls
+	- [ ] https://github.com/tbricks/sparsehash-c11/commits/development (c++11 move + performance)
+- [ ] {?} increase udp kernel memory (or at least check for it) on startup
+	- kernel udp memory is usually tuned very low
+	- so, it's beneficial to increase it to be able to handle high packet+data rates
+	- should provide guidelines here (like 1gbps in traffic = ~120mb/sec, should probably reserve at least 60mb for 1/2 second hickups)
+- [ ] {easy} flatbuffer (https://google.github.io/flatbuffers/) instead of protobuf?
+	- hard to change all clients
+	- not really worth it, since pb unpack doesn't seem to take that much cpu
+- [ ] {hard} maybe replace nanomsg with something doing less locking / syscalls (thorough meamurements first!)
+- [ ] {medium, worth it?} per snapshot merger dictionary caches
+
+# Internals
+- [x] split pinba_globals_t into 'informational' and 'runtime engine' parts (to simplify testing/experiments)
+	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
+	- runtime: udp readers, coorinator, the features meat
+- [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
+- [ ] refactor switches by view type in handler.cpp / view_conf.cpp
+
+# Done
+
+- mysql
+	- [x] engine
+	- [x] report configs (in comments)
+	- [x] table with list of all reports and their data
+	- [x] {won't fix, there is no need currently} table listing all open tables and their state
+	- [x] raw histogram data tables (current impl just adds a field to existing report table)
 	- [x] test with mariadb (those guys install all internal headers, should be simpler to install)
 	- [x] debug, why mysql keeps eating memory, when started with no reports and just incoming traffic (valgrind says - everything is freed :( )
 		- [x] test with mysql (tested, still leaks, probably my code)
@@ -24,19 +84,6 @@
 			see experiments/exp_request_call.cpp
 			and https://github.com/nanomsg/nanomsg/issues/575
 - [x] logging: levels + configureable format (mysql format from mysql plugin, etc.)
-- library
-	- [ ] plain-C API
-	- [ ] Go server, wrapping it, with http interface and stuff.
-- docs
-	- [x] README (well, should suffice for now)
-	- [ ] usage examples, i.e. [something like this](https://github.com/tony2001/pinba_engine/wiki/Usage-examples)
-	- [x] guidelines - how to run mysql with jemalloc
-	- [x] describe configuration options in readme
-	- [ ] document packet fields validation rules and value limits
-	- [ ] internals/tuning guide
-- tools
-	- [x] rtag_* reports support in scripts/convert_mysqldump.php
-	- [ ] hv_* reports support in scripts/convert_mysqldump.php
 - reports
 	- [x] filtering by request min/max time
 	- [x] request field/tag based filtering (i.e. take only requests with +browser=chrome)
@@ -45,63 +92,27 @@
 	- [x] mysql table
 	- [x] status variables
 	- [x] make stats table the same as status variables, or remove it in favor of the former
-	- [ ] transient memory stats (aka. memory used by data, that was read from the network, and not yet aggregated)
 	- per-report stats
 		- [x] rusage
 		- [x] packet counts (+ drop counts, filtered out counts, bloom dropped counts)
-- [ ] raw data support
-- [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
-	- this is debatable, but useful for correct <something>/sec calculations
-
-
-# Performance
-- [ ] develop benchmark harness + learn to use perf like a pro :)
-- [x] recvmmsg() in udp reader (+ settings)
-	- [x] configure support
-	- [ ] try runtime detection with dlsym
-- [x] {easy} SO_REUSEPORT for udp threads
-	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
-- [ ] {medium} sorted arrays for histograms (almost there)
+	- [x] per-thread rusage (repacker seems to be the most cpu-intensive one)
+- [x] implement dictionary decay (aka, remove values for dictionary, when they're not used by reports anymore)
+	- use case: sending highly unique data to pinba (like 'encrypted urls' in nginx module)
+	- [x] timeslices and ref counting for repacker dictionary caches + report 'dictionary timeslice' references
+	- [x] {won't fix} propagate data about "fields that are interesting to reports" to repacker threads, and do not add stuff to dictionary if noone is interested (this would break naive raw data implementation, since we'd lose timers/tags that are not used by reports)
+- [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
+- [x] {medium} sorted arrays for histograms (almost there)
 	- [x] timer reports
 	- [x] request reports
-	- [ ] packet reports
-- [ ] {medium} thread cpu + numa affinity
-	- [ ] coordinator (or packet relay for that matter) affinity + priority
-	- [ ] repacker affinity + config support
-	- [ ] udp collector affinity + config support
-	- [ ] doc, how to assign interrupts to cores + numa nodes (links at least)
-- [ ] {easy} check dense_hash_map impls
-	- [ ] https://github.com/tbricks/sparsehash-c11/commits/development (c++11 move + performance)
-- [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
-- [x] {medium} per-thread rusage (repacker seems to be the most cpu-intensive one)
-- [ ] {?} increase udp kernel memory (or at least check for it) on startup
-	- kernel udp memory is usually tuned very low
-	- so, it's beneficial to increase it to be able to handle high packet+data rates
-	- should provide guidelines here (like 1gbps in traffic = ~120mb/sec, should probably reserve at least 60mb for 1/2 second hickups)
-- [ ] {easy} flatbuffer (https://google.github.io/flatbuffers/) instead of protobuf?
-	- hard to change all clients
-	- not really worth it, since pb unpack doesn't seem to take that much cpu
-- [ ] {hard} maybe replace nanomsg with something doing less locking / syscalls (thorough meamurements first!)
+	- [x] {won't fix, nice to have for experiments} packet reports
+- percentiles
+	- [x] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
+	- [x] {not needed, no perf impact now} calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)
 - [x] {medium, worth it?} simple 'bloom filtering' (aka is this report interested in this packet?)
 	- [x] poor man's handmade solution with std::bitset, timer tags only (where it's really needed)
 	- try calculating a simple bloom filter (over tag names) for all incoming packets
 	- report has it's own bloom, filled with tag names it's interested in
 	- compare those 2, if no match - packet doesn't need to be inspected
-- [ ] {easy, worth it?} per repacker dictionary caches (reduces locking on global dictionary)
-- [ ] {medium, worth it?} per snapshot merger dictionary caches
-
-# Internals
-- [x] split pinba_globals_t into 'informational' and 'runtime engine' parts (to simplify testing/experiments)
-	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
-	- runtime: udp readers, coorinator, the features meat
-- [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
-- [ ] split report raw data aggregation and tick repack (i.e. have a few threads doing repack and providing snapshots)
-	- when this is done, we can actually split any report into any number of threads we want (both aggregation and tick-repack parts)
-- [ ] implement dictionary decay (aka, remove values for dictionary, when they're not used by reports anymore)
-	- use case: sending highly unique data to pinba (like 'encrypted urls' in nginx module)
-	- [ ] timeslices and ref counting for repacker dictionary caches + report 'dictionary timeslice' references
-	- [ ] propagate data about "fields that are interesting to reports" to repacker threads, and do not add stuff to dictionary if noone is interested (this would break naive raw data implementation, since we'd lose timers/tags that are not used by reports)
-- percentiles
-	- [x] merge histograms in report snapshots only when percentile calculation is required, do so on the fly
-	- [ ] calculate all required percentiles in one go (i.e. if we need 95 and 99 - calc them in a single pass)
-- [ ] refactor switches by view type in handler.cpp / view_conf.cpp
+- [x] {easy, worth it?} per repacker dictionary caches (reduces locking on global dictionary)
+- [x] {easy} SO_REUSEPORT for udp threads
+	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
