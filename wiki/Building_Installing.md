@@ -7,6 +7,7 @@ Building
 - meow: https://github.com/anton-povarov/meow
 - boost: http://boost.org/ (or just install from packages for your distro)
 - nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases, or just pull master)
+	- make sure to adjust NN_MAX_SOCKETS cmake option as it limits the number of reports available, 4096 should be enough for ~700 reports.
 - mysql (5.6+) or mariadb (10+)
 	- mysql: need source code, run ./configure, since mysql doesn't install all internal headers we need
 	- mariadb: just install from with your favorite package manager, and point pinba to header files
