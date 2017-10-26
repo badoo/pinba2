@@ -1,4 +1,4 @@
-AC_INIT([pinba], [2.0.9])
+AC_INIT([pinba], [2.1.0])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/globals.cpp])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
