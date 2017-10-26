@@ -75,7 +75,7 @@ namespace { namespace aux {
 			return fp_recvmmsg_(sockfd, msgvec, vlen, flags, timeout);
 		}
 
-		virtual bool has_recvmmsg() const
+		virtual bool has_recvmmsg() const override
 		{
 			return (fp_recvmmsg_ != NULL);
 		}
