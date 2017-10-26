@@ -11,6 +11,7 @@
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
+#include "pinba/os_symbols.h"
 #include "pinba/repacker.h"
 #include "pinba/coordinator.h"
 #include "pinba/report.h"
@@ -29,7 +30,7 @@ namespace { namespace aux {
 		std::string name;
 		std::string thread_name;
 
-		std::string nn_control;          // control messages and stuff
+		std::string nn_control;         // control messages and stuff
 		std::string nn_shutdown;        // shutdown message
 
 		std::string nn_packets;         // get packet_batch_ptr from this endpoint as fast as possible (SUB, pair to coodinator PUB)
@@ -151,10 +152,7 @@ namespace { namespace aux {
 
 			std::thread t([this, tick_interval]()
 			{
-
-			#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
-				pthread_setname_np(pthread_self(), conf_.thread_name.c_str());
-			#endif
+				PINBA___OS_CALL(globals_, set_thread_name, conf_.thread_name);
 
 				MEOW_DEFER(
 					LOG_DEBUG(globals_->logger(), "{0}; exiting", conf_.thread_name);
@@ -360,9 +358,7 @@ namespace { namespace aux {
 		{
 			std::string const thr_name = ff::fmt_str("coordinator");
 
-		#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
-			pthread_setname_np(pthread_self(), thr_name.c_str());
-		#endif
+			PINBA___OS_CALL(globals_, set_thread_name, thr_name);
 
 			MEOW_DEFER(
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);

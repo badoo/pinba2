@@ -18,9 +18,11 @@
 #include <meow/unix/netdb.hpp>
 #include <meow/unix/resource.hpp>
 
+#include "pinba/globals.h"
+#include "pinba/os_symbols.h"
+#include "pinba/collector.h"
 #include "pinba/nmsg_socket.h"
 #include "pinba/nmsg_poller.h"
-#include "pinba/collector.h"
 
 #include "proto/pinba.pb-c.h"
 
@@ -146,9 +148,7 @@ namespace { namespace aux {
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
 
-				#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
-					pthread_setname_np(pthread_self(), thr_name.c_str());
-				#endif
+					PINBA___OS_CALL(globals_, set_thread_name, thr_name);
 
 					MEOW_DEFER(
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
@@ -217,11 +217,10 @@ namespace { namespace aux {
 
 		void eat_udp(uint32_t const thread_id, fd_handle_t const& fd)
 		{
-		#ifdef PINBA_HAVE_RECVMMSG
-			this->eat_udp_recvmmsg(thread_id, std::move(fd));
-		#else
-			this->eat_udp_recv(thread_id, std::move(fd));
-		#endif
+			if (globals_->os_symbols()->has_recvmmsg())
+				this->eat_udp_recvmmsg(thread_id, std::move(fd));
+			else
+				this->eat_udp_recv(thread_id, std::move(fd));
 		}
 
 		void eat_udp_recv(uint32_t const thread_id, fd_handle_t const& fd)
@@ -355,7 +354,6 @@ namespace { namespace aux {
 			poller.loop();
 		}
 
-#ifdef PINBA_HAVE_RECVMMSG
 		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t const& fd)
 		{
 			size_t const max_message_size   = 64 * 1024; // max udp message size
@@ -434,7 +432,7 @@ namespace { namespace aux {
 				{
 					++stats_->udp.recv_total;
 
-					int const n = recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+					int const n = globals_->os_symbols()->recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
 					if (n > 0)
 					{
 						stats_->udp.recv_packets += uint64_t(n);
@@ -515,7 +513,6 @@ namespace { namespace aux {
 
 			poller.loop();
 		}
-#endif // PINBA_HAVE_RECVMMSG
 
 	private:
 		os_addrinfo_list_ptr  ai_list_;

@@ -33,6 +33,7 @@ typedef meow::error_t pinba_error_t;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct pinba_os_symbols_t;
 struct dictionary_t;
 
 struct repacker_state_t;
@@ -138,7 +139,6 @@ struct pinba_stats_t
 using pinba_logger_t   = meow::logging::logger_t;
 using pinba_logger_ptr = std::shared_ptr<pinba_logger_t>;
 
-
 struct pinba_options_t
 {
 	std::string net_address;
@@ -174,6 +174,7 @@ struct pinba_globals_t : private boost::noncopyable
 	virtual pinba_options_t const* options() const = 0;
 	virtual pinba_options_t*       options_mutable() = 0;
 	virtual dictionary_t*          dictionary() const = 0;
+	virtual pinba_os_symbols_t*    os_symbols() const = 0;
 };
 typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 
@@ -181,7 +182,7 @@ typedef std::unique_ptr<pinba_globals_t> pinba_globals_ptr;
 pinba_globals_t*  pinba_globals();
 pinba_globals_t*  pinba_globals_init(pinba_options_t*);
 
-#define PINBA_STATS_(x)  (pinba_globals()->stats()->x)
+#define PINBA_STATS_(x)    (pinba_globals()->stats()->x)
 #define PINBA_LOGGER_      (pinba_globals()->logger())
 #define PINBA_OPTIONS_(x)  (pinba_globals()->options()->x)
 

@@ -22,6 +22,7 @@ AM_LDFLAGS = \
 lib_LIBRARIES = libpinba2.a
 libpinba2_a_SOURCES = \
 	globals.cpp \
+	os_symbols.cpp \
 	collector.cpp \
 	repacker.cpp \
 	coordinator.cpp \

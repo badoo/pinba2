@@ -8,6 +8,7 @@
 #include <meow/unix/resource.hpp> // getrusage_ex
 
 #include "pinba/globals.h"
+#include "pinba/os_symbols.h"
 #include "pinba/dictionary.h"
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
@@ -304,9 +305,7 @@ namespace { namespace aux {
 		{
 			std::string const thr_name = ff::fmt_str("repacker/{0}", thread_id);
 
-		#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
-			pthread_setname_np(pthread_self(), thr_name.c_str());
-		#endif
+			PINBA___OS_CALL(globals_, set_thread_name, thr_name);
 
 			MEOW_DEFER(
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);

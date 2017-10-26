@@ -10,6 +10,7 @@
 #include <meow/logging/fd_logger.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/os_symbols.h"
 #include "pinba/engine.h"
 #include "pinba/dictionary.h"
 #include "pinba/coordinator.h"
@@ -33,6 +34,10 @@ namespace { namespace aux {
 
 			// ticker_     = meow::make_unique<nmsg_ticker___single_thread_t>();
 			dictionary_ = meow::make_unique<dictionary_t>();
+
+			// NOTE: passing not fully constructed this ptr is fine here
+			//       but it's a fine line to walk, mon
+			os_symbols_ = pinba_os_symbols___init(this);
 
 			stats_.start_tv          = os_unix::clock_monotonic_now();
 			stats_.start_realtime_tv = os_unix::clock_gettime_ex(CLOCK_REALTIME);
@@ -71,12 +76,18 @@ namespace { namespace aux {
 			return dictionary_.get();
 		}
 
+		virtual pinba_os_symbols_t*    os_symbols() const override
+		{
+			return os_symbols_.get();
+		}
+
 	private:
 		pinba_options_t                *options_;
 
 		pinba_logger_ptr               logger_;
 		pinba_stats_t                  stats_;
 		std::unique_ptr<dictionary_t>  dictionary_;
+		pinba_os_symbols_ptr           os_symbols_;
 	};
 
 

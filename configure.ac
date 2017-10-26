@@ -40,7 +40,7 @@ common_flags="$common_flags -maes -msse4 -msse4.2" # for clang t1ha
 
 AX_CFLAGS="-std=gnu11 $common_flags"
 AX_CXXFLAGS="-std=gnu++11 -fno-rtti $common_flags"
-AX_LDFLAGS="-flto -lrt"
+AX_LDFLAGS="-flto -lrt -ldl"
 
 dnl nonportable pthread expensions
 AC_CHECK_LIB([pthread], [pthread_setname_np], [

@@ -8,6 +8,7 @@
 		- [x] position() and rnd_pos() implemeted - this doesn't help at all, 300ms to sort 30k rows is too slow, suspicious
 		- [x] fix double snapshot prepare for order by and group by
 		- [ ] find a way! explain shows 0 rows and ref = NULL, what the f
+	- [ ] windowed tables for active and stats (currently data in them is ever incrementing, fine for automatic tools, not that convenient for humans)
 - library
 	- [ ] plain-C API
 	- [ ] Go server, wrapping it, with http interface and stuff.
@@ -38,9 +39,10 @@
 	- [ ] make dictionary (refcounted or permanent) runtime configureable
 	- [ ] split permanent dictionary into it's own api, use for all tag names (never refcount them)
 	- [ ] maybe rework dictionaries to be report-based (this virtually eliminates the need for repacker, but will prob require report thread-splitting)
-- [x] recvmmsg() in udp reader (+ settings)
-	- [x] configure support
-	- [ ] try runtime detection with dlsym
+	- [ ] hash strings only once, hack hash table impls to accept hashes instead of strings (impossible with unordered_map?)
+- [ ] try hdr_histogram_c
+	- [ ] hack to allow for dynamic resize (currently too expensive to use, as they preallocate on creation)
+	- [ ] also need to figure out what to do with negative/positive inf in our histograms, and significant digits setting
 - [ ] {medium} thread cpu + numa affinity
 	- [ ] coordinator (or packet relay for that matter) affinity + priority
 	- [ ] repacker affinity + config support
@@ -100,6 +102,9 @@
 	- use case: sending highly unique data to pinba (like 'encrypted urls' in nginx module)
 	- [x] timeslices and ref counting for repacker dictionary caches + report 'dictionary timeslice' references
 	- [x] {won't fix} propagate data about "fields that are interesting to reports" to repacker threads, and do not add stuff to dictionary if noone is interested (this would break naive raw data implementation, since we'd lose timers/tags that are not used by reports)
+- [x] recvmmsg() in udp reader (+ settings)
+	- [x] configure support
+	- [x] try runtime detection with dlsym (and other symbols like pthread_setname_np)
 - [x] {easy, minor} make request and timer tag_name_id-s into flatter arrays for faster searches (cache lines, yo!)
 - [x] {medium} sorted arrays for histograms (almost there)
 	- [x] timer reports
