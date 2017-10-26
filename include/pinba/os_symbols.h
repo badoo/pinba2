@@ -7,6 +7,18 @@
 #include "pinba/globals.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+// declare required types, for functions that we want to runtime-check
+
+#ifndef PINBA_HAVE_RECVMMSG
+
+	struct mmsghdr {
+		struct msghdr msg_hdr;  /* Message header */
+		unsigned int  msg_len;  /* Number of received bytes for header */
+	};
+
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct pinba_os_symbols_t : private boost::noncopyable
 {

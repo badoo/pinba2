@@ -85,21 +85,21 @@ namespace { namespace aux {
 		void resolve_builtin_symbols()
 		{
 			#ifdef PINBA_HAVE_PTHREAD_SETNAME_NP
-				fp_pthread_setname_np_     = (funcp___pthread_setname_np_t)this->resolve("pthread_setname_np");
-			#else
 				fp_pthread_setname_np_     = (funcp___pthread_setname_np_t)&pthread_setname_np;
+			#else
+				fp_pthread_setname_np_     = (funcp___pthread_setname_np_t)this->resolve("pthread_setname_np");
 			#endif
 
 			#ifdef PINBA_HAVE_PTHREAD_SETAFFINITY_NP
-				fp_pthread_setaffinity_np_ = (funcp___pthread_setaffinity_np_t)this->resolve("pthread_setaffinity_np");
-			#else
 				fp_pthread_setaffinity_np_ = (funcp___pthread_setaffinity_np_t)&pthread_setaffinity_np;
+			#else
+				fp_pthread_setaffinity_np_ = (funcp___pthread_setaffinity_np_t)this->resolve("pthread_setaffinity_np");
 			#endif
 
 			#ifdef PINBA_HAVE_RECVMMSG
-				fp_recvmmsg_               = (funcp___recvmmsg_t)this->resolve("recvmmsg");
-			#else
 				fp_recvmmsg_               = (funcp___recvmmsg_t)&::recvmmsg;
+			#else
+				fp_recvmmsg_               = (funcp___recvmmsg_t)this->resolve("recvmmsg");
 			#endif
 		}
 
