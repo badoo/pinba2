@@ -166,13 +166,15 @@ public:
 		else
 		{
 			uint32_t bucket_id = d.nsec / conf.bucket_d.nsec;
-			assert((bucket_id > 0) && "zero bucket is checked above");
 
 			if (bucket_id < conf.bucket_count)
 			{
 				// try fit exact upper-bound match to previous bucket
-				if (d == bucket_id * conf.bucket_d)
-					bucket_id -= 1;
+				if (bucket_id > 0)
+				{
+					if (d == bucket_id * conf.bucket_d)
+						bucket_id -= 1;
+				}
 
 				map_[bucket_id] += increment_by;
 			}
