@@ -9,7 +9,7 @@
 
 // max number of key parts we support for reports
 #ifndef PINBA_LIMIT___MAX_KEY_PARTS
-#define PINBA_LIMIT___MAX_KEY_PARTS 7
+#define PINBA_LIMIT___MAX_KEY_PARTS 15
 #endif
 
 // max histogram size
