@@ -573,6 +573,7 @@ namespace { namespace aux {
 			struct snapshot_traits
 			{
 				using src_ticks_t = ringbuffer_t;
+				using totals_t    = report_row_data___by_timer_t;
 
 				struct row_t
 				{
@@ -673,14 +674,28 @@ namespace { namespace aux {
 					return &row->merged_hv;
 				}
 
+				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
+				{
+					for (auto const& data_pair : data)
+					{
+						auto const& row = data_pair.second.data;
+
+						totals->req_count  += row.req_count;
+						totals->hit_count  += row.hit_count;
+						totals->time_total += row.time_total;
+						totals->ru_utime   += row.ru_utime;
+						totals->ru_stime   += row.ru_stime;
+					}
+				}
+
 				// merge from src ringbuffer to snapshot data
 				static void merge_ticks_into_data(
 					  report_snapshot_ctx_t *snapshot_ctx
 					, src_ticks_t& ticks
 					, hashtable_t& to
-					, report_snapshot_t::prepare_type_t ptype)
+					, report_snapshot_t::merge_flags_t flags)
 				{
-					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && ptype != report_snapshot_t::prepare_type::no_histograms);
+					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::no_histograms));
 
 					uint64_t n_ticks = 0;
 					uint64_t key_lookups = 0;

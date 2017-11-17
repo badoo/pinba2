@@ -157,13 +157,20 @@ struct report_snapshot_traits___example
 {
 	using src_ticks_t = ; // source ticks_ringbuffer_t
 	using hashtable_t = ; // result hashtable (that we're going to iterate over)
+	using totals_t    = ; // struct, holding overall report data totals
 
 	// merge ticks from src_ticks_t to hashtable_t
 	static void merge_ticks_into_data(
 			  report_snapshot_ctx_t *snapshot_ctx
 			, src_ticks_t& ticks
 			, hashtable_t& to
-			, report_snapshot_t::prepare_type_t ptype);
+			, report_snapshot_t::merge_flags_t flags);
+
+	// calculate totals over the final report
+	static void calculate_totals(
+		  report_snapshot_ctx_t *snapshot_ctx
+		, totals_t *totals
+		, hashtable_t const& data);
 
 	// get iterator keys/values/histograms at iterator
 	static report_key_t key_at_position(hashtable_t const&, iterator_t const&);
@@ -202,11 +209,13 @@ struct report_snapshot__impl_t
 	using src_ticks_t = typename Traits::src_ticks_t;
 	using hashtable_t = typename Traits::hashtable_t;
 	using iterator_t  = typename hashtable_t::iterator;
+	using totals_t    = typename Traits::totals_t;
 
 public: // intentional, internal use only
 
 	hashtable_t  data_;      // real data we iterate over
 	src_ticks_t  ticks_;     // ticks we merge our data from (in other thread potentially)
+	totals_t     totals_;    // totals storage
 	bool         prepared_;  // has data been prepared?
 
 public:
@@ -230,19 +239,22 @@ private:
 		return globals->dictionary();
 	}
 
-	virtual void prepare(prepare_type_t ptype) override
+	virtual void prepare(merge_flags_t flags) override
 	{
 		if (this->is_prepared())
 			return;
 
 		meow::stopwatch_t sw;
 
-		Traits::merge_ticks_into_data(this, ticks_, data_, ptype);
+		Traits::merge_ticks_into_data(this, ticks_, data_, flags);
 
 		prepared_ = true;
 
 		if (this->stats)
 			this->stats->last_snapshot_merge_d = duration_from_timeval(sw.stamp());
+
+		if ((merge_flags::no_totals & flags) == 0)
+			Traits::calculate_totals(this, &totals_, data_);
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();
@@ -343,6 +355,11 @@ private:
 	{
 		auto const& it = iterator_from_position(pos);
 		return Traits::value_at_position(data_, it);
+	}
+
+	virtual void* get_data_totals() const override
+	{
+		return (void*)&totals_;
 	}
 
 	virtual int histogram_kind() const override

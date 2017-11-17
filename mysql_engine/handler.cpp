@@ -36,6 +36,32 @@
 	break;
 /**/
 
+#define STORE_PERCENT_I(N, row_value, total_value)                 \
+	case N: {                                                      \
+		if ((total_value) == 0) { (*field)->set_null(); }          \
+		else {                                                     \
+			auto const val = (double)(row_value) / (total_value);  \
+			(*field)->set_notnull();                               \
+			(*field)->store(val * 100.0);                          \
+		}                                                          \
+	}; break;                                                      \
+/**/
+
+#define STORE_PERCENT_D(N, row_value, total_value)                 \
+	case N: {                                                      \
+		if ((total_value).nsec == 0) { (*field)->set_null(); }     \
+		else {                                                     \
+			auto const val =                                       \
+				duration_seconds_as_double(row_value)              \
+				/ duration_seconds_as_double(total_value);         \
+			(*field)->set_notnull();                               \
+			(*field)->store(val * 100.0);                          \
+		}                                                          \
+	}; break;                                                      \
+/**/
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct pinba_view___base_t : public pinba_view_t
 {
 	pinba_view___base_t()
@@ -690,14 +716,15 @@ private:
 		{
 			meow::stopwatch_t sw;
 
-			auto const ptype = (need_percentiles)
-								? report_snapshot_t::prepare_type::full
-								: report_snapshot_t::prepare_type::no_histograms;
-			snapshot_->prepare(ptype);
+			auto const flags = (need_percentiles)
+								? report_snapshot_t::merge_flags::full
+								: report_snapshot_t::merge_flags::no_histograms;
 
-			LOG_DEBUG(P_L_, "snapshot::{0}; snapshot for: {1}, prepare ({2}) took {3} seconds ({4} rows)",
+			snapshot_->prepare(flags);
+
+			LOG_DEBUG(P_L_, "snapshot::{0}; snapshot for: {1}, prepare (flags: {2}) took {3} seconds ({4} rows)",
 				__func__, share_data_->mysql_name,
-				report_snapshot_t::prepare_type::enum_as_str_ref(ptype),
+				ff::as_hex(flags),
 				sw.stamp(), snapshot_->row_count());
 		}
 
@@ -758,21 +785,40 @@ private:
 				constexpr unsigned const n_data_fields = n_data_fields___by_request;
 				if (findex < n_data_fields)
 				{
-					auto const *row = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(row_pos));
+					auto const *row    = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data(row_pos));
+					auto const *totals = reinterpret_cast<report_row_data___by_request_t*>(snapshot_->get_data_totals());
 
 					switch (findex)
 					{
-						STORE_FIELD(0,  row->req_count);
-						STORE_FIELD(1,  double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(2,  duration_seconds_as_double(row->time_total));
-						STORE_FIELD(3,  duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(4,  duration_seconds_as_double(row->ru_utime));
-						STORE_FIELD(5,  duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(6,  duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(7,  duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(8,  row->traffic);
-						STORE_FIELD(9,  double(row->traffic) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(10, row->mem_used);
+						// req_count
+						STORE_FIELD    (0,  row->req_count);
+						STORE_FIELD    (1,  double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_I(2,  row->req_count, totals->req_count);
+
+						// time_total
+						STORE_FIELD    (3,  duration_seconds_as_double(row->time_total));
+						STORE_FIELD    (4,  duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(5,  row->time_total, totals->time_total);
+
+						// ru_utime
+						STORE_FIELD    (6,  duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD    (7,  duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(8,  row->ru_utime, totals->ru_utime);
+
+						// ru_stime
+						STORE_FIELD    (9,  duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD    (10, duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(11, row->ru_stime, totals->ru_stime);
+
+						// traffic
+						STORE_FIELD    (12, row->traffic);
+						STORE_FIELD    (13, double(row->traffic) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_I(14, row->traffic, totals->traffic);
+
+						// mem_used
+						STORE_FIELD    (15, row->mem_used);
+						STORE_FIELD    (16, double(row->mem_used) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_I(17, row->mem_used, totals->mem_used);
 					}
 
 					continue;
@@ -784,20 +830,35 @@ private:
 				static unsigned const n_data_fields = n_data_fields___by_timer;
 				if (findex < n_data_fields)
 				{
-					auto const *row = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(row_pos));
+					auto const *row    = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data(row_pos));
+					auto const *totals = reinterpret_cast<report_row_data___by_timer_t*>(snapshot_->get_data_totals());
 
 					switch (findex)
 					{
-						STORE_FIELD(0, row->req_count);
-						STORE_FIELD(1, double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(2, row->hit_count);
-						STORE_FIELD(3, double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(4, duration_seconds_as_double(row->time_total));
-						STORE_FIELD(5, duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(6, duration_seconds_as_double(row->ru_utime));
-						STORE_FIELD(7, duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
-						STORE_FIELD(8, duration_seconds_as_double(row->ru_stime));
-						STORE_FIELD(9, duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						// req_count
+						STORE_FIELD    (0, row->req_count);
+						STORE_FIELD    (1, double(row->req_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_I(2, row->req_count, totals->req_count);
+
+						// hit_count
+						STORE_FIELD    (3, row->hit_count);
+						STORE_FIELD    (4, double(row->hit_count) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_I(5, row->hit_count, totals->hit_count);
+
+						// time_total
+						STORE_FIELD    (6, duration_seconds_as_double(row->time_total));
+						STORE_FIELD    (7, duration_seconds_as_double(row->time_total) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(8, row->time_total, totals->time_total);
+
+						// ru_utime
+						STORE_FIELD    (9, duration_seconds_as_double(row->ru_utime));
+						STORE_FIELD    (10, duration_seconds_as_double(row->ru_utime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(11, row->ru_utime, totals->ru_utime);
+
+						// ru_stime
+						STORE_FIELD    (12, duration_seconds_as_double(row->ru_stime));
+						STORE_FIELD    (13, duration_seconds_as_double(row->ru_stime) / duration_seconds_as_double(rinfo->time_window));
+						STORE_PERCENT_D(14, row->ru_stime, totals->ru_stime);
 					}
 
 					continue;
