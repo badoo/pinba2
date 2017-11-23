@@ -95,10 +95,17 @@ struct packet_t;
 struct dictionary_t;
 struct snapshot_dictionary_t;
 
+
 struct report_snapshot_t
 {
-	MEOW_DEFINE_SMART_ENUM_STRUCT(prepare_type,	((full,          "full"))
-												((no_histograms, "no_histograms")));
+	struct merge_flags
+	{
+		using type = uint32_t;
+		static constexpr type full          = 0;
+		static constexpr type no_histograms = (1 << 0);
+		static constexpr type no_totals     = (1 << 1);
+	};
+	using merge_flags_t = merge_flags::type;
 
 	// this struct is just a placeholder, same size as real hashtable iterator
 	// FIXME: what about alignment here?
@@ -127,7 +134,7 @@ struct report_snapshot_t
 	// MUST be called before any of the functions below
 	// this exists primarily to allow preparation to take place in a thread
 	// different from the one handling report data (more parallelism, yey)
-	virtual void prepare(prepare_type_t = prepare_type::full) = 0;
+	virtual void prepare(merge_flags_t flags = 0) = 0;
 	virtual bool is_prepared() const = 0;
 
 	// will return 0 if !is_prepared()
@@ -149,6 +156,7 @@ struct report_snapshot_t
 	// data handling
 	virtual int   data_kind() const = 0;
 	virtual void* get_data(position_t const&) = 0;
+	virtual void* get_data_totals() const = 0;
 
 	// histograms
 	virtual int   histogram_kind() const = 0;

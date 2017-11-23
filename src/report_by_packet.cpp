@@ -165,6 +165,7 @@ namespace { namespace aux {
 		{
 			struct snapshot_traits
 			{
+				using totals_t    = report_row_data___by_packet_t;
 				using src_ticks_t = ringbuffer_t;
 				using hashtable_t = std::array<report_row___by_packet_t, 1>; // array to get iterators 'for free'
 
@@ -172,13 +173,28 @@ namespace { namespace aux {
 				static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
 				static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
 
+				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
+				{
+					auto const& row = data[0].data;
+
+					totals->req_count   += row.req_count;
+					totals->timer_count += row.timer_count;
+					totals->time_total  += row.time_total;
+					totals->ru_utime    += row.ru_utime;
+					totals->ru_stime    += row.ru_stime;
+					totals->traffic     += row.traffic;
+					totals->mem_used    += row.mem_used;
+				}
+
 				// merge from src ringbuffer to snapshot data
 				static void merge_ticks_into_data(
 					  report_snapshot_ctx_t *snapshot_ctx
 					, src_ticks_t& ticks
 					, hashtable_t& to
-					, report_snapshot_t::prepare_type_t ptype)
+					, report_snapshot_t::merge_flags_t flags)
 				{
+					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::no_histograms));
+
 					MEOW_DEFER(
 						ticks.clear();
 					);
@@ -199,7 +215,7 @@ namespace { namespace aux {
 						dst.data.traffic     += src.data.traffic;
 						dst.data.mem_used    += src.data.mem_used;
 
-						if (snapshot_ctx->rinfo.hv_enabled)
+						if (need_histograms)
 						{
 							dst.hv.merge_other(src.hv);
 						}

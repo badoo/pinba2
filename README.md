@@ -143,7 +143,7 @@ Reports are exposed to the user as SQL tables.
 All report tables have same simple structure
 
 - `Aggregation_key`, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
-- `Aggregated_data`, one field per data field (i.e. packet report needs 7 fields)
+- `Aggregated_data`, 3 fields per data field (field_value, field_value_per_sec, field_value_percent) (i.e. request report needs 7*3 fields = 21 data fields)
 - `Percentiles`, one field per configured percentile (optional)
 - `Histogram`, one text field for raw histogram data that percentiles are calculated from (optional)
 
@@ -257,18 +257,25 @@ example (report by script name only here)
 
 ```sql
 mysql> CREATE TABLE `report_by_script_name` (
-      `script` varchar(64) NOT NULL,
-      `req_count` int(10) unsigned NOT NULL,
-      `req_per_sec` double NOT NULL,
-      `req_time_total` double NOT NULL,
-      `req_time_per_sec` double NOT NULL,
-      `ru_utime_total` double NOT NULL,
-      `ru_utime_per_sec` double NOT NULL,
-      `ru_stime_total` double NOT NULL,
-      `ru_stime_per_sec` double NOT NULL,
-      `traffic_total` bigint(20) unsigned NOT NULL,
-      `traffic_per_sec` double NOT NULL,
-      `memory_footprint` bigint(20) NOT NULL
+        `script` varchar(64) NOT NULL,
+        `req_count` int(10) unsigned NOT NULL,
+        `req_per_sec` float NOT NULL,
+        `req_percent` float,
+        `req_time_total` float NOT NULL,
+        `req_time_per_sec` float NOT NULL,
+        `req_time_percent` float,
+        `ru_utime_total` float NOT NULL,
+        `ru_utime_per_sec` float NOT NULL,
+        `ru_utime_percent` float,
+        `ru_stime_total` float NOT NULL,
+        `ru_stime_per_sec` float NOT NULL,
+        `ru_stime_percent` float,
+        `traffic_total` bigint(20) unsigned NOT NULL,
+        `traffic_per_sec` float NOT NULL,
+        `traffic_percent` float,
+        `memory_footprint` bigint(20) NOT NULL,
+        `memory_per_sec` float NOT NULL,
+        `memory_percent` float
         ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
 
 mysql> select * from report_by_script_name; -- skipped some fields for brevity
