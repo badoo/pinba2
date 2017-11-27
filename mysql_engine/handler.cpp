@@ -493,11 +493,11 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 {
 	pinba_share_data_ptr           share_data_; // copied from share
 	report_snapshot_ptr            snapshot_;
-	report_snapshot_t::position_t  next_pos_; // to read NEXT row, aka rnd_next()
-	report_snapshot_t::position_t  curr_pos_; // last returned row pos, for position()
+	report_snapshot_t::position_t  next_pos_;   // to read NEXT row, aka rnd_next()
+	report_snapshot_t::position_t  curr_pos_;   // last returned row pos, for position()
 
-	static constexpr unsigned const n_data_fields___by_request = 11;
-	static constexpr unsigned const n_data_fields___by_timer   = 10;
+	static constexpr unsigned const n_data_fields___by_request = 18;
+	static constexpr unsigned const n_data_fields___by_timer   = 14;
 	static constexpr unsigned const n_data_fields___by_packet  = 7;
 
 public:
