@@ -37,7 +37,6 @@ Key differences from original implementation
     - with percentiles (say histogram with 10k entries) - will add ~300ms to that
 - misc
   - traffic and memory_footprint are measured in bytes (original pinba truncates to kilobytes)
-  - no *_percent fields in reports (will add)
   - raw histogram data is available as an extra field in existing report (not as a separate table)
 
 
