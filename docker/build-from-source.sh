@@ -20,7 +20,15 @@ PACKAGES="hostname mariadb-server"
 
 # build nanomsg and install (this one is a lil tricky to build statically)
 cd /_src/nanomsg
-cmake -DNN_STATIC_LIB=ON -DNN_ENABLE_DOC=OFF -DCMAKE_C_FLAGS="-fPIC -DPIC" -DCMAKE_INSTALL_PREFIX=/_install/nanomsg -DCMAKE_INSTALL_LIBDIR=lib .
+cmake \
+	-DNN_STATIC_LIB=ON \
+	-DNN_ENABLE_DOC=OFF \
+	-DNN_MAX_SOCKETS=4096 \
+	-DCMAKE_C_FLAGS="-fPIC -DPIC" \
+	-DCMAKE_INSTALL_PREFIX=/_install/nanomsg \
+	-DCMAKE_INSTALL_LIBDIR=lib \
+	.
+
 make -j4
 make install
 
