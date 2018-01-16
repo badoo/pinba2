@@ -101,9 +101,9 @@ struct report_snapshot_t
 	struct merge_flags
 	{
 		using type = uint32_t;
-		static constexpr type full          = 0;
-		static constexpr type no_histograms = (1 << 0);
-		static constexpr type no_totals     = (1 << 1);
+		static constexpr type none            = 0;
+		static constexpr type with_histograms = (1 << 0);
+		static constexpr type with_totals     = (1 << 1);
 	};
 	using merge_flags_t = merge_flags::type;
 

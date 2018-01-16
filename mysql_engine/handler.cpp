@@ -497,7 +497,7 @@ struct pinba_view___report_snapshot_t : public pinba_view___base_t
 	report_snapshot_t::position_t  curr_pos_;   // last returned row pos, for position()
 
 	static constexpr unsigned const n_data_fields___by_request = 18;
-	static constexpr unsigned const n_data_fields___by_timer   = 14;
+	static constexpr unsigned const n_data_fields___by_timer   = 15;
 	static constexpr unsigned const n_data_fields___by_packet  = 7;
 
 public:
@@ -716,9 +716,14 @@ private:
 		{
 			meow::stopwatch_t sw;
 
-			auto const flags = (need_percentiles)
-								? report_snapshot_t::merge_flags::full
-								: report_snapshot_t::merge_flags::no_histograms;
+			report_snapshot_t::merge_flags_t flags = 0;
+
+			// always want totals, for percent fields
+			flags |= report_snapshot_t::merge_flags::with_totals;
+
+			// maybe want histograms if percentile fields are being selected
+			if (need_percentiles)
+				flags |= report_snapshot_t::merge_flags::with_histograms;
 
 			snapshot_->prepare(flags);
 

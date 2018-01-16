@@ -253,7 +253,7 @@ private:
 		if (this->stats)
 			this->stats->last_snapshot_merge_d = duration_from_timeval(sw.stamp());
 
-		if ((merge_flags::no_totals & flags) == 0)
+		if (flags & merge_flags::with_totals)
 			Traits::calculate_totals(this, &totals_, data_);
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it

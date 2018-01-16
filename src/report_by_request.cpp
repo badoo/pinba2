@@ -274,7 +274,7 @@ namespace { namespace aux {
 					, hashtable_t& to
 					, report_snapshot_t::merge_flags_t flags)
 				{
-					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::no_histograms));
+					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::with_histograms));
 
 					uint64_t key_lookups = 0;
 					uint64_t hv_lookups = 0;
