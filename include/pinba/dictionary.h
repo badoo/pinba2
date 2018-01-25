@@ -209,7 +209,7 @@ private:
 		words_t               words;
 		std::deque<uint32_t>  freelist;
 
-		uint64_t              mem_used_by_word_strings;
+		uint64_t              mem_used_by_word_strings = 0;
 	};
 
 	mutable std::array<shard_t, shard_count> shards_;
