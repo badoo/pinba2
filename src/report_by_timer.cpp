@@ -580,7 +580,7 @@ namespace { namespace aux {
 					data_t       data;
 
 					// list of saved hvs, we merge only when requested (i.e. in hv_at_position)
-					// please not that we're also saving pointers to flat_histogram_t::values
+					// please note that we're also saving pointers to flat_histogram_t::values
 					// and will restore full structs on merge
 					// this a 'limitation' of multi_merge() function
 					std::vector<histogram_values_t const*>  saved_hv;
@@ -595,6 +595,8 @@ namespace { namespace aux {
 						this->set_empty_key(report_key_impl___make_empty<NKeys>());
 					}
 				};
+
+			public:
 
 				static report_key_t key_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
@@ -712,8 +714,8 @@ namespace { namespace aux {
 
 						for (size_t i = 0; i < tick.items.size(); i++)
 						{
-							row_t            & dst = to[tick.items[i].key];
 							tick_item_t const& src = tick.items[i];
+							row_t            & dst = to[tick.items[i].key];
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.hit_count  += src.data.hit_count;

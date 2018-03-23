@@ -1,13 +1,15 @@
-#include <meow/defer.hpp>
-
 #include <boost/noncopyable.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/repetition/repeat.hpp>
 
 #include <sparsehash/dense_hash_map>
 
+#include <meow/defer.hpp>
+#include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
+
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
+#include "pinba/multi_merge.h"
 #include "pinba/packet.h"
 #include "pinba/repacker.h"
 #include "pinba/report.h"
@@ -27,8 +29,22 @@ namespace { namespace aux {
 		using this_report_t       = report___by_request_t;
 		using this_report_conf_t  = report_conf___by_request_t;
 
-	public: // ticks + aggregator
+	public:
 
+		struct tick_item_t
+		{
+			key_t    key;
+			data_t   data;
+		};
+
+		struct tick_t : public report_tick_t
+		{
+			std::vector<tick_item_t>  items;
+			std::vector<histogram_t>  hvs;
+		};
+
+
+#if 0
 		struct tick_item_t
 			// : private boost::noncopyable // bring this back, when we remove copy ctor
 		{
@@ -64,11 +80,87 @@ namespace { namespace aux {
 
 			hashtable_t ht;
 		};
+#endif
 
 	public: // aggregator
 
 		struct aggregator_t : public report_agg_t
 		{
+			// uint32_t with UINT_MAX as default value, since we use default-constructed values in raw_hash_
+			struct item_offset_t
+			{
+				uint32_t offset;
+
+				static constexpr uint32_t const invalid_offset = UINT_MAX;
+
+				item_offset_t()
+					: offset(invalid_offset)
+				{
+				}
+
+				bool      is_valid() const   { return offset != invalid_offset; }
+				uint32_t  get() const        { return offset; }
+				void      set(uint32_t off)  { offset = off; }
+			};
+			static_assert(sizeof(item_offset_t) == sizeof(uint32_t), "no padding expected");
+
+			// map: key -> offset in tick->items and tick->hvs
+			struct hashtable_t
+				: public google::dense_hash_map<key_t, item_offset_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+			{
+				hashtable_t()
+				{
+					this->set_empty_key(report_key_impl___make_empty<NKeys>());
+				}
+			};
+
+			uint32_t raw_item_offset_get(key_t const& k)
+			{
+				item_offset_t& off = tick_ht_[k];
+
+				// mapping exists, item exists, just return
+				if (off.is_valid())
+					return off.get();
+
+				// slowpath - create item and maybe hvs
+
+				tick_->items.emplace_back();
+
+				tick_item_t& item = tick_->items.back();
+				item.key = k;
+
+				if (conf_.hv_bucket_count > 0)
+					tick_->hvs.emplace_back();
+
+				assert(tick_->items.size() < size_t(INT_MAX));
+				uint32_t const new_off = static_cast<uint32_t>(tick_->items.size() - 1);
+
+				off.set(new_off);
+				return new_off;
+			}
+
+			void raw_item_increment(key_t const& k, packet_t const *packet)
+			{
+				uint32_t const offset = this->raw_item_offset_get(k);
+
+				tick_item_t& item = tick_->items[offset];
+
+				item.data.req_count  += 1;
+				item.data.time_total += packet->request_time;
+				item.data.ru_utime   += packet->ru_utime;
+				item.data.ru_stime   += packet->ru_stime;
+				item.data.traffic    += packet->traffic;
+				item.data.mem_used   += packet->mem_used;
+
+				if (conf_.hv_bucket_count > 0)
+				{
+					histogram_t& hv = tick_->hvs[offset];
+					hv.increment(hv_conf_, packet->request_time);
+				}
+			}
+
+		public:
+
 			aggregator_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
 				: globals_(globals)
 				, stats_(nullptr)
@@ -91,6 +183,10 @@ namespace { namespace aux {
 			{
 				report_tick_ptr result = std::move(tick_);
 				tick_ = meow::make_intrusive<tick_t>();
+
+				tick_ht_.clear();
+				tick_ht_.resize(0);
+
 				return result;
 			}
 
@@ -98,9 +194,15 @@ namespace { namespace aux {
 			{
 				report_estimates_t result = {};
 
-				result.row_count = tick_->ht.size();
+				result.row_count = tick_->items.size();
+
 				result.mem_used += sizeof(*tick_);
-				result.mem_used += tick_->ht.bucket_count() * sizeof(*tick_->ht.begin());
+				result.mem_used += tick_->items.capacity() * sizeof(*tick_->items.begin());
+				for (auto const& hv : tick_->hvs)
+					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
+
+				result.mem_used += sizeof(tick_ht_);
+				result.mem_used += tick_ht_.bucket_count() * sizeof(*tick_ht_.begin());
 
 				return result;
 			}
@@ -136,13 +238,7 @@ namespace { namespace aux {
 				}
 
 				// finally - find and update item
-				tick_item_t& item = tick_->ht[k];
-				item.data_increment(packet);
-
-				if (conf_.hv_bucket_count > 0)
-				{
-					item.hv_increment(packet, hv_conf_);
-				}
+				this->raw_item_increment(k, packet);
 
 				stats_->packets_aggregated++;
 			}
@@ -159,7 +255,9 @@ namespace { namespace aux {
 			report_conf___by_request_t   conf_;
 
 			histogram_conf_t             hv_conf_;
+
 			boost::intrusive_ptr<tick_t> tick_;
+			hashtable_t                  tick_ht_;
 		};
 
 	public: // history
@@ -168,6 +266,12 @@ namespace { namespace aux {
 		{
 			using ring_t       = report_history_ringbuffer_t;
 			using ringbuffer_t = ring_t::ringbuffer_t;
+
+			struct history_tick_t : public report_tick_t // inheric to get compatibility with history ring for free
+			{
+				std::vector<tick_item_t>       items;
+				std::vector<flat_histogram_t>  hvs;
+			};
 
 		public:
 
@@ -184,9 +288,33 @@ namespace { namespace aux {
 				stats_ = stats;
 			}
 
-			virtual void merge_tick(report_tick_ptr tick) override
+			virtual void merge_tick(report_tick_ptr tick_base) override
 			{
-				ring_.append(std::move(tick));
+				// re-process tick data, for more compact storage
+				auto const *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src
+				auto          h_tick = meow::make_intrusive<history_tick_t>();      // dst
+
+				// remember to grab repacker_state
+				h_tick->repacker_state = std::move(agg_tick->repacker_state);
+
+				// can MOVE items, since the format is intentionally the same
+				h_tick->items = std::move(agg_tick->items);
+
+				// migrate histograms, converting them from hashtable to flat
+				if (rinfo_.hv_enabled)
+				{
+					h_tick->hvs.reserve(agg_tick->hvs.size()); // we know the size in advance, mon
+
+					for (auto const& src_hv : agg_tick->hvs)
+					{
+						h_tick->hvs.emplace_back(std::move(histogram___convert_ht_to_flat(src_hv)));
+					}
+
+					// sanity
+					assert(h_tick->items.size() == agg_tick->hvs.size());
+				}
+
+				ring_.append(std::move(h_tick));
 			}
 
 			virtual report_estimates_t get_estimates() override
@@ -195,21 +323,18 @@ namespace { namespace aux {
 
 				if (!ring_.get_ringbuffer().empty())
 				{
-					auto const& tick = static_cast<tick_t const&>(*ring_.get_ringbuffer().back());
-					result.row_count = tick.ht.size();
+					auto const& tick = static_cast<history_tick_t const&>(*ring_.get_ringbuffer().back());
+					result.row_count = tick.items.size();
 				}
 
 				result.mem_used += sizeof(*this);
 				for (auto const& tick_base : ring_.get_ringbuffer())
 				{
-					auto const& tick = static_cast<tick_t const&>(*tick_base);
+					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 					result.mem_used += sizeof(tick);
-					result.mem_used += tick.ht.bucket_count() * sizeof(*tick.ht.begin());
-					for (auto const& ht_pair : tick.ht)
-					{
-						histogram_t const& hv = ht_pair.second.hv;
-						result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
-					}
+					result.mem_used += tick.items.capacity() * sizeof(*tick.items.begin());
+					for (flat_histogram_t const& hv : tick.hvs)
+						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
 				}
 
 				return result;
@@ -224,15 +349,23 @@ namespace { namespace aux {
 
 				struct row_t
 				{
-					data_t            data;
-					histogram_t       tmp_hv; // temporary, used while merging only
-					flat_histogram_t  hv;
+					data_t       data;
+
+					// list of saved hvs, we merge only when requested (i.e. in hv_at_position)
+					// please note that we're also saving pointers to flat_histogram_t::values
+					// and will restore full structs on merge
+					// this a 'limitation' of multi_merge() function
+					std::vector<histogram_values_t const*>  saved_hv;
+					flat_histogram_t                        merged_hv;
 				};
 
 				struct hashtable_t
 					: public google::dense_hash_map<key_t, row_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 				{
-					hashtable_t() { this->set_empty_key(report_key_impl___make_empty<NKeys>()); }
+					hashtable_t()
+					{
+						this->set_empty_key(report_key_impl___make_empty<NKeys>());
+					}
 				};
 
 			public:
@@ -244,12 +377,75 @@ namespace { namespace aux {
 
 				static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
-					return (void*)&it->second;
+					return &it->second.data;
 				}
 
 				static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
-					return &it->second.hv;
+					row_t *row = &it->second;
+
+					if (row->saved_hv.empty()) // already merged
+						return &row->merged_hv;
+
+					struct merger_t
+					{
+						flat_histogram_t *to;
+
+						inline bool compare(histogram_value_t const& l, histogram_value_t const& r) const
+						{
+							return l.bucket_id < r.bucket_id;
+						}
+
+						inline bool equal(histogram_value_t const& l, histogram_value_t const& r) const
+						{
+							return l.bucket_id == r.bucket_id;
+						}
+
+						inline void reserve(size_t const sz)
+						{
+							to->values.reserve(sz);
+						}
+
+						inline void push_back(histogram_values_t const *seq, histogram_value_t const& v)
+						{
+							flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, seq);
+
+							bool const should_insert = [&]()
+							{
+								if (to->values.empty())
+									return true;
+
+								return !equal(to->values.back(), v);
+							}();
+
+							if (should_insert)
+							{
+								to->values.emplace_back(v);
+							}
+							else
+							{
+								to->values.back().value += v.value;
+							}
+						}
+					};
+
+					// merge histogram values
+					merger_t merger = { .to = &row->merged_hv };
+					pinba::multi_merge(&merger, row->saved_hv.begin(), row->saved_hv.end());
+
+					// merge histogram totals
+					for (auto const *src_hv_values : row->saved_hv)
+					{
+						flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, src_hv_values);
+						row->merged_hv.value_count  += src->value_count;
+						row->merged_hv.negative_inf += src->negative_inf;
+						row->merged_hv.positive_inf += src->positive_inf;
+					}
+
+					// clear source
+					row->saved_hv.clear();
+
+					return &row->merged_hv;
 				}
 
 				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
@@ -276,20 +472,23 @@ namespace { namespace aux {
 				{
 					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::with_histograms));
 
+					uint64_t n_ticks = 0;
 					uint64_t key_lookups = 0;
-					uint64_t hv_lookups = 0;
+					uint64_t hv_appends = 0;
 
 					for (auto const& tick_base : ticks)
 					{
 						if (!tick_base)
 							continue;
 
-						tick_t const& tick = static_cast<tick_t const&>(*tick_base);
+						auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 
-						for (auto const& tick_pair : tick.ht)
+						n_ticks++;
+
+						for (size_t i = 0; i < tick.items.size(); i++)
 						{
-							tick_item_t const& src = tick_pair.second;
-							row_t            & dst = to[tick_pair.first];
+							tick_item_t const& src = tick.items[i];
+							row_t            & dst = to[tick.items[i].key];
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.time_total += src.data.time_total;
@@ -300,32 +499,31 @@ namespace { namespace aux {
 
 							if (need_histograms)
 							{
-								dst.tmp_hv.merge_other(src.hv);
-								hv_lookups += src.hv.map_cref().size();
+								flat_histogram_t const& src_hv = tick.hvs[i];
+
+								// try preallocate
+								if (dst.saved_hv.empty())
+									dst.saved_hv.reserve(ticks.size());
+
+								dst.saved_hv.push_back(&src_hv.values);
 							}
 						}
 
+						key_lookups += tick.items.size();
+
 						repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
-						key_lookups += tick.ht.size();
+						if (need_histograms)
+							hv_appends  += tick.hvs.size();
 					}
 
-					// compact histograms from hashtable to flat
-					for (auto& ht_pair : to)
-					{
-						histogram_t&      tmp_hv = ht_pair.second.tmp_hv;
-						flat_histogram_t& hv     = ht_pair.second.hv;
-
-						histogram___convert_ht_to_flat(tmp_hv, &hv);
-
-						tmp_hv.clear();
-					}
-
-					LOG_DEBUG(snapshot_ctx->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_lookups: {3}",
-						snapshot_ctx->rinfo.name, ticks.size(), key_lookups, hv_lookups);
+					LOG_DEBUG(snapshot_ctx->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
+						snapshot_ctx->rinfo.name, n_ticks, key_lookups, hv_appends);
 
 					// can clean ticks only if histograms were not merged
-					// if (!need_histograms) // yes we can, since merge goes through a temporary ht
+					// since histogram merger uses raw pointers to tick_data_t::hvs[]::values
+					// and those need to be alive while this snapshot is alive
+					if (!need_histograms)
 					{
 						ticks.clear();
 						ticks.shrink_to_fit();
