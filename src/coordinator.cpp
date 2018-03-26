@@ -578,7 +578,7 @@ namespace { namespace aux {
 				snapshot = rhost->report_history()->get_snapshot();
 			});
 
-			return std::move(snapshot);
+			return snapshot;
 		}
 
 		virtual report_state_ptr get_report_state(std::string const& report_name) override
@@ -603,7 +603,7 @@ namespace { namespace aux {
 				state->estimates.mem_used = h_est.mem_used + a_est.mem_used;
 			});
 
-			return std::move(state);
+			return state;
 		}
 
 	private:

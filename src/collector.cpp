@@ -257,7 +257,7 @@ namespace { namespace aux {
 			// shutdown
 			poller.read_nn_socket(shutdown_sock_, [&](timeval_t)
 			{
-				LOG_INFO(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
+				LOG_DEBUG(globals_->logger(), "udp_reader/{0}; received shutdown request", thread_id);
 				poller.set_shutdown_flag();
 			});
 #if 0
