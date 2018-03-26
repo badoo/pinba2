@@ -490,6 +490,9 @@ namespace { namespace aux {
 
 		virtual pinba_error_t add_report(report_ptr report) override
 		{
+			std::unique_lock<std::mutex> lk_(mtx_);
+
+
 			std::string const report_name = report->name().str();
 
 			auto const it = report_hosts_.find(report_name);
@@ -536,6 +539,9 @@ namespace { namespace aux {
 
 		virtual pinba_error_t delete_report(std::string const& report_name) override
 		{
+			std::unique_lock<std::mutex> lk_(mtx_);
+
+
 			auto const it = report_hosts_.find(report_name);
 			if (it == report_hosts_.end())
 				return ff::fmt_err("unknown report: {0}", report_name);
@@ -566,6 +572,9 @@ namespace { namespace aux {
 
 		virtual report_snapshot_ptr get_report_snapshot(std::string const& report_name) override
 		{
+			std::unique_lock<std::mutex> lk_(mtx_);
+
+
 			auto const it = report_hosts_.find(report_name);
 			if (it == report_hosts_.end())
 				throw std::runtime_error(ff::fmt_str("unknown report: {0}", report_name));
@@ -583,6 +592,9 @@ namespace { namespace aux {
 
 		virtual report_state_ptr get_report_state(std::string const& report_name) override
 		{
+			std::unique_lock<std::mutex> lk_(mtx_);
+
+
 			auto const it = report_hosts_.find(report_name);
 			if (it == report_hosts_.end())
 				throw std::runtime_error(ff::fmt_str("unknown report: {0}", report_name));
@@ -610,6 +622,8 @@ namespace { namespace aux {
 		pinba_globals_t     *globals_;
 		pinba_stats_t       *stats_;
 		coordinator_conf_t  *conf_;
+
+		std::mutex          mtx_;
 
 		// report_name -> report_host
 		using rhost_map_t = std::unordered_map<std::string, report_host_ptr>;
