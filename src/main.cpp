@@ -114,7 +114,7 @@ int main(int argc, char const *argv[])
 				report_conf___by_request_t::key_descriptor_by_request_field("script_name", &packet_t::script_id),
 			},
 		};
-		pinba->start_report_with_config(conf);
+		pinba->add_report(create_report_by_request(pinba->globals(), conf));
 
 		threaded_print_report_snapshot(conf.name);
 	}
@@ -142,7 +142,7 @@ int main(int argc, char const *argv[])
 				report_conf___by_timer_t::key_descriptor_by_timer_tag("server", pinba->globals()->dictionary()->get_or_add("server")),
 			},
 		};
-		pinba->start_report_with_config(conf);
+		pinba->add_report(create_report_by_timer(pinba->globals(), conf));
 
 		threaded_print_report_snapshot(conf.name);
 	}

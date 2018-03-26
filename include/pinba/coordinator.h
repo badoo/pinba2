@@ -1,142 +1,8 @@
 #ifndef PINBA__COORDINATOR_H_
 #define PINBA__COORDINATOR_H_
 
-#include <string>
-
-#include <meow/error.hpp>
-
 #include "pinba/globals.h"
 #include "pinba/report.h"
-#include "pinba/nmsg_socket.h" // nmsg_message_ex_t
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-// requests
-
-struct coordinator_t;
-
-#define COORDINATOR_REQ__CALL                0
-#define COORDINATOR_REQ__SHUTDOWN            1
-#define COORDINATOR_REQ__ADD_REPORT          2
-#define COORDINATOR_REQ__DELETE_REPORT       3
-#define COORDINATOR_REQ__GET_REPORT_SNAPSHOT 4
-#define COORDINATOR_REQ__GET_REPORT_STATE    5
-
-struct coordinator_request_t : public nmsg_message_t
-{
-	int type;
-};
-typedef boost::intrusive_ptr<coordinator_request_t> coordinator_request_ptr;
-
-template<int ID>
-struct coordinator_request__with_id_t : public coordinator_request_t
-{
-	coordinator_request__with_id_t()
-	{
-		PINBA_STATS_(objects).n_coord_requests++;
-
-		this->type = ID;
-	}
-
-	~coordinator_request__with_id_t()
-	{
-		PINBA_STATS_(objects).n_coord_requests--;
-	}
-};
-
-// real requests
-
-struct coordinator_request___call_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__CALL>
-{
-	std::function<void(coordinator_t*)> func;
-};
-
-struct coordinator_request___shutdown_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__SHUTDOWN>
-{
-};
-
-struct coordinator_request___add_report_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__ADD_REPORT>
-{
-	report_ptr report; // created somewhere else, carries information about itself
-};
-
-struct coordinator_request___delete_report_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__DELETE_REPORT>
-{
-	std::string report_name;
-};
-
-struct coordinator_request___get_report_snapshot_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__GET_REPORT_SNAPSHOT>
-{
-	std::string report_name;
-};
-
-struct coordinator_request___get_report_state_t
-	: public coordinator_request__with_id_t<COORDINATOR_REQ__GET_REPORT_STATE>
-{
-	std::string report_name;
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-// responses
-
-#define COORDINATOR_RES__GENERIC         0
-#define COORDINATOR_RES__REPORT_SNAPSHOT 1
-#define COORDINATOR_RES__REPORT_STATE    2
-
-#define COORDINATOR_STATUS__OK     0
-#define COORDINATOR_STATUS__ERROR -1
-
-struct coordinator_response_t : public nmsg_message_t
-{
-	int type;
-};
-typedef boost::intrusive_ptr<coordinator_response_t> coordinator_response_ptr;
-
-template<int ID>
-struct coordinator_response__with_id_t : public coordinator_response_t
-{
-	coordinator_response__with_id_t()
-	{
-		this->type = ID;
-	}
-};
-
-// real responses
-
-struct coordinator_response___generic_t
-	: public coordinator_response__with_id_t<COORDINATOR_RES__GENERIC>
-{
-	int            status;
-	meow::error_t  err;
-
-	coordinator_response___generic_t(int s)
-		: status(s)
-		, err()
-	{
-	}
-
-	coordinator_response___generic_t(int s, std::string const& err_string)
-		: status(s)
-		, err(err_string)
-	{
-	}
-};
-
-struct coordinator_response___report_snapshot_t
-	: public coordinator_response__with_id_t<COORDINATOR_RES__REPORT_SNAPSHOT>
-{
-	report_snapshot_ptr snapshot;
-};
-
-struct coordinator_response___report_state_t
-	: public coordinator_response__with_id_t<COORDINATOR_RES__REPORT_STATE>
-{
-	report_state_ptr state;
-};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -156,7 +22,10 @@ struct coordinator_t : private boost::noncopyable
 	virtual void startup() = 0;
 	virtual void shutdown() = 0;
 
-	virtual coordinator_response_ptr request(coordinator_request_ptr) = 0;
+	virtual pinba_error_t       add_report(report_ptr report) = 0;
+	virtual pinba_error_t       delete_report(std::string const& name) = 0;
+	virtual report_snapshot_ptr get_report_snapshot(std::string const& name) = 0;
+	virtual report_state_ptr    get_report_state(std::string const& name) = 0;
 };
 typedef std::unique_ptr<coordinator_t> coordinator_ptr;
 

@@ -16,8 +16,6 @@
 #include "pinba/coordinator.h"
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
-#include "pinba/report_by_request.h"
-#include "pinba/report_by_timer.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace { namespace aux {
@@ -175,88 +173,22 @@ namespace { namespace aux {
 
 		virtual pinba_error_t add_report(report_ptr report) override
 		{
-			auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-			req->report = report;
-
-			auto const result = coordinator_->request(req);
-
-			assert(COORDINATOR_RES__GENERIC == result->type);
-			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-
-			if (COORDINATOR_STATUS__OK == r->status)
-				return {};
-
-			return std::move(r->err);
+			return coordinator_->add_report(report);
 		}
 
 		virtual pinba_error_t delete_report(str_ref name) override
 		{
-			auto req = meow::make_intrusive<coordinator_request___delete_report_t>();
-			req->report_name = name.str();
-
-			auto const result = coordinator_->request(req);
-
-			assert(COORDINATOR_RES__GENERIC == result->type);
-			auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-
-			if (COORDINATOR_STATUS__OK == r->status)
-				return {};
-
-			return std::move(r->err);
-		}
-
-		virtual pinba_error_t start_report_with_config(report_conf___by_request_t const& conf) override
-		{
-			return this->add_report(create_report_by_request(this->globals(), conf));
-		}
-
-		virtual pinba_error_t start_report_with_config(report_conf___by_timer_t const& conf) override
-		{
-			return this->add_report(create_report_by_timer(this->globals(), conf));
+			return coordinator_->delete_report(name.str());
 		}
 
 		virtual report_state_ptr get_report_state(str_ref name) override
 		{
-			auto req = meow::make_intrusive<coordinator_request___get_report_state_t>();
-			req->report_name = name.str();
-
-			auto const result = coordinator_->request(req);
-
-			if (COORDINATOR_RES__REPORT_STATE == result->type)
-			{
-				auto *r = static_cast<coordinator_response___report_state_t*>(result.get());
-				return move(r->state);
-			}
-			else
-			{
-				assert(COORDINATOR_RES__GENERIC == result->type);
-				auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-				throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
-			}
-
-			assert(!"unreachable");
+			return coordinator_->get_report_state(name.str());
 		}
 
 		virtual report_snapshot_ptr get_report_snapshot(str_ref name) override
 		{
-			auto req = meow::make_intrusive<coordinator_request___get_report_snapshot_t>();
-			req->report_name = name.str();
-
-			auto const result = coordinator_->request(req);
-
-			if (COORDINATOR_RES__REPORT_SNAPSHOT == result->type)
-			{
-				auto *r = static_cast<coordinator_response___report_snapshot_t*>(result.get());
-				return move(r->snapshot);
-			}
-			else
-			{
-				assert(COORDINATOR_RES__GENERIC == result->type);
-				auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-				throw std::runtime_error(ff::fmt_str("{0}; error: {1}", __func__, r->err.what()));
-			}
-
-			assert(!"unreachable");
+			return coordinator_->get_report_snapshot(name.str());
 		}
 
 	private:

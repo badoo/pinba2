@@ -285,9 +285,9 @@ namespace { namespace aux {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-	struct coordinator_impl_t : public coordinator_t
+	struct relay_worker_t : private boost::noncopyable
 	{
-		coordinator_impl_t(pinba_globals_t *globals, coordinator_conf_t *conf)
+		relay_worker_t(pinba_globals_t *globals, coordinator_conf_t *conf)
 			: globals_(globals)
 			, stats_(globals->stats())
 			, conf_(conf)
@@ -305,58 +305,71 @@ namespace { namespace aux {
 				.connect(conf_->nn_control);
 		}
 
-		virtual void startup() override
+		void startup()
 		{
-			in_sock_.connect(conf_->nn_input.c_str());
+			in_sock_.connect(conf_->nn_input);
 
 			std::thread t([this]()
 			{
 				this->worker_thread();
 			});
-			t_ = move(t);
+			thread_ = move(t);
 		}
 
-		virtual void shutdown() override
+		void shutdown()
 		{
-			this->request(meow::make_intrusive<coordinator_request___shutdown_t>());
-			t_.join();
+			// tell relay to stop operation
+			auto const err = this->execute_in_thread([this]()
+			{
+				poller_.set_shutdown_flag();
+			});
+
+			if (err)
+			{
+				LOG_ALERT(globals_->logger(), "couldn't stop relay thread: {0}, aborting", err);
+			}
+
+			thread_.join();
 		}
 
-		virtual coordinator_response_ptr request(coordinator_request_ptr req) override
-		{
-			std::unique_lock<std::mutex> lk_(control_mtx_);
+	public:
 
-			control_cli_sock_.send_message(req);
-			return control_cli_sock_.recv<coordinator_response_ptr>();
+		using request_func_t = std::function<void()>;
+
+		struct request_t : public nmsg_message_t
+		{
+			request_func_t func;
+		};
+		using request_ptr = boost::intrusive_ptr<request_t>;
+
+		struct response_t : public nmsg_message_t
+		{
+			pinba_error_t err;
+		};
+		using response_ptr = boost::intrusive_ptr<response_t>;
+
+
+		pinba_error_t execute_in_thread(request_func_t const& func)
+		{
+			auto req = meow::make_intrusive<request_t>();
+			req->func = func;
+
+			response_ptr response;
+			{
+				std::unique_lock<std::mutex> lk_(control_mtx_);
+
+				control_cli_sock_.send_message(req);
+				response = control_cli_sock_.recv<response_ptr>();
+			}
+
+			return std::move(response->err);
 		}
 
 	private:
 
-		coordinator_request_ptr control_recv()
-		{
-			return control_sock_.recv<coordinator_request_ptr>();
-		}
-
-		void control_send(coordinator_response_ptr response)
-		{
-			control_sock_.send_message(response);
-		}
-
-		template<class T, class... A>
-		void control_send(A&&... args)
-		{
-			this->control_send(meow::make_intrusive<T>(std::forward<A>(args)...));
-		}
-
-		template<class... A>
-		void control_send_generic(A&&... args)
-		{
-			this->control_send<coordinator_response___generic_t>(std::forward<A>(args)...);
-		}
-
 		void worker_thread()
 		{
-			std::string const thr_name = ff::fmt_str("coordinator");
+			std::string const thr_name = ff::fmt_str("packet-relay");
 
 			PINBA___OS_CALL(globals_, set_thread_name, thr_name);
 
@@ -364,10 +377,11 @@ namespace { namespace aux {
 				LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 			);
 
-			nmsg_poller_t poller;
-			poller
+			poller_
 				.ticker(1000 * d_millisecond, [this](timeval_t now)
 				{
+					// FIXME: rename stats
+
 					// update accumulated rusage
 					os_rusage_t const ru = os_unix::getrusage_ex(RUSAGE_THREAD);
 
@@ -383,7 +397,7 @@ namespace { namespace aux {
 
 					// FIXME
 					// special counter for batches that were dropped, because no recepients were active
-					// if (report_hosts_.empty())
+					// if (rhosts_.empty())
 					// 	++stats_->coordinator.batches_send_dropped;
 
 					// relay the batch to all reports,
@@ -393,162 +407,203 @@ namespace { namespace aux {
 					// since we have no idea if the report handler is slow, and in that case messages will be dropped
 					// and ref counts will not be decremented and memory will leak and we won't have any stats about that either
 					// (we also have no need for the pub/sub routing part at the moment and probably won't need it ever)
-					for (auto& report_host : report_hosts_)
+					for (auto& report_host : rhosts_)
 					{
 						++stats_->coordinator.batch_send_total;
 						bool const success = report_host.second->process_batch(batch);
 						if (!success)
+						{
 							++stats_->coordinator.batch_send_err;
+							// TODO: add packet counter here
+						}
 					}
 				})
-				.read_nn_socket(control_sock_, [this, &poller](timeval_t now)
+				.read_nn_socket(control_sock_, [this](timeval_t now)
 				{
-					auto const req = this->control_recv();
+					auto const req = this->control_sock_.recv<request_ptr>();
 
-					++stats_->coordinator.control_requests;
+					auto const result = meow::make_intrusive<response_t>();
 
 					try
 					{
-						switch (req->type)
-						{
-							case COORDINATOR_REQ__CALL:
-							{
-								auto *r = static_cast<coordinator_request___call_t*>(req.get());
-								r->func(this);
-								this->control_send_generic(COORDINATOR_STATUS__OK);
-							}
-							break;
-
-							case COORDINATOR_REQ__SHUTDOWN:
-							{
-								auto *r = static_cast<coordinator_request___shutdown_t*>(req.get());
-
-								// shutdown all reports
-								for (auto& report_host : report_hosts_)
-									report_host.second->shutdown();
-
-								// stop poll loop and reply
-								poller.set_shutdown_flag();
-								this->control_send_generic(COORDINATOR_STATUS__OK);
-							}
-							break;
-
-							case COORDINATOR_REQ__ADD_REPORT:
-							{
-								auto *r = static_cast<coordinator_request___add_report_t*>(req.get());
-
-								LOG_DEBUG(globals_->logger(), "creating report {0}", r->report->name());
-
-								auto const report_name = r->report->name().str();
-								auto const thread_id   = static_cast<uint32_t>(report_hosts_.size());
-								auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);
-								auto const rh_name     = ff::fmt_str("rh/{0}/{1}", thread_id, report_name);
-
-								report_host_conf_t const rh_conf = {
-									.id                = thread_id,
-									.name              = rh_name,
-									.thread_name       = thr_name,
-									.nn_control         = ff::fmt_str("inproc://{0}/control", rh_name),
-									.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
-									.nn_packets        = ff::fmt_str("inproc://{0}/packets", rh_name),
-									.nn_packets_buffer = conf_->nn_report_input_buffer,
-								};
-
-								auto rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
-								rh->startup(r->report);
-
-								report_hosts_.emplace(report_name, move(rh));
-
-								this->control_send_generic(COORDINATOR_STATUS__OK);
-							}
-							break;
-
-							case COORDINATOR_REQ__DELETE_REPORT:
-							{
-								auto *r = static_cast<coordinator_request___delete_report_t*>(req.get());
-
-								auto const it = report_hosts_.find(r->report_name);
-								if (it == report_hosts_.end())
-								{
-									this->control_send_generic(COORDINATOR_STATUS__ERROR, ff::fmt_str("unknown report: {0}", r->report_name));
-									return;
-								}
-
-								report_host_t *host = it->second.get();
-								host->shutdown(); // waits for host to completely shut itself down
-
-								auto const n_erased = report_hosts_.erase(r->report_name);
-								assert(n_erased == 1);
-
-								this->control_send_generic(COORDINATOR_STATUS__OK);
-							}
-							break;
-
-							case COORDINATOR_REQ__GET_REPORT_SNAPSHOT:
-							{
-								auto *r = static_cast<coordinator_request___get_report_snapshot_t*>(req.get());
-
-								auto const it = report_hosts_.find(r->report_name);
-								if (it == report_hosts_.end())
-									throw std::runtime_error(ff::fmt_str("unknown report: {0}", r->report_name));
-
-								report_host_t *host = it->second.get();
-
-								report_snapshot_ptr snapshot;
-								host->execute_in_thread([&](report_host_t *rhost)
-								{
-									snapshot = rhost->report_history()->get_snapshot();
-								});
-
-								auto response = meow::make_intrusive<coordinator_response___report_snapshot_t>();
-								response->snapshot = move(snapshot);
-
-								this->control_send(response);
-							}
-							break;
-
-							case COORDINATOR_REQ__GET_REPORT_STATE:
-							{
-								auto *r = static_cast<coordinator_request___get_report_state_t*>(req.get());
-
-								auto const it = report_hosts_.find(r->report_name);
-								if (it == report_hosts_.end())
-									throw std::runtime_error(ff::fmt_str("unknown report: {0}", r->report_name));
-
-								report_host_t *host = it->second.get();
-
-								auto state = meow::make_unique<report_state_t>();
-								host->execute_in_thread([&](report_host_t *rhost)
-								{
-									state->id        = rhost->id();
-									state->stats     = rhost->stats();
-									state->info      = rhost->report()->info();
-
-									auto const a_est = rhost->report_agg()->get_estimates();
-									auto const h_est = rhost->report_history()->get_estimates();
-
-									state->estimates.row_count = h_est.row_count ? h_est.row_count : a_est.row_count;
-									state->estimates.mem_used = h_est.mem_used + a_est.mem_used;
-								});
-
-								auto response = meow::make_intrusive<coordinator_response___report_state_t>();
-								response->state = move(state);
-
-								this->control_send(response);
-							}
-							break;
-
-							default:
-								throw std::runtime_error(ff::fmt_str("unknown coordinator_control_request type: {0}", req->type));
-								break;
-						}
+						auto *r = static_cast<request_t*>(req.get());
+						r->func();
 					}
 					catch (std::exception const& e)
 					{
-						this->control_send_generic(COORDINATOR_STATUS__ERROR, e.what());
+						result->err = ff::fmt_err("packet_relay::call: {0}", e.what());
 					}
+
+					control_sock_.send_message(result);
 				})
 				.loop();
+		}
+
+	public:
+		pinba_globals_t     *globals_;
+		pinba_stats_t       *stats_;
+		coordinator_conf_t  *conf_;
+
+		// report_name -> report_host*
+		using rhost_map_t = std::unordered_map<std::string, report_host_t*>;
+		rhost_map_t         rhosts_;
+
+		nmsg_poller_t       poller_;
+
+		nmsg_socket_t       in_sock_;
+		nmsg_socket_t       control_sock_;
+		nmsg_socket_t       control_cli_sock_;
+		std::mutex          control_mtx_;
+
+		std::thread         thread_;
+
+	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	struct coordinator_impl_t : public coordinator_t
+	{
+		coordinator_impl_t(pinba_globals_t *globals, coordinator_conf_t *conf)
+			: globals_(globals)
+			, stats_(globals->stats())
+			, conf_(conf)
+			, relay_(globals, conf)
+		{
+		}
+
+	private:
+
+		virtual void startup() override
+		{
+			relay_.startup();
+		}
+
+		virtual void shutdown() override
+		{
+			// tell relay to stop operation
+			relay_.shutdown();
+
+			// shutdown all reports
+			for (auto& report_host : report_hosts_)
+				report_host.second->shutdown();
+		}
+
+		virtual pinba_error_t add_report(report_ptr report) override
+		{
+			std::string const report_name = report->name().str();
+
+			auto const it = report_hosts_.find(report_name);
+			if (it != report_hosts_.end())
+				return ff::fmt_err("report already exists: {0}", report_name);
+
+
+			LOG_DEBUG(globals_->logger(), "creating report {0}", report_name);
+
+			auto const thread_id   = static_cast<uint32_t>(report_hosts_.size());
+			auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);
+			auto const rh_name     = ff::fmt_str("rh/{0}/{1}", thread_id, report_name);
+
+			report_host_conf_t const rh_conf = {
+				.id                = thread_id,
+				.name              = rh_name,
+				.thread_name       = thr_name,
+				.nn_control        = ff::fmt_str("inproc://{0}/control", rh_name),
+				.nn_shutdown       = ff::fmt_str("inproc://{0}/shutdown", rh_name),
+				.nn_packets        = ff::fmt_str("inproc://{0}/packets", rh_name),
+				.nn_packets_buffer = conf_->nn_report_input_buffer,
+			};
+
+			auto  rh = meow::make_unique<report_host___new_thread_t>(globals_, rh_conf);
+			auto *rh_ptr = rh.get(); // save pointer to pass to relay_call()
+
+			rh->startup(report);
+
+			// add report to relay thread
+			{
+				auto const err = relay_.execute_in_thread([this, report_name, rh_ptr]()
+				{
+					relay_.rhosts_.emplace(report_name, rh_ptr);
+				});
+
+				if (err)
+					return err;
+			}
+
+			// add report to our hash as well
+			report_hosts_.emplace(report_name, move(rh));
+			return {};
+		}
+
+		virtual pinba_error_t delete_report(std::string const& report_name) override
+		{
+			auto const it = report_hosts_.find(report_name);
+			if (it == report_hosts_.end())
+				return ff::fmt_err("unknown report: {0}", report_name);
+
+			LOG_DEBUG(globals_->logger(), "removing report {0}", report_name);
+
+			// remove report from relay thread
+			{
+				auto const err = relay_.execute_in_thread([this, &report_name]()
+				{
+					auto const n_erased = relay_.rhosts_.erase(report_name);
+					assert ((n_erased == 1) && "BUG: report found by coordinator, but not found by relay thread");
+				});
+
+				if (err)
+					return err;
+			}
+
+			// can shutdown and remove the report now
+			report_host_t *host = it->second.get();
+			host->shutdown(); // waits for host to completely shut itself down
+
+			auto const n_erased = report_hosts_.erase(report_name);
+			assert((n_erased == 1) && "BUG: report found initially, but nonexistent on erase");
+
+			return {};
+		}
+
+		virtual report_snapshot_ptr get_report_snapshot(std::string const& report_name) override
+		{
+			auto const it = report_hosts_.find(report_name);
+			if (it == report_hosts_.end())
+				throw std::runtime_error(ff::fmt_str("unknown report: {0}", report_name));
+
+			report_host_t *host = it->second.get();
+
+			report_snapshot_ptr snapshot;
+			host->execute_in_thread([&](report_host_t *rhost)
+			{
+				snapshot = rhost->report_history()->get_snapshot();
+			});
+
+			return std::move(snapshot);
+		}
+
+		virtual report_state_ptr get_report_state(std::string const& report_name) override
+		{
+			auto const it = report_hosts_.find(report_name);
+			if (it == report_hosts_.end())
+				throw std::runtime_error(ff::fmt_str("unknown report: {0}", report_name));
+
+			report_host_t *host = it->second.get();
+
+			auto state = meow::make_unique<report_state_t>();
+			host->execute_in_thread([&](report_host_t *rhost)
+			{
+				state->id        = rhost->id();
+				state->stats     = rhost->stats();
+				state->info      = rhost->report()->info();
+
+				auto const a_est = rhost->report_agg()->get_estimates();
+				auto const h_est = rhost->report_history()->get_estimates();
+
+				state->estimates.row_count = h_est.row_count ? h_est.row_count : a_est.row_count;
+				state->estimates.mem_used = h_est.mem_used + a_est.mem_used;
+			});
+
+			return std::move(state);
 		}
 
 	private:
@@ -557,16 +612,10 @@ namespace { namespace aux {
 		coordinator_conf_t  *conf_;
 
 		// report_name -> report_host
-		using report_host_map_t = std::unordered_map<std::string, report_host_ptr>;
-		report_host_map_t report_hosts_;
+		using rhost_map_t = std::unordered_map<std::string, report_host_ptr>;
+		rhost_map_t         report_hosts_;
 
-		nmsg_socket_t    in_sock_;
-
-		nmsg_socket_t    control_sock_;
-		nmsg_socket_t    control_cli_sock_;
-		std::mutex       control_mtx_;
-
-		std::thread      t_;
+		relay_worker_t      relay_;
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

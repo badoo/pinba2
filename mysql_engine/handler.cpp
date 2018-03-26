@@ -367,7 +367,7 @@ private:
 			}
 			catch (std::exception const& e)
 			{
-				LOG_DEBUG(P_L_, "active::{0}; get_report_state for {1} failed (skipping), err: {1}", __func__, row.share_data.report_name, e.what());
+				LOG_ERROR(P_L_, "active::{0}; get_report_state for {1} failed (skipping), err: {2}", __func__, row.share_data.report_name, e.what());
 				continue;
 			}
 		}

@@ -95,15 +95,8 @@ try
 			},
 		};
 
-		auto req = meow::make_intrusive<coordinator_request___add_report_t>();
-		req->report = create_report_by_request(globals, conf);
-
-		auto const result = coordinator->request(req);
-
-		assert(COORDINATOR_RES__GENERIC == result->type);
-		auto const *r = static_cast<coordinator_response___generic_t*>(result.get());
-
-		ff::fmt(stdout, "got coordinator control response: {0}, {1}\n", r->status, r->err.what());
+		auto const err = coordinator->add_report(create_report_by_request(globals, conf));
+		ff::fmt(stdout, "got coordinator control response, err = {0}\n", err);
 	}
 
 	getchar();
