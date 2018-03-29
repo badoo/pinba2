@@ -423,7 +423,7 @@ namespace { namespace aux {
 				{
 					packet_unqiue_++; // next unique, since this is the new packet add
 
-					key_subrange_t timer_key_range = ki_.timertag_key_subrange(key_inprogress);
+					key_subrange_t const timer_key_range = ki_.timertag_key_subrange(key_inprogress);
 
 					for (uint16_t i = 0; i < packet->timer_count; ++i)
 					{
