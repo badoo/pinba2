@@ -10,6 +10,7 @@
 #include <meow/smart_enum.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/bloom.h"
 #include "pinba/dictionary.h"
 #include "proto/pinba.pb-c.h"
 
@@ -183,6 +184,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		d->get_word(packet->schema_id), packet->schema_id,
 		d->get_word(packet->status), packet->status,
 		packet->mem_used, packet->traffic);
+
+	ff::fmt(sink, "bloom: {0}\n", (packet->timer_bloom) ? packet->timer_bloom->to_string() : "disabled");
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
 	{

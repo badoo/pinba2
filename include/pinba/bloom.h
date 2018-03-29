@@ -7,16 +7,18 @@
 
 #include <boost/noncopyable.hpp>
 
+#include <meow/utility/static_math.hpp>
+
 #include "t1ha/t1ha.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace pinba {
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
+#if 0
 	template<size_t N>
-	struct fixlen_bloom_t : private boost::noncopyable
+	struct fixlen_bloom___old_t : private boost::noncopyable
 	{
-		using self_t = fixlen_bloom_t<N>;
+		using self_t = fixlen_bloom___old_t<N>;
 		using bits_t = std::bitset<N>;
 
 	private:
@@ -24,21 +26,16 @@ namespace pinba {
 
 	public:
 
-		constexpr fixlen_bloom_t()
+		constexpr fixlen_bloom___old_t()
 		{
-			static_assert(std::is_standard_layout<self_t>::value, "don't mess with fixlen_bloom_t<>");
+			static_assert(std::is_standard_layout<self_t>::value, "don't mess with fixlen_bloom___old_t<>");
 		}
 
 		void add(uint32_t value)
 		{
-			// TODO: could just take log2(N) bits from uint64_t word here, to get rid of extra hashing
-			//       for 128 bit bloom, need 7 bits for position, so could take 3 times 7 bits
-			//       from diff parts of the 64bit hash result
-			//
-			//       this does not work with all values of N, but can work around that
-			bits_.set(bloom___hash(value) % bits_.size());
-			bits_.set(bloom___hash(value ^ bloom___rot32(value, 13)) % bits_.size());
-			bits_.set(bloom___hash(value ^ bloom___rot32(value, 25)) % bits_.size());
+			bits_.set(bloom___hash(value) % N);
+			bits_.set(bloom___hash(value ^ bloom___rot32(value, 13)) % N);
+			bits_.set(bloom___hash(value ^ bloom___rot32(value, 25)) % N);
 		}
 
 		void clear()
@@ -68,6 +65,75 @@ namespace pinba {
 			return t1ha0(&key, sizeof(key), key);
 		}
 	};
+#endif
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	template<size_t N>
+	struct fixlen_bloom_t : private boost::noncopyable
+	{
+		using self_t = fixlen_bloom_t<N>;
+		using bits_t = std::bitset<N>;
+
+		// FIXME: relax this restriction
+		static_assert(meow::static_is_pow<N, 2>::value == true, "N must be a power of 2");
+
+		static constexpr size_t n_probes = 3;
+		static constexpr size_t mask     = N - 1;
+		static constexpr size_t shift    = meow::static_log2<N>::value;
+		static_assert(shift <= (sizeof(size_t)*8) / n_probes, "make sure we have enough bits to take");
+
+	private:
+		bits_t           bits_;
+
+	public:
+
+		constexpr fixlen_bloom_t()
+		{
+			static_assert(std::is_standard_layout<self_t>::value, "don't mess with fixlen_bloom_t<>");
+		}
+
+		void add(uint32_t value)
+		{
+			uint64_t const hashed_value = bloom___hash(value);
+
+			for (size_t i = 0; i < n_probes; ++i) // hope this one gets unrolled
+			{
+				bits_.set((hashed_value >> (shift * i)) & mask);
+			}
+		}
+
+		void clear()
+		{
+			bits_.clear();
+		}
+
+		bool contains(self_t const& other) const
+		{
+			return (bits_ & other.bits_) == other.bits_;
+		}
+
+		std::string to_string() const
+		{
+			return bits_.to_string();
+		}
+
+	private:
+
+		static inline uint64_t bloom___hash(uint32_t key)
+		{
+			return t1ha0(&key, sizeof(key), key);
+		}
+	};
+
+	// simple tests for different power of 2 sizes
+	static_assert(fixlen_bloom_t<64>::mask  == 0x3f, "");
+	static_assert(fixlen_bloom_t<64>::shift == 6, "");
+
+	static_assert(fixlen_bloom_t<128>::mask  == 0x7f, "");
+	static_assert(fixlen_bloom_t<128>::shift == 7, "");
+
+	static_assert(fixlen_bloom_t<256>::mask  == 0xff, "");
+	static_assert(fixlen_bloom_t<256>::shift == 8, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 } // namespace pinba {

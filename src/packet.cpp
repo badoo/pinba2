@@ -135,7 +135,7 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
-	uint32_t td[r->n_dictionary];
+	uint32_t td[r->n_dictionary]; // local word_offset -> global dictinary word_id
 
 	for (unsigned i = 0; i < r->n_dictionary; i++)
 	{
@@ -143,7 +143,10 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 		// ff::fmt(stdout, "{0}; dict xform {1} -> {2}\n", __func__, r->dictionary[i], td[i]);
 	}
 
-	// p->sequence_id  = 0; // there is no need to touch this field, caller know how to deal with this
+	uint8_t bloom_added[r->n_dictionary];  // have we added this local word_offset to bloom?
+	memset(bloom_added, 0, sizeof(bloom_added));
+
+
 	p->host_id      = d->get_or_add(r->hostname);
 	p->server_id    = d->get_or_add(r->server_name);
 	p->script_id    = d->get_or_add(r->script_name);
@@ -188,7 +191,13 @@ static packet_t* pinba_request_to_packet___impl(Pinba__Request const *r, D *d, s
 			for (unsigned i = 0; i < r->n_timer_tag_name; i++)
 			{
 				if (enable_bloom)
-					p->timer_bloom->add(td[r->timer_tag_name[i]]);
+				{
+					if (0 == bloom_added[r->timer_tag_name[i]])
+					{
+						p->timer_bloom->add(td[r->timer_tag_name[i]]);
+						bloom_added[r->timer_tag_name[i]] = 1;
+					}
+				}
 
 				timer_tag_name_ids[i] = td[r->timer_tag_name[i]];
 				timer_tag_value_ids[i] = td[r->timer_tag_value[i]];
