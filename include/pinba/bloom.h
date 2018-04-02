@@ -14,7 +14,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace pinba {
 ////////////////////////////////////////////////////////////////////////////////////////////////
-#if 0
+
 	template<size_t N>
 	struct fixlen_bloom___old_t : private boost::noncopyable
 	{
@@ -38,9 +38,9 @@ namespace pinba {
 			bits_.set(bloom___hash(value ^ bloom___rot32(value, 25)) % N);
 		}
 
-		void clear()
+		void reset()
 		{
-			bits_.clear();
+			bits_.reset();
 		}
 
 		bool contains(self_t const& other) const
@@ -65,7 +65,7 @@ namespace pinba {
 			return t1ha0(&key, sizeof(key), key);
 		}
 	};
-#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 	template<size_t N>
@@ -77,7 +77,7 @@ namespace pinba {
 		// FIXME: relax this restriction
 		static_assert(meow::static_is_pow<N, 2>::value == true, "N must be a power of 2");
 
-		static constexpr size_t n_probes = 3;
+		static constexpr size_t n_probes = 4;
 		static constexpr size_t mask     = N - 1;
 		static constexpr size_t shift    = meow::static_log2<N>::value;
 		static_assert(shift <= (sizeof(size_t)*8) / n_probes, "make sure we have enough bits to take");
@@ -102,9 +102,9 @@ namespace pinba {
 			}
 		}
 
-		void clear()
+		void reset()
 		{
-			bits_.clear();
+			bits_.reset();
 		}
 
 		bool contains(self_t const& other) const
