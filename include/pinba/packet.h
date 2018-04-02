@@ -99,8 +99,8 @@ struct packet_t
 	uint32_t          host_id;
 	uint32_t          server_id;
 	uint32_t          script_id;
-	uint32_t          schema_id;       // can we make this uint16_t, expecting number of schemas to be small?
-	uint32_t          status;          // can we make this uint16_t for http statuses only ?
+	uint32_t          schema_id;
+	uint32_t          status;
 	uint32_t          traffic;         // document_size
 	uint32_t          mem_used;        // memory_footprint
 	uint16_t          tag_count;       // length of this->tags
@@ -111,7 +111,7 @@ struct packet_t
 	uint32_t          *tag_name_ids;   // request tag names  (sequential in memory = scan speed)
 	uint32_t          *tag_value_ids;  // request tag values (sequential in memory = scan speed) TODO: remove this ptr, address via tag_name_ids
 	packed_timer_t    *timers;
-	timertag_bloom_t  *timer_bloom;    // poor man's bloom filter over timer[].tag_name_ids
+	timertag_bloom_t  *timer_bloom;    // poor man's bloom filter over timer[].tag_name_ids. TODO: avoid allocation here, ptr is 8 bytes, bloom - 16 bytes
 };
 
 // packet_t has been carefully crafted to avoid padding inside and eat as little memory as possible
