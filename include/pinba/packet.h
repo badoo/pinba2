@@ -84,14 +84,16 @@ struct packed_timer_t
 	duration_t      ru_utime;
 	duration_t      ru_stime;
 	uint32_t        *tag_name_ids;
-	uint32_t        *tag_value_ids; // TODO: remove this ptr, address via tag_name_ids
+	uint32_t        *tag_value_ids;  // TODO: remove this ptr, address via tag_name_ids
+	timer_bloom_t   bloom;           // 64bit
 }; // __attribute__((packed)); // needed only with sizeof() == 28 below
 
 // check the size, had to add __attribute__((packed)) to definition, since the compiler likes
 // to have struct sizes % 8 == 0, to have them nicely aligned in arrays
 // but we don't need that, since 1st member is uint32 and is aligned properly in arrays as well
 // static_assert(sizeof(packed_timer_t) == 28, "make sure packed_timer_t has no padding inside");
-static_assert(sizeof(packed_timer_t) == 48, "make sure packed_timer_t has no padding inside");
+// static_assert(sizeof(packed_timer_t) == 48, "make sure packed_timer_t has no padding inside");
+static_assert(sizeof(packed_timer_t) == 56, "make sure packed_timer_t has no padding inside");
 static_assert(std::is_standard_layout<packed_timer_t>::value == true, "packed_timer_t must have standard layout");
 
 struct packet_t
@@ -202,6 +204,8 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		auto const& t = packet->timers[i];
 
 		ff::fmt(sink, "  timer[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
+		ff::fmt(sink, "    bloom: {0}\n", t.bloom.to_string());
+
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{
 			auto const name_id = t.tag_name_ids[j];

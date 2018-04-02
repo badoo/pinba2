@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS `pinba`.`active` (
   `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
   `timers_scanned` bigint(20) unsigned NOT NULL,
   `timers_aggregated` bigint(20) unsigned NOT NULL,
+  `timers_skipped_by_bloom` bigint(20) unsigned NOT NULL,
   `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
   `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
   `ru_utime` double NOT NULL,
