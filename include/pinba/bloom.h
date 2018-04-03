@@ -9,7 +9,7 @@
 
 #include <meow/utility/static_math.hpp>
 
-#include "t1ha/t1ha.h"
+#include "pinba/hash.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace pinba {
@@ -62,16 +62,11 @@ namespace pinba {
 
 		static inline uint64_t bloom___hash(uint32_t key)
 		{
-			return t1ha0(&key, sizeof(key), key);
+			return hash_number(key);
 		}
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
-
-	inline uint64_t fixlen_bloom___hash(uint32_t key)
-	{
-		return t1ha0(&key, sizeof(key), key);
-	}
 
 	template<size_t N>
 	struct fixlen_bloom_t : private boost::noncopyable
@@ -99,7 +94,7 @@ namespace pinba {
 
 		void add(uint32_t value)
 		{
-			this->add_hashed(fixlen_bloom___hash(value));
+			this->add_hashed(hash_number(value));
 		}
 
 		void add_hashed(uint64_t hashed_value)
@@ -142,6 +137,7 @@ namespace pinba {
 
 // bloom with all timer tag names from a packet
 struct timertag_bloom_t : public pinba::fixlen_bloom_t<128> {};
+// struct timertag_bloom_t : public pinba::fixlen_bloom___old_t<128> {};
 
 // bloom with all timer tag names from a timer
 struct timer_bloom_t : public pinba::fixlen_bloom_t<64> {};

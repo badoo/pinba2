@@ -1,16 +1,15 @@
 #ifndef PINBA__PACKET_H_
 #define PINBA__PACKET_H_
 
-#include <cmath> // modff
 #include <cstdint>
 #include <type_traits>
 
-#include <meow/format/format.hpp>
 #include <meow/unix/time.hpp>
 #include <meow/smart_enum.hpp>
 
 #include "pinba/globals.h"
 #include "pinba/bloom.h"
+#include "pinba/hash.h"
 #include "pinba/dictionary.h"
 #include "proto/pinba.pb-c.h"
 
@@ -64,17 +63,6 @@ namespace meow { namespace format {
 #endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct dictionary_t;
-struct timertag_bloom_t;
-
-
-struct packed_tag_t
-{
-	uint32_t name_id;
-	uint32_t value_id;
-};
-static_assert(sizeof(packed_tag_t) == 8, "make sure packed_tag_t has no padding inside");
-static_assert(std::is_standard_layout<packed_tag_t>::value == true, "packed_tag_t must be a standard layout type");
 
 struct packed_timer_t
 {
@@ -113,12 +101,12 @@ struct packet_t
 	uint32_t          *tag_name_ids;   // request tag names  (sequential in memory = scan speed)
 	uint32_t          *tag_value_ids;  // request tag values (sequential in memory = scan speed) TODO: remove this ptr, address via tag_name_ids
 	packed_timer_t    *timers;
-	timertag_bloom_t  *timer_bloom;    // poor man's bloom filter over timer[].tag_name_ids. TODO: avoid allocation here, ptr is 8 bytes, bloom - 16 bytes
+	timertag_bloom_t  timer_bloom;     // poor man's bloom filter over timer[].tag_name_ids
 };
 
 // packet_t has been carefully crafted to avoid padding inside and eat as little memory as possible
 // make sure we haven't made a mistake anywhere
-static_assert(sizeof(packet_t) == 88, "make sure packet_t has no padding inside");
+static_assert(sizeof(packet_t) == 96, "make sure packet_t has no padding inside");
 static_assert(std::is_standard_layout<packet_t>::value == true, "packet_t must be a standard layout type");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +150,116 @@ inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 	}
 };
 
+
+template<class D>
+inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, bool enable_bloom)
+{
+	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
+
+	uint32_t td[r->n_dictionary];        // local word_offset -> global dictinary word_id
+	uint64_t td_hashed[r->n_dictionary]; // global dictionary word_id -> number hashed
+
+	for (unsigned i = 0; i < r->n_dictionary; i++)
+	{
+		td[i]        = d->get_or_add(r->dictionary[i]);
+		td_hashed[i] = pinba::hash_number(td[i]);
+		// ff::fmt(stdout, "{0}; dict xform {1} -> {2} {3}\n", __func__, r->dictionary[i], td[i], td_hashed[i]);
+	}
+
+	// have we added this local word_offset to bloom?
+	uint8_t bloom_added[r->n_dictionary];
+	memset(bloom_added, 0, sizeof(bloom_added));
+
+
+	p->host_id      = d->get_or_add(r->hostname);
+	p->server_id    = d->get_or_add(r->server_name);
+	p->script_id    = d->get_or_add(r->script_name);
+	p->schema_id    = d->get_or_add(r->schema);
+	p->status       = d->get_or_add(meow::format::type_tunnel<uint32_t>::call(r->status));
+	p->traffic      = r->document_size;
+	p->mem_used     = r->memory_footprint;
+	p->request_time = duration_from_float(r->request_time);
+	p->ru_utime     = duration_from_float(r->ru_utime);
+	p->ru_stime     = duration_from_float(r->ru_stime);
+
+	// timers
+	p->timer_count = r->n_timer_value;
+	if (p->timer_count > 0)
+	{
+		p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
+
+		// contiguous storage for all timer tag names/values
+		uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
+		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
+
+		unsigned current_tag_offset = 0;
+
+		for (unsigned i = 0; i < r->n_timer_value; i++)
+		{
+			packed_timer_t *t = &p->timers[i];
+			t->tag_count     = r->timer_tag_count[i];
+			t->hit_count     = r->timer_hit_count[i];
+			t->value         = duration_from_float(r->timer_value[i]);
+			t->ru_utime      = (i < r->n_timer_ru_utime) ? duration_from_float(r->timer_ru_utime[i]) : duration_t{0};
+			t->ru_stime      = (i < r->n_timer_ru_stime) ? duration_from_float(r->timer_ru_stime[i]) : duration_t{0};
+
+			t->tag_name_ids  = timer_tag_name_ids + current_tag_offset;
+			t->tag_value_ids = timer_tag_value_ids + current_tag_offset;
+
+			for (size_t i = 0; i < t->tag_count; i++)
+			{
+				// offsets in r->dictionary and td
+				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + i];
+				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + i];
+
+				// translate through td
+				uint32_t const tag_name_id  = td[tag_name_off];
+				uint32_t const tag_value_id = td[tag_value_off];
+
+				// copy to final destination
+				t->tag_name_ids[i]  = tag_name_id;
+				t->tag_value_ids[i] = tag_value_id;
+
+				// packet and timer level blooms
+				{
+					// ff::fmt(stdout, "bloom add: [{0}] {1} -> {2}\n", d->get_word(tag_name_id), tag_name_id, td_hashed[tag_name_off]);
+
+					// always add tag name to timer bloom for current timer
+					t->bloom.add_hashed(td_hashed[tag_name_off]);
+
+					// maybe also add to packet-level bloom, if we haven't already
+					if (0 == bloom_added[tag_name_off])
+					{
+						bloom_added[tag_name_off] = 1;
+						p->timer_bloom.add_hashed(td_hashed[tag_name_off]);
+					}
+				}
+			}
+
+			// ff::fmt(stdout, "timer_bloom[{0}]: {1}\n", i, t->bloom.to_string());
+
+			// advance base offset in original request
+			current_tag_offset += t->tag_count;
+		}
+	}
+
+	// request tags
+	p->tag_count = r->n_tag_name;
+	if (p->tag_count > 0)
+	{
+		p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		for (unsigned i = 0; i < r->n_tag_name; i++)
+		{
+			p->tag_name_ids[i]  = td[r->tag_name[i]];
+			p->tag_value_ids[i] = td[r->tag_value[i]];
+		}
+	}
+
+	return p;
+}
+
+
 template<class SinkT>
 inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, struct nmpa_s *nmpa = NULL)
 {
@@ -187,7 +285,7 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		d->get_word(packet->status), packet->status,
 		packet->mem_used, packet->traffic);
 
-	ff::fmt(sink, "bloom: {0}\n", (packet->timer_bloom) ? packet->timer_bloom->to_string() : "disabled");
+	ff::fmt(sink, "bloom: {0}\n", packet->timer_bloom.to_string());
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
 	{
@@ -261,15 +359,6 @@ MEOW_DEFINE_SMART_ENUM(request_validate_result,
 // this function might change request slightly
 // sometimes it's easier to do it here, than in pinba_request_to_packet()
 request_validate_result_t pinba_validate_request(Pinba__Request *r);
-
-// convert packet from protobuf to internal packed format
-// this is somewhat expensive and complexity scales with the number of tags/timers inside the packet
-// memory for new packet is allocated in nmpa passed and nmpa should persist as long as packet does
-// this function can not fail
-struct dictionary_t;
-struct repacker_dictionary_t;
-packet_t* pinba_request_to_packet(Pinba__Request const *r, dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom);
-packet_t* pinba_request_to_packet(Pinba__Request const *r, repacker_dictionary_t *d, struct nmpa_s *nmpa, bool enable_bloom);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -296,22 +296,13 @@ namespace { namespace aux {
 
 			virtual void add(packet_t *packet) override
 			{
-				// {
-				// 	LOG_DEBUG(globals_->logger(), "packet in report");
-				// 	auto sink = meow::logging::logger_as_sink(*globals_->logger(), meow::logging::log_level::info, meow::line_mode::prefix);
-				// 	debug_dump_packet(sink, packet, globals_->dictionary(), nullptr);
-				// 	LOG_DEBUG(globals_->logger(), "END");
-				// }
-
-				// bloom check
-				if (packet->timer_bloom)
+				// packet-level bloom check
+				// FIXME: this probably immediately causes L1/L2 miss, since bloom is at the end of packet struct ?
+				if (!packet->timer_bloom.contains(this->packet_bloom_))
 				{
-					if (!packet->timer_bloom->contains(this->packet_bloom_))
-					{
-						// LOG_DEBUG(globals_->logger(), "packet: {0} !< {1}", packet->timer_bloom->to_string(), packet_bloom_.to_string());
-						stats_->packets_dropped_by_bloom++;
-						return;
-					}
+					// LOG_DEBUG(globals_->logger(), "packet: {0} !< {1}", packet->timer_bloom->to_string(), packet_bloom_.to_string());
+					stats_->packets_dropped_by_bloom++;
+					return;
 				}
 
 				// run all filters and check if packet is 'interesting to us'
@@ -450,14 +441,11 @@ namespace { namespace aux {
 
 						timers_scanned++;
 
-						if (packet->timer_bloom) // FIXME: UGLY HACK: if != NULL -> blooms are enabled
+						if (!timer->bloom.contains(this->timer_bloom_))
 						{
-							if (!timer->bloom.contains(this->timer_bloom_))
-							{
-								// LOG_DEBUG(globals_->logger(), "timer[{0}]: bloom {1} !< {2}", i, timer->bloom.to_string(), timer_bloom_.to_string());
-								timers_skipped_by_bloom++;
-								continue;
-							}
+							// LOG_DEBUG(globals_->logger(), "timer[{0}]: bloom {1} !< {2}", i, timer->bloom.to_string(), timer_bloom_.to_string());
+							timers_skipped_by_bloom++;
+							continue;
 						}
 
 						bool const timer_ok = filter_by_timer_tags(timer);
