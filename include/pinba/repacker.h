@@ -53,8 +53,6 @@ struct repacker_conf_t
 
 	uint32_t     batch_size;       // max packets in batch
 	duration_t   batch_timeout;    // max delay between batches
-
-	bool         enable_blooms;    // enable poor-man's bloom filtering
 };
 
 struct repacker_t : private boost::noncopyable

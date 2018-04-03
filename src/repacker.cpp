@@ -314,6 +314,15 @@ namespace { namespace aux {
 			// thread-local cache for global shared dictionary
 			repacker_dictionary_t r_dictionary { globals_->dictionary() };
 
+			// request -> packet xform config
+			request_to_packet_conf_t const rtp_conf = {
+				// .static_dictionary     = globals_->dictionary(),
+				// .repacker_dictionary   = &r_dictionary,
+				.packet_bloom_probes   = globals_->options()->packet_bloom_probes,
+				.timer_bloom_probes    = globals_->options()->timer_bloom_probes,
+			};
+
+
 			// batch state
 			auto const create_batch = [&]()
 			{
@@ -418,7 +427,7 @@ namespace { namespace aux {
 							continue;
 						}
 
-						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa, conf_->enable_blooms);
+						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa, rtp_conf);
 
 						if (globals_->options()->packet_debug)
 						{

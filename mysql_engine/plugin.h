@@ -25,11 +25,12 @@ struct pinba_variables_t
 	unsigned  repacker_input_buffer     = 0;
 	unsigned  repacker_batch_messages   = 0;
 	unsigned  repacker_batch_timeout_ms = 0;
-	char      repacker_enable_blooms    = 0;
 	unsigned  coordinator_input_buffer  = 0;
 	unsigned  report_input_buffer       = 0;
 	char      packet_debug              = 0;
 	double    packet_debug_fraction     = 0.01;
+	uint32_t  packet_bloom_probes       = 3;
+	uint32_t  timer_bloom_probes        = 3;
 };
 
 pinba_variables_t* pinba_variables();

@@ -20,25 +20,28 @@
 
 int main(int argc, char const *argv[])
 {
-	pinba_options_t options = {
-		.net_address              = "0.0.0.0",
-		.net_port                 = "30002",
+	pinba_options_t options;
 
-		.udp_threads              = 4,
-		.udp_batch_messages       = 256,
-		.udp_batch_timeout        = 10 * d_millisecond,
+	options.net_address              = "0.0.0.0";
+	options.net_port                 = "30002";
 
-		.repacker_threads         = 4,
-		.repacker_input_buffer    = 16 * 1024,
-		.repacker_batch_messages  = 1024,
-		.repacker_batch_timeout   = 100 * d_millisecond,
-		.repacker_enable_blooms   = true,
+	options.udp_threads              = 4;
+	options.udp_batch_messages       = 256;
+	options.udp_batch_timeout        = 10 * d_millisecond;
 
-		.coordinator_input_buffer = 128,
-		.report_input_buffer      = 32,
+	options.repacker_threads         = 4;
+	options.repacker_input_buffer    = 16 * 1024;
+	options.repacker_batch_messages  = 1024;
+	options.repacker_batch_timeout   = 100 * d_millisecond;
 
-		.logger                   = {},
-	};
+	options.coordinator_input_buffer = 128;
+	options.report_input_buffer      = 32;
+
+	options.logger                   = {};
+
+	options.packet_bloom_probes      = 3;
+	options.timer_bloom_probes       = 3;
+
 
 	auto pinba = pinba_engine_init(&options);
 	pinba->startup();
