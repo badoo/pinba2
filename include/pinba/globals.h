@@ -141,26 +141,28 @@ using pinba_logger_ptr = std::shared_ptr<pinba_logger_t>;
 
 struct pinba_options_t
 {
-	std::string net_address;
-	std::string net_port;
+	std::string net_address              = "0.0.0.0";
+	std::string net_port                 = "3002";
 
-	uint32_t    udp_threads;
-	uint32_t    udp_batch_messages;
-	duration_t  udp_batch_timeout;
+	uint32_t    udp_threads              = 2;
+	uint32_t    udp_batch_messages       = 256;
+	duration_t  udp_batch_timeout        = 50 * d_millisecond;
 
-	uint32_t    repacker_threads;
-	uint32_t    repacker_input_buffer;
-	uint32_t    repacker_batch_messages;
-	duration_t  repacker_batch_timeout;
-	bool        repacker_enable_blooms;
+	uint32_t    repacker_threads         = 2;
+	uint32_t    repacker_input_buffer    = 512;
+	uint32_t    repacker_batch_messages  = 1024;
+	duration_t  repacker_batch_timeout   = 100 * d_millisecond;
 
-	uint32_t    coordinator_input_buffer;
-	uint32_t    report_input_buffer;
+	uint32_t    coordinator_input_buffer = 128;
+	uint32_t    report_input_buffer      = 256;
 
-	pinba_logger_ptr logger;
+	pinba_logger_ptr logger              = {};
 
-	bool        packet_debug;           // dump arriving packets to log (at info level)
-	double      packet_debug_fraction;  // probability of dumping a single packet (aka, 0.01 = dump roughly every 100th)
+	bool        packet_debug             = false;  // dump arriving packets to log (at info level)
+	double      packet_debug_fraction    = 0.001;  // probability of dumping a single packet (aka, 0.01 = dump roughly every 100th)
+
+	uint32_t    packet_bloom_probes      = 3;
+	uint32_t    timer_bloom_probes       = 3;
 };
 
 struct pinba_globals_t : private boost::noncopyable
