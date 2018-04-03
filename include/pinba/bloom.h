@@ -16,59 +16,6 @@ namespace pinba {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 	template<size_t N>
-	struct fixlen_bloom___old_t : private boost::noncopyable
-	{
-		using self_t = fixlen_bloom___old_t<N>;
-		using bits_t = std::bitset<N>;
-
-	private:
-		bits_t           bits_;
-
-	public:
-
-		constexpr fixlen_bloom___old_t()
-		{
-			static_assert(std::is_standard_layout<self_t>::value, "don't mess with fixlen_bloom___old_t<>");
-		}
-
-		void add(uint32_t value)
-		{
-			bits_.set(bloom___hash(value) % N);
-			bits_.set(bloom___hash(value ^ bloom___rot32(value, 13)) % N);
-			bits_.set(bloom___hash(value ^ bloom___rot32(value, 25)) % N);
-		}
-
-		void reset()
-		{
-			bits_.reset();
-		}
-
-		bool contains(self_t const& other) const
-		{
-			return (bits_ & other.bits_) == other.bits_;
-		}
-
-		std::string to_string() const
-		{
-			return bits_.to_string();
-		}
-
-	private:
-
-		static constexpr inline uint32_t bloom___rot32(uint32_t v, unsigned s)
-		{
-			return (v >> s) | (v << (32 - s));
-		}
-
-		static inline uint64_t bloom___hash(uint32_t key)
-		{
-			return hash_number(key);
-		}
-	};
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-	template<size_t N>
 	struct fixlen_bloom_t : private boost::noncopyable
 	{
 		using self_t = fixlen_bloom_t<N>;
@@ -77,7 +24,7 @@ namespace pinba {
 		// FIXME: relax this restriction
 		static_assert(meow::static_is_pow<N, 2>::value == true, "N must be a power of 2");
 
-		static constexpr size_t n_probes = 4;
+		static constexpr size_t n_probes = 3;
 		static constexpr size_t mask     = N - 1;
 		static constexpr size_t shift    = meow::static_log2<N>::value;
 		static_assert(shift <= (sizeof(size_t)*8) / n_probes, "make sure we have enough bits to take");
@@ -137,7 +84,6 @@ namespace pinba {
 
 // bloom with all timer tag names from a packet
 struct timertag_bloom_t : public pinba::fixlen_bloom_t<128> {};
-// struct timertag_bloom_t : public pinba::fixlen_bloom___old_t<128> {};
 
 // bloom with all timer tag names from a timer
 struct timer_bloom_t : public pinba::fixlen_bloom_t<64> {};

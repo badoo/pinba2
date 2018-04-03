@@ -283,7 +283,6 @@ static int pinba_engine_init(void *p)
 			.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
 			.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
 			.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
-			.repacker_enable_blooms   = (bool)pinba_variables()->repacker_enable_blooms,
 
 			.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
 			.report_input_buffer      = pinba_variables()->report_input_buffer,
@@ -461,28 +460,6 @@ static MYSQL_SYSVAR_UINT(repacker_batch_timeout_ms,
 	1000,
 	0);
 
-static MYSQL_SYSVAR_BOOL(repacker_enable_blooms,
-	pinba_variables()->repacker_enable_blooms,
-	PLUGIN_VAR_RQCMDARG,
-	"Enable poor-man's bloom filtering to speed up aggregation",
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
-	{
-		long long tmp;
-		int const is_null = value->val_int(value, &tmp);
-
-		*static_cast<char*>(res_for_update) = (char)((is_null) ? 0 : tmp);
-
-		return 0;
-	},
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
-	{
-		char const saved_val = *(char*)saved_from_update;
-
-		P_E_->options_mutable()->repacker_enable_blooms = (bool)saved_val;
-		*static_cast<char*>(out_to_mysql) = saved_val;
-	},
-	1); // default = true
-
 static MYSQL_SYSVAR_UINT(coordinator_input_buffer,
 	pinba_variables()->coordinator_input_buffer,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -563,7 +540,6 @@ static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(repacker_input_buffer),
 	MYSQL_SYSVAR(repacker_batch_messages),
 	MYSQL_SYSVAR(repacker_batch_timeout_ms),
-	MYSQL_SYSVAR(repacker_enable_blooms),
 	MYSQL_SYSVAR(coordinator_input_buffer),
 	MYSQL_SYSVAR(report_input_buffer),
 	MYSQL_SYSVAR(packet_debug),

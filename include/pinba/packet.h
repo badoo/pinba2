@@ -152,7 +152,7 @@ inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 
 
 template<class D>
-inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, bool enable_bloom)
+inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
