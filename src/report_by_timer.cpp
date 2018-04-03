@@ -243,11 +243,21 @@ namespace { namespace aux {
 						if (RKD_TIMER_TAG != kd.kind)
 							continue;
 
+						packet_bloom_.add(kd.timer_tag);
 						timer_bloom_.add(kd.timer_tag);
+
+						LOG_ERROR(globals_->logger(), "[report] bloom adding: [{0}] {1}", globals_->dictionary()->get_word(kd.timer_tag), kd.timer_tag);
 					}
 
 					for (auto const& ttf : conf_.timertag_filters)
+					{
+						packet_bloom_.add(ttf.name_id);
 						timer_bloom_.add(ttf.name_id);
+
+						LOG_ERROR(globals_->logger(), "[report] bloom adding: [{0}] {1}", globals_->dictionary()->get_word(ttf.name_id), ttf.name_id);
+					}
+
+					LOG_ERROR(globals_->logger(), "[report] tbloom: {0}", timer_bloom_.to_string());
 				}
 			}
 
@@ -286,14 +296,13 @@ namespace { namespace aux {
 
 			virtual void add(packet_t *packet) override
 			{
-				// bloom check
-				if (packet->timer_bloom)
+				// packet-level bloom check
+				// FIXME: this probably immediately causes L1/L2 miss, since bloom is at the end of packet struct ?
+				if (!packet->timer_bloom.contains(this->packet_bloom_))
 				{
-					if (!packet->timer_bloom->contains(this->timer_bloom_))
-					{
-						stats_->packets_dropped_by_bloom++;
-						return;
-					}
+					// LOG_DEBUG(globals_->logger(), "packet: {0} !< {1}", packet->timer_bloom->to_string(), packet_bloom_.to_string());
+					stats_->packets_dropped_by_bloom++;
+					return;
 				}
 
 				// run all filters and check if packet is 'interesting to us'
@@ -418,6 +427,7 @@ namespace { namespace aux {
 				// use local counters to save on atomics
 				uint32_t timers_scanned            = 0;
 				uint32_t timers_aggregated         = 0;
+				uint32_t timers_skipped_by_bloom   = 0;
 				uint32_t timers_skipped_by_filters = 0;
 				uint32_t timers_skipped_by_tags    = 0;
 				{
@@ -430,6 +440,13 @@ namespace { namespace aux {
 						packed_timer_t const *timer = &packet->timers[i];
 
 						timers_scanned++;
+
+						if (!timer->bloom.contains(this->timer_bloom_))
+						{
+							// LOG_DEBUG(globals_->logger(), "timer[{0}]: bloom {1} !< {2}", i, timer->bloom.to_string(), timer_bloom_.to_string());
+							timers_skipped_by_bloom++;
+							continue;
+						}
 
 						bool const timer_ok = filter_by_timer_tags(timer);
 						if (!timer_ok) {
@@ -458,6 +475,7 @@ namespace { namespace aux {
 
 				stats_->timers_scanned            += timers_scanned;
 				stats_->timers_aggregated         += timers_aggregated;
+				stats_->timers_skipped_by_bloom   += timers_skipped_by_bloom;
 				stats_->timers_skipped_by_filters += timers_skipped_by_filters;
 				stats_->timers_skipped_by_tags    += timers_skipped_by_tags;
 
@@ -482,7 +500,9 @@ namespace { namespace aux {
 
 			key_info_t                   ki_;
 			histogram_conf_t             hv_conf_;
-			timertag_bloom_t             timer_bloom_;
+
+			timertag_bloom_t             packet_bloom_;
+			timer_bloom_t                timer_bloom_;
 
 			boost::intrusive_ptr<tick_t> tick_;
 			hashtable_t                  tick_ht_;

@@ -60,6 +60,7 @@ struct report_stats_t
 
 	std::atomic<uint64_t> timers_scanned              = {0}; // number of timers scanned
 	std::atomic<uint64_t> timers_aggregated           = {0}; // number of timers that we took useful information from
+	std::atomic<uint64_t> timers_skipped_by_bloom     = {0}; // number of timers skipped by timer level bloom
 	std::atomic<uint64_t> timers_skipped_by_filters   = {0}; // number of timers skipped by timertag filters
 	std::atomic<uint64_t> timers_skipped_by_tags      = {0}; // number of timers skipped by not having required tags present
 

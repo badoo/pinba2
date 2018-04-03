@@ -9,7 +9,7 @@
 
 #include <meow/utility/static_math.hpp>
 
-#include "t1ha/t1ha.h"
+#include "pinba/hash.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 namespace pinba {
@@ -62,7 +62,7 @@ namespace pinba {
 
 		static inline uint64_t bloom___hash(uint32_t key)
 		{
-			return t1ha0(&key, sizeof(key), key);
+			return hash_number(key);
 		}
 	};
 
@@ -94,8 +94,11 @@ namespace pinba {
 
 		void add(uint32_t value)
 		{
-			uint64_t const hashed_value = bloom___hash(value);
+			this->add_hashed(hash_number(value));
+		}
 
+		void add_hashed(uint64_t hashed_value)
+		{
 			for (size_t i = 0; i < n_probes; ++i) // hope this one gets unrolled
 			{
 				bits_.set((hashed_value >> (shift * i)) & mask);
@@ -116,13 +119,6 @@ namespace pinba {
 		{
 			return bits_.to_string();
 		}
-
-	private:
-
-		static inline uint64_t bloom___hash(uint32_t key)
-		{
-			return t1ha0(&key, sizeof(key), key);
-		}
 	};
 
 	// simple tests for different power of 2 sizes
@@ -139,8 +135,12 @@ namespace pinba {
 } // namespace pinba {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-// TODO: experiment with diff bloom sizes
+// bloom with all timer tag names from a packet
 struct timertag_bloom_t : public pinba::fixlen_bloom_t<128> {};
+// struct timertag_bloom_t : public pinba::fixlen_bloom___old_t<128> {};
+
+// bloom with all timer tag names from a timer
+struct timer_bloom_t : public pinba::fixlen_bloom_t<64> {};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

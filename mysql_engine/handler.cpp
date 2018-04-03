@@ -472,13 +472,14 @@ private:
 				STORE_FIELD (18, rstats->packets_dropped_by_timertag);
 				STORE_FIELD (19, rstats->timers_scanned);
 				STORE_FIELD (20, rstats->timers_aggregated);
-				STORE_FIELD (21, rstats->timers_skipped_by_filters);
-				STORE_FIELD (22, rstats->timers_skipped_by_tags);
-				STORE_FIELD (23, timeval_to_double(rstats->ru_utime));
-				STORE_FIELD (24, timeval_to_double(rstats->ru_stime));
-				STORE_FIELD (25, timeval_to_double(rstats->last_tick_tv));
-				STORE_FIELD (26, duration_seconds_as_double(rstats->last_tick_prepare_d));
-				STORE_FIELD (27, duration_seconds_as_double(rstats->last_snapshot_merge_d));
+				STORE_FIELD (21, rstats->timers_skipped_by_bloom);
+				STORE_FIELD (22, rstats->timers_skipped_by_filters);
+				STORE_FIELD (23, rstats->timers_skipped_by_tags);
+				STORE_FIELD (24, timeval_to_double(rstats->ru_utime));
+				STORE_FIELD (25, timeval_to_double(rstats->ru_stime));
+				STORE_FIELD (26, timeval_to_double(rstats->last_tick_tv));
+				STORE_FIELD (27, duration_seconds_as_double(rstats->last_tick_prepare_d));
+				STORE_FIELD (28, duration_seconds_as_double(rstats->last_snapshot_merge_d));
 			}
 		} // field for
 

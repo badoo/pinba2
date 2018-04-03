@@ -552,6 +552,12 @@ public:
 	{
 	}
 
+	// // FIXME: test only
+	// str_ref get_word(uint32_t word_id) const
+	// {
+	// 	return d->get_word(word_id);
+	// }
+
 	uint32_t get_or_add(str_ref const word)
 	{
 		if (!word)
