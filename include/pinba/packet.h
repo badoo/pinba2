@@ -151,15 +151,8 @@ inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 };
 
 
-struct request_to_packet_conf_t
-{
-	uint32_t packet_bloom_probes;
-	uint32_t timer_bloom_probes;
-};
-
-
 template<class D>
-inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, request_to_packet_conf_t const& conf)
+inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, bool enable_bloom)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
@@ -232,13 +225,13 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 					// ff::fmt(stdout, "bloom add: [{0}] {1} -> {2}\n", d->get_word(tag_name_id), tag_name_id, td_hashed[tag_name_off]);
 
 					// always add tag name to timer bloom for current timer
-					t->bloom.add_hashed(td_hashed[tag_name_off], conf.timer_bloom_probes);
+					t->bloom.add_hashed(td_hashed[tag_name_off]);
 
 					// maybe also add to packet-level bloom, if we haven't already
 					if (0 == bloom_added[tag_name_off])
 					{
 						bloom_added[tag_name_off] = 1;
-						p->timer_bloom.add_hashed(td_hashed[tag_name_off], conf.packet_bloom_probes);
+						p->timer_bloom.add_hashed(td_hashed[tag_name_off]);
 					}
 				}
 			}

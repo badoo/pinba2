@@ -271,31 +271,28 @@ static int pinba_engine_init(void *p)
 	try
 	{
 		// TODO: take more values from global mysql config (aka pinba_variables)
-		static pinba_options_t options = {};
+		static pinba_options_t options = {
+			.net_address              = pinba_variables()->address,
+			.net_port                 = ff::write_str(pinba_variables()->port),
 
-		options.net_address              = pinba_variables()->address;
-		options.net_port                 = ff::write_str(pinba_variables()->port);
+			.udp_threads              = pinba_variables()->udp_reader_threads,
+			.udp_batch_messages       = 256,
+			.udp_batch_timeout        = 50 * d_millisecond,
 
-		options.udp_threads              = pinba_variables()->udp_reader_threads;
-		options.udp_batch_messages       = 256;
-		options.udp_batch_timeout        = 50 * d_millisecond;
+			.repacker_threads         = pinba_variables()->repacker_threads,
+			.repacker_input_buffer    = pinba_variables()->repacker_input_buffer,
+			.repacker_batch_messages  = pinba_variables()->repacker_batch_messages,
+			.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond,
+			.repacker_enable_blooms   = (bool)pinba_variables()->repacker_enable_blooms,
 
-		options.repacker_threads         = pinba_variables()->repacker_threads;
-		options.repacker_input_buffer    = pinba_variables()->repacker_input_buffer;
-		options.repacker_batch_messages  = pinba_variables()->repacker_batch_messages;
-		options.repacker_batch_timeout   = pinba_variables()->repacker_batch_timeout_ms * d_millisecond;
+			.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer,
+			.report_input_buffer      = pinba_variables()->report_input_buffer,
 
-		options.coordinator_input_buffer = pinba_variables()->coordinator_input_buffer;
-		options.report_input_buffer      = pinba_variables()->report_input_buffer;
+			.logger                   = logger,
 
-		options.logger                   = logger;
-
-		options.packet_debug             = (bool)pinba_variables()->packet_debug;
-		options.packet_debug_fraction    = pinba_variables()->packet_debug_fraction;
-
-		options.packet_bloom_probes      = pinba_variables()->packet_bloom_probes;
-		options.timer_bloom_probes       = pinba_variables()->timer_bloom_probes;
-
+			.packet_debug             = (bool)pinba_variables()->packet_debug,
+			.packet_debug_fraction    = pinba_variables()->packet_debug_fraction,
+		};
 
 		pinba_MYSQL__instance = [&]()
 		{
@@ -464,6 +461,28 @@ static MYSQL_SYSVAR_UINT(repacker_batch_timeout_ms,
 	1000,
 	0);
 
+static MYSQL_SYSVAR_BOOL(repacker_enable_blooms,
+	pinba_variables()->repacker_enable_blooms,
+	PLUGIN_VAR_RQCMDARG,
+	"Enable poor-man's bloom filtering to speed up aggregation",
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
+	{
+		long long tmp;
+		int const is_null = value->val_int(value, &tmp);
+
+		*static_cast<char*>(res_for_update) = (char)((is_null) ? 0 : tmp);
+
+		return 0;
+	},
+	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
+	{
+		char const saved_val = *(char*)saved_from_update;
+
+		P_E_->options_mutable()->repacker_enable_blooms = (bool)saved_val;
+		*static_cast<char*>(out_to_mysql) = saved_val;
+	},
+	1); // default = true
+
 static MYSQL_SYSVAR_UINT(coordinator_input_buffer,
 	pinba_variables()->coordinator_input_buffer,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -527,66 +546,11 @@ static MYSQL_SYSVAR_DOUBLE(packet_debug_fraction,
 
 		P_E_->options_mutable()->packet_debug_fraction = saved_val;
 		*static_cast<double*>(out_to_mysql) = saved_val;
+
 	},
 	0.01, // def: every 100th
 	0.000000001,
 	1.0,
-	0);
-
-static MYSQL_SYSVAR_UINT(packet_bloom_probes,
-	pinba_variables()->packet_bloom_probes,
-	PLUGIN_VAR_RQCMDARG,
-	"number of bits to set in packet-level bloom filter",
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
-	{
-		long long tmp;
-		int const is_null = value->val_int(value, &tmp);
-
-		if (is_null)
-			return 1;
-
-		*static_cast<uint32_t*>(res_for_update) = tmp;
-
-		return 0;
-	},
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
-	{
-		uint32_t const saved_val = *(uint32_t*)saved_from_update;
-
-		P_E_->options_mutable()->packet_bloom_probes = saved_val;
-		*static_cast<uint32_t*>(out_to_mysql) = saved_val;
-	},
-	3, // def
-	1, // min
-	6, // max
-	0);
-
-static MYSQL_SYSVAR_UINT(timer_bloom_probes,
-	pinba_variables()->timer_bloom_probes,
-	PLUGIN_VAR_RQCMDARG,
-	"number of bits to set in packet-level bloom filter",
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *res_for_update, struct st_mysql_value *value) // check
-	{
-		long long tmp;
-		int const is_null = value->val_int(value, &tmp);
-
-		if (is_null)
-			return 1;
-
-		*static_cast<uint32_t*>(res_for_update) = tmp;
-
-		return 0;
-	},
-	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *out_to_mysql, const void *saved_from_update) // update
-	{
-		uint32_t const saved_val = *(uint32_t*)saved_from_update;
-
-		P_E_->options_mutable()->timer_bloom_probes = saved_val;
-		*static_cast<uint32_t*>(out_to_mysql) = saved_val;
-	},
-	3, // def
-	1, // min
-	6, // max
 	0);
 
 static struct st_mysql_sys_var* system_variables[]= {
@@ -599,12 +563,11 @@ static struct st_mysql_sys_var* system_variables[]= {
 	MYSQL_SYSVAR(repacker_input_buffer),
 	MYSQL_SYSVAR(repacker_batch_messages),
 	MYSQL_SYSVAR(repacker_batch_timeout_ms),
+	MYSQL_SYSVAR(repacker_enable_blooms),
 	MYSQL_SYSVAR(coordinator_input_buffer),
 	MYSQL_SYSVAR(report_input_buffer),
 	MYSQL_SYSVAR(packet_debug),
 	MYSQL_SYSVAR(packet_debug_fraction),
-	MYSQL_SYSVAR(packet_bloom_probes),
-	MYSQL_SYSVAR(timer_bloom_probes),
 	NULL
 };
 

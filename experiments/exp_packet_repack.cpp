@@ -405,6 +405,126 @@ inline str_ref pinba_request_status_to_str_ref(uint32_t status, meow::format::ty
 }
 
 
+template<class D>
+inline packet_t* pinba_request_to_packet___local(Pinba__Request const *r, D *d, struct nmpa_s *nmpa, bool enable_bloom)
+{
+	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
+
+	uint32_t td[r->n_dictionary];        // local word_offset -> global dictinary word_id
+	uint64_t td_hashed[r->n_dictionary]; // global dictionary word_id -> number hashed
+
+	for (unsigned i = 0; i < r->n_dictionary; i++)
+	{
+		td[i]        = d->get_or_add(r->dictionary[i]);
+		td_hashed[i] = pinba::hash_number(td[i]);
+		// ff::fmt(stdout, "{0}; dict xform {1} -> {2} {3}\n", __func__, r->dictionary[i], td[i], td_hashed[i]);
+	}
+
+	// have we added this local word_offset to bloom?
+	uint8_t bloom_added[r->n_dictionary];
+	memset(bloom_added, 0, sizeof(bloom_added));
+
+
+	p->host_id      = d->get_or_add(r->hostname);
+	p->server_id    = d->get_or_add(r->server_name);
+	p->script_id    = d->get_or_add(r->script_name);
+	p->schema_id    = d->get_or_add(r->schema);
+	// p->status       = r->status;
+	// p->status       = d->get_or_add(meow::format::type_tunnel<uint32_t>::call(r->status));
+	p->status       = d->get_or_add(pinba_request_status_to_str_ref(r->status));
+	p->traffic      = r->document_size;
+	p->mem_used     = r->memory_footprint;
+	p->request_time = duration_from_float(r->request_time);
+	p->ru_utime     = duration_from_float(r->ru_utime);
+	p->ru_stime     = duration_from_float(r->ru_stime);
+
+	// bloom should be somewhere close to the top
+	// if (enable_bloom)
+	// {
+	// 	p->timer_bloom = (timertag_bloom_t*)nmpa_alloc(nmpa, sizeof(timertag_bloom_t));
+	// 	new (p->timer_bloom) timertag_bloom_t();
+	// }
+
+	// timers
+	p->timer_count = r->n_timer_value;
+	if (p->timer_count > 0)
+	{
+		p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
+
+		// contiguous storage for all timer tag names/values
+		uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
+		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
+
+		unsigned current_tag_offset = 0;
+
+		for (unsigned i = 0; i < r->n_timer_value; i++)
+		{
+			packed_timer_t *t = &p->timers[i];
+			t->tag_count     = r->timer_tag_count[i];
+			t->hit_count     = r->timer_hit_count[i];
+			t->value         = duration_from_float(r->timer_value[i]);
+			t->ru_utime      = (i < r->n_timer_ru_utime) ? duration_from_float(r->timer_ru_utime[i]) : duration_t{0};
+			t->ru_stime      = (i < r->n_timer_ru_stime) ? duration_from_float(r->timer_ru_stime[i]) : duration_t{0};
+
+			// process timer tags
+			t->tag_name_ids  = timer_tag_name_ids + current_tag_offset;
+			t->tag_value_ids = timer_tag_value_ids + current_tag_offset;
+
+			for (size_t i = 0; i < t->tag_count; i++)
+			{
+				// offsets in r->dictionary and td
+				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + i];
+				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + i];
+
+				// translate through td
+				uint32_t const tag_name_id  = td[tag_name_off];
+				uint32_t const tag_value_id = td[tag_value_off];
+
+				// copy to final destination
+				t->tag_name_ids[i]  = tag_name_id;
+				t->tag_value_ids[i] = tag_value_id;
+
+				// TODO: enable_bloom should only work for timer blooms, request should always be enabled
+				if (enable_bloom)
+				{
+					// ff::fmt(stdout, "bloom add: [{0}] {1} -> {2}\n", d->get_word(tag_name_id), tag_name_id, td_hashed[tag_name_off]);
+
+					t->bloom.add_hashed(td_hashed[tag_name_off]);
+
+					// maybe also add to packet-level bloom, if we haven't already
+					if (0 == bloom_added[tag_name_off])
+					{
+						bloom_added[tag_name_off] = 1;
+						// p->timer_bloom->add_hashed(td_hashed[tag_name_off]);
+						p->timer_bloom.add_hashed(td_hashed[tag_name_off]);
+					}
+				}
+			}
+
+			// ff::fmt(stdout, "timer_bloom[{0}]: {1}\n", i, t->bloom.to_string());
+
+			// advance base offset in original request
+			current_tag_offset += t->tag_count;
+		}
+	}
+
+	// request tags
+	p->tag_count = r->n_tag_name;
+	if (p->tag_count > 0)
+	{
+		p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
+		for (unsigned i = 0; i < r->n_tag_name; i++)
+		{
+			p->tag_name_ids[i]  = td[r->tag_name[i]];
+			p->tag_value_ids[i] = td[r->tag_value[i]];
+		}
+	}
+
+	return p;
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char const *argv[])
@@ -464,7 +584,7 @@ try
 
 		dictionary_t g_dictionary;
 
-		packet_t *packet = pinba_request_to_packet(request, &g_dictionary, &nmpa, {3,3});
+		packet_t *packet = pinba_request_to_packet(request, &g_dictionary, &nmpa, true);
 
 		debug_dump_packet(stdout, packet, &g_dictionary, &nmpa);
 		nmpa_empty(&nmpa);
@@ -517,7 +637,7 @@ try
 		for (size_t i = 0; i < n_iterations; i++)
 		{
 			// str_packet_t *packet = pinba_request_to_str_packet(req, &d, &nmpa);
-			packet_t *packet = pinba_request_to_packet(req, &g_dictionary, &nmpa, {3,3});
+			packet_t *packet = pinba_request_to_packet___local(req, &g_dictionary, &nmpa, true);
 			// packet_t *packet = pinba_request_to_packet___local(req, &d, &nmpa, true);
 			nmpa_empty(&nmpa);
 		}

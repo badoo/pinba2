@@ -132,6 +132,7 @@ namespace { namespace aux {
 				.n_threads       = options->repacker_threads,
 				.batch_size      = options->repacker_batch_messages,
 				.batch_timeout   = options->repacker_batch_timeout,
+				.enable_blooms   = options->repacker_enable_blooms,
 			};
 			repacker_ = create_repacker(this->globals(), &repacker_conf);
 

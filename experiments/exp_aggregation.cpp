@@ -595,7 +595,7 @@ int main(int argc, char const *argv[])
 		struct nmpa_s nmpa;
 		nmpa_init(&nmpa, 1024);
 
-		packet = pinba_request_to_packet(request, globals->dictionary(), &nmpa, {3,3});
+		packet = pinba_request_to_packet(request, globals->dictionary(), &nmpa, true);
 
 		debug_dump_packet(stdout, packet, globals->dictionary());
 	}
