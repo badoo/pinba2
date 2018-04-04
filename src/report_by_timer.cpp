@@ -42,8 +42,8 @@ namespace { namespace aux {
 
 		struct tick_t : public report_tick_t
 		{
-			std::vector<tick_item_t>  items;
-			std::vector<histogram_t>  hvs;
+			std::deque<tick_item_t>  items;
+			std::deque<histogram_t>  hvs;
 		};
 
 	public: // key extraction and transformation
@@ -284,7 +284,7 @@ namespace { namespace aux {
 				result.row_count = tick_->items.size();
 
 				result.mem_used += sizeof(*tick_);
-				result.mem_used += tick_->items.capacity() * sizeof(*tick_->items.begin());
+				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
 				for (auto const& hv : tick_->hvs)
 					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
 
@@ -517,8 +517,8 @@ namespace { namespace aux {
 
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
 			{
-				std::vector<tick_item_t>       items;
-				std::vector<flat_histogram_t>  hvs;
+				std::deque<tick_item_t>        items; // should be the same as aggregator tick items, to move data
+				std::vector<flat_histogram_t>  hvs;   // keep this as vector, as we can preallocate (and need to copy anyway)
 			};
 
 		public:
@@ -580,7 +580,8 @@ namespace { namespace aux {
 				{
 					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 					result.mem_used += sizeof(tick);
-					result.mem_used += tick.items.capacity() * sizeof(*tick.items.begin());
+					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
+					result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
 					for (flat_histogram_t const& hv : tick.hvs)
 						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
 				}

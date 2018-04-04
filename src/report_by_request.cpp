@@ -39,48 +39,9 @@ namespace { namespace aux {
 
 		struct tick_t : public report_tick_t
 		{
-			std::vector<tick_item_t>  items;
-			std::vector<histogram_t>  hvs;
+			std::deque<tick_item_t>  items;
+			std::deque<histogram_t>  hvs;
 		};
-
-
-#if 0
-		struct tick_item_t
-			// : private boost::noncopyable // bring this back, when we remove copy ctor
-		{
-			data_t       data;
-			histogram_t  hv;
-
-			void data_increment(packet_t *packet)
-			{
-				data.req_count  += 1;
-				data.time_total += packet->request_time;
-				data.ru_utime   += packet->ru_utime;
-				data.ru_stime   += packet->ru_stime;
-				data.traffic    += packet->traffic;
-				data.mem_used   += packet->mem_used;
-			}
-
-			void hv_increment(packet_t *packet, histogram_conf_t const& hv_conf)
-			{
-				hv.increment(hv_conf, packet->request_time);
-			}
-		};
-
-		struct tick_t : public report_tick_t
-		{
-			struct hashtable_t
-				: public google::dense_hash_map<key_t, tick_item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
-			{
-				hashtable_t()
-				{
-					this->set_empty_key(report_key_impl___make_empty<NKeys>());
-				}
-			};
-
-			hashtable_t ht;
-		};
-#endif
 
 	public: // aggregator
 
@@ -197,7 +158,7 @@ namespace { namespace aux {
 				result.row_count = tick_->items.size();
 
 				result.mem_used += sizeof(*tick_);
-				result.mem_used += tick_->items.capacity() * sizeof(*tick_->items.begin());
+				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
 				for (auto const& hv : tick_->hvs)
 					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
 
@@ -269,8 +230,8 @@ namespace { namespace aux {
 
 			struct history_tick_t : public report_tick_t // inheric to get compatibility with history ring for free
 			{
-				std::vector<tick_item_t>       items;
-				std::vector<flat_histogram_t>  hvs;
+				std::deque<tick_item_t>        items; // should be the same as aggregator tick items, to move data
+				std::vector<flat_histogram_t>  hvs;   // keep this as vector, as we can preallocate (and need to copy anyway)
 			};
 
 		public:
@@ -332,7 +293,8 @@ namespace { namespace aux {
 				{
 					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 					result.mem_used += sizeof(tick);
-					result.mem_used += tick.items.capacity() * sizeof(*tick.items.begin());
+					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
+					result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
 					for (flat_histogram_t const& hv : tick.hvs)
 						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
 				}
