@@ -7,7 +7,7 @@ AM_CXXFLAGS = \
 	#
 
 # disable optimization for experimental code
-AM_CXXFLAGS+= -O0 -ggdb3
+AM_CXXFLAGS+= -O3 -ggdb3
 
 AM_CFLAGS = \
 	$(AX_CFLAGS) \
@@ -36,6 +36,7 @@ noinst_PROGRAMS = \
 	exp_percentiles \
 	exp_protobuf_nmpa \
 	exp_aggregation \
+	exp_histogram_perf \
 	#
 
 exp_aggregation_SOURCES = \
@@ -76,4 +77,9 @@ exp_percentiles_SOURCES = \
 
 exp_protobuf_nmpa_SOURCES = \
 	exp_protobuf_nmpa.cpp \
+	#
+
+exp_histogram_perf_SOURCES = \
+	exp_histogram_perf.cpp \
+	../hdr_histogram/hdr_histogram.c \
 	#
