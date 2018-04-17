@@ -7,7 +7,8 @@ AM_CXXFLAGS = \
 	#
 
 # disable optimization for experimental code
-AM_CXXFLAGS+= -O3 -ggdb3
+#AM_CXXFLAGS+= -O3 -ggdb3 -ffast-math
+AM_CXXFLAGS+= -O0 -ggdb3
 
 AM_CFLAGS = \
 	$(AX_CFLAGS) \
