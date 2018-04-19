@@ -506,6 +506,9 @@ private:
 
 inline histogram_conf_t histogram___configure_with_rinfo(report_info_t const& rinfo)
 {
+	if (!rinfo.hv_enabled)
+		return {};
+
 	histogram_conf_t hv_conf = {
 		.min_value      = rinfo.hv_min_value,
 		.max_value      = rinfo.hv_min_value + (rinfo.hv_bucket_count * rinfo.hv_bucket_d),
