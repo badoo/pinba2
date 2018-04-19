@@ -258,7 +258,13 @@ public:
 
 		for (uint32_t i = 0; i < other.counts_len_; i++)
 		{
-			this->counts_[i] += other.counts_[i];
+			counter_t&       dst_counter = this->counts_[i];
+			counter_t const& src_counter = other.counts_[i];
+
+			if ((dst_counter == 0) && (src_counter != 0))
+				this->counts_nonzero_ += 1;
+
+			dst_counter += src_counter;
 		}
 
 		this->negative_inf_ += other.negative_inf_;
