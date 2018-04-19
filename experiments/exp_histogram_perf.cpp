@@ -6,13 +6,11 @@
 #include <meow/error.hpp>
 
 #include "pinba/globals.h"
-#include "pinba/histogram.h"
 
 #include "hdr_histogram/hdr_histogram.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-// TODO: use smaller types for these
 // values at [1, 600sec] range, 1 microsecond resolution, 16 significant bits
 // hv.lowest_trackable_value          = 1
 // hv.highest_trackable_value         = 600000000
@@ -505,6 +503,132 @@ inline void debug_dump_histogram(SinkT& sink, Histogram const& hv, meow::str_ref
 		ff::fmt(stderr, "  [{0}] -> {1}\n", hv.value_at_index(i), hv.count_at_index(i));
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct histogram_conf_t
+{
+	duration_t  min_value;       // >= 0
+	duration_t  max_value;       // >= 0, >= min_value*2
+	duration_t  unit_size;       // (a microsecond or millisecond usually)
+	int         precision_bits;  // bucket precision (7 bits = ~1%, 10 bits ~0.1%, 14 bits ~0.01%)
+
+	// for flat_histogram_t
+	duration_t bucket_d;     // bucket width
+
+	hdr_histogram_conf_t hdr;
+};
+
+meow::error_t hdr_histogram_configure(hdr_histogram_conf_t *conf, histogram_conf_t const& hv_conf)
+{
+	int64_t low  = (hv_conf.min_value / hv_conf.unit_size).nsec;
+	if (low <= 0)
+		low = 1;
+
+	int64_t const high = (hv_conf.max_value / hv_conf.unit_size).nsec;
+	return hdr_histogram_configure(conf, low, high, hv_conf.precision_bits);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// plain sorted-array histograms, should be faster to merge and calculate percentiles from
+
+struct histogram_value_t
+{
+	uint32_t bucket_id;
+	uint32_t value;
+};
+static_assert(sizeof(histogram_value_t) == sizeof(uint64_t), "histogram_value_t must have no padding");
+
+inline constexpr bool operator<(histogram_value_t const& l, histogram_value_t const& r)
+{
+	return l.bucket_id < r.bucket_id;
+}
+
+typedef std::vector<histogram_value_t> histogram_values_t;
+
+struct flat_histogram_t
+{
+	histogram_values_t  values;
+	uint32_t            value_count;
+	uint32_t            negative_inf;
+	uint32_t            positive_inf;
+};
+static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+4*sizeof(uint32_t)), "flat_histogram_t must have no padding");
+
+inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t const& conf, double percentile)
+{
+	if (percentile == 0.)
+		return conf.min_value;
+
+	if (hv.value_count == 0) // no values in histogram, nothing to do
+		return conf.min_value;
+
+	uint32_t required_sum = [&]()
+	{
+		uint32_t const res = std::ceil(hv.value_count * percentile / 100.0);
+		return (res > hv.value_count) ? hv.value_count : res;
+	}();
+
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count, required_sum);
+
+	// fastpath - very low percentile, nothing to do
+	if (required_sum == 0)
+		return conf.min_value;
+
+	// fastpath - are we going to hit negative infinity?
+	if (required_sum <= hv.negative_inf)
+		return conf.min_value;
+
+	// fastpath - are we going to hit positive infinity?
+	if (required_sum > (hv.value_count - hv.positive_inf))
+		return conf.max_value;
+
+	// already past negative_inf, adjust
+	required_sum -= hv.negative_inf;
+
+
+	// slowpath - shut up and calculate
+	uint32_t current_sum = 0;
+
+	for (auto const& item : hv.values)
+	{
+		uint32_t const bucket_id       = item.bucket_id;
+		uint32_t const next_has_values = item.value;
+		uint32_t const need_values     = required_sum - current_sum;
+
+		if (next_has_values < need_values) // take bucket and move on
+		{
+			current_sum += next_has_values;
+			// ff::fmt(stdout, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			continue;
+		}
+
+		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
+		{
+			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			return conf.min_value + conf.bucket_d * (bucket_id + 1);
+		}
+
+		// incomplete bucket, interpolate, assuming flat time distribution within bucket
+		{
+			duration_t const d = conf.bucket_d * need_values / next_has_values;
+
+			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
+			return conf.min_value + conf.bucket_d * bucket_id + d;
+		}
+	}
+
+	// dump hv contents to stderr, as we're going to die anyway
+	{
+		ff::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
+		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, value_count: {3}, hv_size: {4}\n",
+			__func__, hv.negative_inf, hv.positive_inf, hv.value_count, hv.values.size());
+
+		for (auto const& item : hv.values)
+			ff::fmt(stderr, "[{0}] -> {1}\n", item.bucket_id, item.value);
+	}
+
+	assert(!"must not be reached");
+}
 
 template<class Histogram>
 inline void histogram___convert_hdr_to_flat(Histogram const& hv, typename Histogram::config_t const& conf, flat_histogram_t *flat)
@@ -537,26 +661,6 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(Histogram const& hv, typ
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct hv_conf_t
-{
-	duration_t  min_value;
-	duration_t  max_value;
-	duration_t  unit_size;       // (a microsecond or millisecond usually)
-	int         precision_bits;  // bucket precision (7 bits = ~1%, 10 bits ~0.1%, 14 bits ~0.01%)
-};
-
-meow::error_t hdr_histogram_configure(hdr_histogram_conf_t *conf, hv_conf_t const& hv_conf)
-{
-	int64_t low  = (hv_conf.min_value / hv_conf.unit_size).nsec;
-	if (low <= 0)
-		low = 1;
-
-	int64_t const high = (hv_conf.max_value / hv_conf.unit_size).nsec;
-	return hdr_histogram_configure(conf, low, high, hv_conf.precision_bits);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////
-
 int main(int argc, char const *argv[])
 {
 	constexpr size_t n_iterations = 1 * 1000 * 1000;
@@ -567,18 +671,21 @@ int main(int argc, char const *argv[])
 	double seq_d;
 	double rnd_d;
 
-	hv_conf_t hv_cf = {
+	histogram_conf_t hv_conf = {
 		.min_value      =  0 * d_microsecond,
 		.max_value      = 60 * d_second,
 		.unit_size      =  1 * d_microsecond,
 		.precision_bits = 7,
+		.bucket_d       =  1 * d_microsecond,
+		.hdr            = {},
 	};
 
+#if 0
 	{
 		histogram_conf_t hv_conf = {
-			.bucket_count = (uint32_t)((hv_cf.max_value - hv_cf.min_value) / hv_cf.unit_size).nsec,
-			.bucket_d     = hv_cf.unit_size,
-			.min_value    = hv_cf.min_value,
+			.bucket_count = (uint32_t)((hv_conf.max_value - hv_conf.min_value) / hv_conf.unit_size).nsec,
+			.bucket_d     = hv_conf.unit_size,
+			.min_value    = hv_conf.min_value,
 		};
 
 		histogram_t hv;
@@ -627,7 +734,7 @@ int main(int argc, char const *argv[])
 				, sw.stamp(), flat_hv.values.capacity() * sizeof(*flat_hv.values.begin()));
 		}
 	}
-
+#endif
 	{
 		using hdr_histogram_t = struct hdr_histogram;
 		hdr_histogram_t *h;
@@ -635,7 +742,7 @@ int main(int argc, char const *argv[])
 		struct hdr_histogram_bucket_config cfg;
 
 		{
-			int r = hdr_calculate_bucket_config(1, ((hv_cf.max_value - hv_cf.min_value) / hv_cf.unit_size).nsec, 3, &cfg);
+			int r = hdr_calculate_bucket_config(1, ((hv_conf.max_value - hv_conf.min_value) / hv_conf.unit_size).nsec, 3, &cfg);
 			if (0 != r)
 				throw std::runtime_error(ff::fmt_str("hdr_calculate_bucket_config error: {0}", r));
 		}
@@ -762,7 +869,7 @@ int main(int argc, char const *argv[])
 		using hv_t = hdr_histogram_t<uint32_t>;
 
 		hdr_histogram_conf_t conf;
-		auto const err = hdr_histogram_configure(&conf, hv_cf);
+		auto const err = hdr_histogram_configure(&conf, hv_conf);
 		if (err)
 			throw std::runtime_error(err.what());
 
@@ -818,18 +925,11 @@ int main(int argc, char const *argv[])
 
 			sw.reset();
 
-			histogram_conf_t flat_conf = {
-				.bucket_count = (uint32_t)((hv_cf.max_value - hv_cf.min_value) / hv_cf.unit_size).nsec,
-				.bucket_d     = hv_cf.unit_size,
-				.min_value    = hv_cf.min_value,
-			};
-
-
-			ff::fmt(stdout, "  p50: {0}\n", get_percentile(flat_hv, flat_conf, 50));
-			ff::fmt(stdout, "  p75: {0}\n", get_percentile(flat_hv, flat_conf, 75));
-			ff::fmt(stdout, "  p95: {0}\n", get_percentile(flat_hv, flat_conf, 95));
-			ff::fmt(stdout, "  p99: {0}\n", get_percentile(flat_hv, flat_conf, 99));
-			ff::fmt(stdout, "  p100: {0}\n", get_percentile(flat_hv, flat_conf, 100));
+			ff::fmt(stdout, "  p50: {0}\n", get_percentile(flat_hv, hv_conf, 50));
+			ff::fmt(stdout, "  p75: {0}\n", get_percentile(flat_hv, hv_conf, 75));
+			ff::fmt(stdout, "  p95: {0}\n", get_percentile(flat_hv, hv_conf, 95));
+			ff::fmt(stdout, "  p99: {0}\n", get_percentile(flat_hv, hv_conf, 99));
+			ff::fmt(stdout, "  p100: {0}\n", get_percentile(flat_hv, hv_conf, 100));
 
 			ff::fmt(stdout, "flat percentiles calc took: {0}\n", sw.stamp());
 		}

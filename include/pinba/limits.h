@@ -15,7 +15,7 @@
 // max histogram size
 // here mostly for sanity check, no idea who'd want this kind of precision honestly
 #ifndef PINBA_LIMIT___MAX_HISTOGRAM_SIZE
-#define PINBA_LIMIT___MAX_HISTOGRAM_SIZE (10 * 1000 * 1000)
+#define PINBA_LIMIT___MAX_HISTOGRAM_SIZE (100 * 1000 * 1000)
 #endif
 
 

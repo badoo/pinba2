@@ -23,17 +23,18 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 		auto const *histogram = snapshot->get_histogram(pos);
 		if (histogram != nullptr)
 		{
-			if (HISTOGRAM_KIND__HASHTABLE == snapshot->histogram_kind())
-			{
-				auto const *hv = static_cast<histogram_t const*>(histogram);
+			// if (HISTOGRAM_KIND__HASHTABLE == snapshot->histogram_kind())
+			// {
+			// 	auto const *hv = static_cast<histogram_t const*>(histogram);
 
-				auto const& hv_map = hv->map_cref();
-				for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
-				{
-					ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
-				}
-			}
-			else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
+			// 	auto const& hv_map = hv->map_cref();
+			// 	for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+			// 	{
+			// 		ff::fmt(sink, "{0}{1}: {2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+			// 	}
+			// }
+			// else if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
+			if (HISTOGRAM_KIND__FLAT == snapshot->histogram_kind())
 			{
 				auto const *hv = static_cast<flat_histogram_t const*>(histogram);
 
@@ -41,6 +42,32 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 				for (auto it = hvalues.begin(), it_end = hvalues.end(); it != it_end; ++it)
 				{
 					ff::fmt(sink, "{0}{1}: {2}", (hvalues.begin() == it)?"":", ", it->bucket_id, it->value);
+				}
+			}
+			else if (HISTOGRAM_KIND__HDR == snapshot->histogram_kind())
+			{
+				auto const *hv = static_cast<hdr_histogram_t const*>(histogram);
+				bool printed_something = false;
+
+				for (uint32_t i = 0; i < hv->counts_len(); i++)
+				{
+					if (hv->count_at_index(i) == 0)
+						continue;
+
+					ff::fmt(sink, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(i), hv->count_at_index(i));
+					printed_something = true;
+				}
+
+				if (hv->negative_inf() > 0)
+				{
+					ff::fmt(sink, "{0}min:{1}", (printed_something)?", ":"", hv->negative_inf());
+					printed_something = true;
+				}
+
+				if (hv->positive_inf() > 0)
+				{
+					ff::fmt(sink, "{0}max:{1}", (printed_something)?", ":"", hv->positive_inf());
+					printed_something = true;
 				}
 			}
 		}

@@ -15,8 +15,9 @@
 #define REPORT_KIND__BY_TIMER_DATA    1
 #define REPORT_KIND__BY_PACKET_DATA   2
 
-#define HISTOGRAM_KIND__HASHTABLE  0
+// #define HISTOGRAM_KIND__HASHTABLE  0
 #define HISTOGRAM_KIND__FLAT       1
+#define HISTOGRAM_KIND__HDR        2
 
 struct report_info_t
 {
@@ -93,6 +94,7 @@ using report_state_ptr = std::unique_ptr<report_state_t>;
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct packet_t;
+struct histogram_conf_t;
 struct dictionary_t;
 struct snapshot_dictionary_t;
 
@@ -124,6 +126,9 @@ struct report_snapshot_t
 	// i.e. report_info() and get_snapshot() returning slightly different data,
 	// due to those being 2 separate function calls (and some packets might get processed in the middle)
 	virtual report_info_t const* report_info() const = 0;
+
+	// histograms configuration
+	virtual histogram_conf_t const* histogram_conf() const = 0;
 
 	// get dictionary used to translate ids to names, read only
 	virtual dictionary_t const* dictionary() const = 0;

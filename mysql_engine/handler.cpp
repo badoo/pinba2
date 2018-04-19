@@ -734,6 +734,11 @@ private:
 				sw.stamp(), snapshot_->row_count());
 		}
 
+		if (P_L_->does_accept(meow::logging::log_level::debug))
+		{
+			debug_dump_report_snapshot(stderr, snapshot_.get(), share_data_->mysql_name);
+		}
+
 		return 0;
 	}
 	catch (std::exception const& e)
@@ -908,33 +913,40 @@ private:
 			unsigned const n_percentile_fields = percentiles.size();
 			if (findex < n_percentile_fields)
 			{
+				auto const *hv_conf   = snapshot_->histogram_conf();
 				auto const *histogram = snapshot_->get_histogram(row_pos);
+
+				LOG_DEBUG(P_L_, "snapshot::{0}; histogram: {1}, conf: {{ [{2}, {3}], {4}, {5} }"
+					, __func__, histogram, hv_conf->min_value, hv_conf->max_value, hv_conf->unit_size, hv_conf->precision_bits);
 
 				// protect against percentile field in report without percentiles
 				if (histogram != nullptr)
 				{
-					histogram_conf_t const hv_conf = {
-						.bucket_count = rinfo->hv_bucket_count,
-						.bucket_d     = rinfo->hv_bucket_d,
-						.min_value    = rinfo->hv_min_value,
-					};
-
 					auto const percentile_d = [&]() -> duration_t
 					{
-						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
-						{
-							auto const *hv = static_cast<histogram_t const*>(histogram);
-							return get_percentile(*hv, hv_conf, percentiles[findex]);
-						}
-						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+						// if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+						// {
+						// 	auto const *hv = static_cast<histogram_t const*>(histogram);
+						// 	return get_percentile(*hv, *hv_conf, percentiles[findex]);
+						// }
+
+						if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
-							return get_percentile(*hv, hv_conf, percentiles[findex]);
+							return get_percentile(*hv, *hv_conf, percentiles[findex]);
+						}
+
+						if (HISTOGRAM_KIND__HDR == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<hdr_histogram_t const*>(histogram);
+							return get_percentile(*hv, *hv_conf, percentiles[findex]);
 						}
 
 						assert(!"must not be reached");
 						return {0};
 					}();
+
+					LOG_DEBUG(P_L_, "snapshot::{0}; percentile[{1}] = {2}", __func__, percentiles[findex], percentile_d);
 
 					(*field)->set_notnull();
 					(*field)->store(duration_seconds_as_double(percentile_d));
@@ -961,23 +973,24 @@ private:
 						ff::fmt(result, "hv={0}:{1}:{2};", hv_min_ms, hv_max_ms, rinfo->hv_bucket_count);
 						ff::fmt(result, "values=[");
 
-						if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
-						{
-							auto const *hv = static_cast<histogram_t const*>(histogram);
+						// if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
+						// {
+						// 	auto const *hv = static_cast<histogram_t const*>(histogram);
 
-							auto const& hv_map = hv->map_cref();
-							for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
-							{
-								ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
-							}
+						// 	auto const& hv_map = hv->map_cref();
+						// 	for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
+						// 	{
+						// 		ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
+						// 	}
 
-							if (hv->negative_inf() > 0)
-								ff::fmt(result, "{0}min:{1}", hv_map.empty() ? "" : ", ", hv->negative_inf());
+						// 	if (hv->negative_inf() > 0)
+						// 		ff::fmt(result, "{0}min:{1}", hv_map.empty() ? "" : ", ", hv->negative_inf());
 
-							if (hv->positive_inf() > 0)
-								ff::fmt(result, "{0}max:{1}", hv_map.empty() ? "" : ", ", hv->positive_inf());
-						}
-						else if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
+						// 	if (hv->positive_inf() > 0)
+						// 		ff::fmt(result, "{0}max:{1}", hv_map.empty() ? "" : ", ", hv->positive_inf());
+						// }
+
+						if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
 							auto const *hv = static_cast<flat_histogram_t const*>(histogram);
 
@@ -994,6 +1007,34 @@ private:
 								ff::fmt(result, "{0}max:{1}", hvalues.empty() ? "" : ", ", hv->positive_inf);
 						}
 
+						if (HISTOGRAM_KIND__HDR == rinfo->hv_kind)
+						{
+							auto const *hv = static_cast<hdr_histogram_t const*>(histogram);
+
+							bool printed_something = false;
+
+							for (uint32_t i = 0; i < hv->counts_len(); i++)
+							{
+								if (hv->count_at_index(i) == 0)
+									continue;
+
+								ff::fmt(result, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(i), hv->count_at_index(i));
+								printed_something = true;
+							}
+
+							if (hv->negative_inf() > 0)
+							{
+								ff::fmt(result, "{0}min:{1}", (printed_something)?", ":"", hv->negative_inf());
+								printed_something = true;
+							}
+
+							if (hv->positive_inf() > 0)
+							{
+								ff::fmt(result, "{0}max:{1}", (printed_something)?", ":"", hv->positive_inf());
+								printed_something = true;
+							}
+						}
+
 						ff::fmt(result, "]");
 
 						return result;
@@ -1002,7 +1043,10 @@ private:
 					(*field)->set_notnull();
 					(*field)->store(hv_data.data(), (uint)hv_data.size(), &my_charset_bin);
 				}
+
+				continue;
 			}
+			findex -= n_histogram_fields;
 
 		} // loop over all fields
 
