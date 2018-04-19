@@ -176,19 +176,19 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 	flat.negative_inf = hdr.negative_inf();
 	flat.positive_inf = hdr.positive_inf();
 
-	auto const counts_r = hdr.get_counts_range();
-
 	flat.values.clear();
-	flat.values.reserve(counts_r.size());
+	flat.values.reserve(hdr.counts_nonzero());
+
+	auto const counts_r = hdr.get_counts_range();
 
 	for (size_t i = 0; i < counts_r.size(); i++)
 	{
+		uint32_t const count = counts_r[i];
+		if (count == 0) // XXX: predicts badly, no idea how to improve
+			continue;
+
 		// gotta cast here, since flat_histogram_t uses uint32_t
 		uint32_t const bucket_id = (uint32_t) hdr.value_at_index(i);
-		uint32_t const count     = (uint32_t) hdr.count_at_index(i);
-
-		if (count == 0)
-			continue;
 
 		flat.values.push_back({ .bucket_id = bucket_id, .value = count });
 	}

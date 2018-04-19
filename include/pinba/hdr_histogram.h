@@ -140,6 +140,7 @@ public:
 		negative_inf_                   = 0;
 		positive_inf_                   = 0;
 		total_count_                    = 0;
+		counts_nonzero_                 = 0;
 		counts_len_                     = conf.counts_len;
 
 		sub_bucket_count                = conf.sub_bucket_count;
@@ -157,6 +158,7 @@ public:
 		negative_inf_                   = other.negative_inf_;
 		positive_inf_                   = other.positive_inf_;
 		total_count_                    = other.total_count_;
+		counts_nonzero_                 = other.counts_nonzero_;
 		counts_len_                     = other.counts_len_;
 
 		sub_bucket_count                = other.sub_bucket_count;
@@ -174,6 +176,7 @@ public:
 		negative_inf_                   = other.negative_inf_;
 		positive_inf_                   = other.positive_inf_;
 		total_count_                    = other.total_count_;
+		counts_nonzero_                 = other.counts_nonzero_;
 		counts_len_                     = other.counts_len_;
 
 		sub_bucket_count                = other.sub_bucket_count;
@@ -187,10 +190,11 @@ public:
 
 public: // reads
 
-	uint64_t negative_inf() const { return negative_inf_; }
-	uint64_t positive_inf() const { return positive_inf_; }
-	uint64_t total_count() const { return total_count_; }
-	uint32_t counts_len() const { return counts_len_; }
+	counter_t negative_inf() const { return negative_inf_; }
+	counter_t positive_inf() const { return positive_inf_; }
+	uint64_t  total_count() const { return total_count_; }
+	uint32_t  counts_nonzero() const { return counts_nonzero_; }
+	uint32_t  counts_len() const { return counts_len_; }
 
 	using counts_range_t    = meow::string_ref<counter_t const>;
 	using counts_range_nc_t = meow::string_ref<counter_t>;
@@ -234,8 +238,14 @@ public:
 		}
 		else {
 			int32_t const counts_index = counts_index_for(value);
-			assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
-			this->counts_[counts_index] += increment_by;
+			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
+
+			counter_t& counter = this->counts_[counts_index];
+
+			if (counter == 0)
+				counts_nonzero_ += 1;
+
+			counter += increment_by;
 		}
 
 		this->total_count_ += increment_by;
@@ -427,6 +437,7 @@ public: // utilities
 
 private:
 
+	// FIXME: experiment with small types, they seem to generate too many instructions to extend
 	uint16_t   sub_bucket_count;
 	uint16_t   sub_bucket_half_count;
 	uint16_t   sub_bucket_mask;
@@ -434,19 +445,21 @@ private:
 	uint8_t    sub_bucket_half_count_magnitude;
 	// 8
 
-	uint64_t   total_count_;
+	uint32_t   counts_nonzero_;
+	uint32_t   counts_len_;
 	// 16
 
-	uint32_t   counts_len_;
+	uint64_t   total_count_;
 	// 24
 
 	std::unique_ptr<counter_t[]> counts_; // field order is important to avoid padding
 	// 32
 
-	uint64_t   negative_inf_;
-	uint64_t   positive_inf_;
-	// 48
+	counter_t   negative_inf_;
+	counter_t   positive_inf_;
+	// 40
 };
+static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 40, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
