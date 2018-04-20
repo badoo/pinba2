@@ -181,8 +181,22 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 
 	auto const counts_r = hdr.get_counts_range();
 
-	size_t insert_position = 0;
+	uint32_t read_position = 0;
+	for (uint32_t i = 0; i < hdr.counts_nonzero(); i++)
+	{
+		while (counts_r[read_position] == 0)
+			read_position++;
 
+		histogram_value_t& hv_value = flat.values[i];
+		hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position); // gotta cast here, since flat_histogram_t uses uint32_t
+		hv_value.value     = counts_r[read_position];
+		read_position++;
+	}
+
+	assert(read_position <= counts_r.size());
+
+#if 0
+	size_t insert_position = 0;
 	for (size_t i = 0; i < counts_r.size(); i++)
 	{
 		uint32_t const count = counts_r[i];
@@ -198,6 +212,7 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 	}
 
 	assert(insert_position == hdr.counts_nonzero()); // sanity
+#endif
 
 	return flat;
 }
