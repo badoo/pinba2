@@ -467,6 +467,7 @@ namespace { namespace aux {
 			: globals_(globals)
 			, stats_(globals->stats())
 			, conf_(conf)
+			, next_report_id_(0)
 			, relay_(globals, conf)
 		{
 		}
@@ -502,7 +503,7 @@ namespace { namespace aux {
 
 			LOG_DEBUG(globals_->logger(), "creating report {0}", report_name);
 
-			auto const thread_id   = static_cast<uint32_t>(report_hosts_.size());
+			auto const thread_id   = next_report_id_++;
 			auto const thr_name    = ff::fmt_str("rh/{0}", thread_id);
 			auto const rh_name     = ff::fmt_str("rh/{0}/{1}", thread_id, report_name);
 
@@ -628,6 +629,7 @@ namespace { namespace aux {
 		// report_name -> report_host
 		using rhost_map_t = std::unordered_map<std::string, report_host_ptr>;
 		rhost_map_t         report_hosts_;
+		uint32_t            next_report_id_;
 
 		relay_worker_t      relay_;
 	};
