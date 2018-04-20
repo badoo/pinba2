@@ -149,10 +149,8 @@ public:
 		unit_magnitude                  = conf.unit_magnitude;
 		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
 
-		counts_ = (counter_t*)calloc(1, sizeof(counter_t) * counts_len_);
-
-		// counts_.reset(new counter_t[counts_len_]);
-		// std::fill(counts_.get(), counts_.get() + counts_len_, 0);
+		counts_.reset(new counter_t[counts_len_]);
+		std::fill(counts_.get(), counts_.get() + counts_len_, 0);
 	}
 
 	hdr_histogram___impl_t(hdr_histogram___impl_t const& other)
@@ -169,11 +167,8 @@ public:
 		unit_magnitude                  = other.unit_magnitude;
 		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
 
-		counts_ = (counter_t*)malloc(sizeof(counter_t) * counts_len_);
-		memcpy(counts_, other.counts_, sizeof(counter_t) * counts_len_);
-
-		// counts_.reset(new counter_t[counts_len_]);
-		// std::copy(other.counts_.get(), other.counts_.get() + counts_len_, counts_.get());
+		counts_.reset(new counter_t[counts_len_]);
+		std::copy(other.counts_.get(), other.counts_.get() + counts_len_, counts_.get());
 	}
 
 	hdr_histogram___impl_t(hdr_histogram___impl_t&& other)
@@ -190,14 +185,7 @@ public:
 		unit_magnitude                  = other.unit_magnitude;
 		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
 
-		// counts_ = std::move(other.counts_);
-		counts_ = other.counts_;
-		other.counts_ = nullptr;
-	}
-
-	~hdr_histogram___impl_t()
-	{
-		free(counts_);
+		counts_ = std::move(other.counts_);
 	}
 
 public: // reads
@@ -213,14 +201,12 @@ public: // reads
 
 	counts_range_t get_counts_range() const
 	{
-		// return { this->counts_.get(), this->counts_len_ };
-		return { this->counts_, this->counts_len_ };
+		return { this->counts_.get(), this->counts_len_ };
 	}
 
 	counts_range_nc_t mutable_counts_range()
 	{
-		// return { this->counts_.get(), this->counts_len_ };
-		return { this->counts_, this->counts_len_ };
+		return { this->counts_.get(), this->counts_len_ };
 	}
 
 	uint64_t get_allocated_size() const
@@ -470,8 +456,7 @@ private:
 	uint64_t   total_count_;
 	// 24
 
-	// std::unique_ptr<counter_t[]> counts_; // field order is important to avoid padding
-	counter_t *counts_; // field order is important to avoid padding
+	std::unique_ptr<counter_t[]> counts_; // field order is important to avoid padding
 	// 32
 
 	counter_t   negative_inf_;
