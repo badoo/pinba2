@@ -177,7 +177,7 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 	flat.positive_inf = hdr.positive_inf();
 
 	flat.values.clear();
-	flat.values.resize(hdr.counts_nonzero()); // this does useless zero init
+	flat.values.resize(hdr.counts_nonzero()); // FIXME: this does useless zero init
 
 	auto const counts_r = hdr.get_counts_range();
 
@@ -188,7 +188,7 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 			read_position++;
 
 		histogram_value_t& hv_value = flat.values[i];
-		hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position); // gotta cast here, since flat_histogram_t uses uint32_t
+		hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position);
 		hv_value.value     = counts_r[read_position];
 		read_position++;
 	}
