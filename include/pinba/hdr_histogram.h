@@ -242,10 +242,8 @@ public:
 
 			counter_t& counter = this->counts_[counts_index];
 
-			if (counter == 0)
-				counts_nonzero_ += 1;
-
-			counter += increment_by;
+			counts_nonzero_ += (counter == 0);
+			counter         += increment_by;
 		}
 
 		this->total_count_ += increment_by;
