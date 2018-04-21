@@ -153,6 +153,15 @@ public:
 		std::fill(counts_.get(), counts_.get() + counts_len_, 0);
 	}
 
+	// not to be copied
+	hdr_histogram___impl_t(hdr_histogram___impl_t const& other) = delete;
+	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t const& other) = delete;
+
+	// movable
+	hdr_histogram___impl_t(hdr_histogram___impl_t && other) = default;
+	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t && other) = default;
+
+#if 0
 	hdr_histogram___impl_t(hdr_histogram___impl_t const& other)
 	{
 		negative_inf_                   = other.negative_inf_;
@@ -171,7 +180,7 @@ public:
 		std::copy(other.counts_.get(), other.counts_.get() + counts_len_, counts_.get());
 	}
 
-	hdr_histogram___impl_t(hdr_histogram___impl_t&& other)
+	hdr_histogram___impl_t(hdr_histogram___impl_t&& other) noexcept
 	{
 		negative_inf_                   = other.negative_inf_;
 		positive_inf_                   = other.positive_inf_;
@@ -187,14 +196,15 @@ public:
 
 		counts_ = std::move(other.counts_);
 	}
+#endif
 
 public: // reads
 
-	counter_t negative_inf() const { return negative_inf_; }
-	counter_t positive_inf() const { return positive_inf_; }
-	uint64_t  total_count() const { return total_count_; }
-	uint32_t  counts_nonzero() const { return counts_nonzero_; }
-	uint32_t  counts_len() const { return counts_len_; }
+	counter_t negative_inf() const noexcept { return negative_inf_; }
+	counter_t positive_inf() const noexcept { return positive_inf_; }
+	uint64_t  total_count() const noexcept { return total_count_; }
+	uint32_t  counts_nonzero() const noexcept { return counts_nonzero_; }
+	uint32_t  counts_len() const noexcept { return counts_len_; }
 
 	using counts_range_t    = meow::string_ref<counter_t const>;
 	using counts_range_nc_t = meow::string_ref<counter_t>;
@@ -216,7 +226,7 @@ public: // reads
 
 public:
 
-	bool increment(config_t const& conf, int64_t value, counter_t increment_by = 1)
+	bool increment(config_t const& conf, int64_t value, counter_t increment_by = 1) noexcept
 	{
 		// copy-pasted comment from histogram_t::increment on boundary inclusion
 		//
