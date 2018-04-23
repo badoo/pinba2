@@ -144,8 +144,8 @@ struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 	void increment(histogram_conf_t const& conf, duration_t const d)
 	{
 		// round the value up, to nearest multiple of unit_size
-		int64_t value = (d / conf.unit_size).nsec;          // this basically rounds down
-		value += ((value * conf.unit_size.nsec) != d.nsec); // add 1 if we already had a multiple of unit_size
+		auto const dr = std::div(d.nsec, conf.unit_size.nsec);
+		int64_t const value = dr.quot + (dr.rem != 0);
 
 		this->base_t::increment(conf.hdr, value);
 	}
