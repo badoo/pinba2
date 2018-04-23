@@ -140,7 +140,6 @@ public:
 		negative_inf_                   = 0;
 		positive_inf_                   = 0;
 		total_count_                    = 0;
-		counts_nonzero_                 = 0;
 		counts_len_                     = conf.counts_len;
 
 		sub_bucket_count                = conf.sub_bucket_count;
@@ -150,7 +149,7 @@ public:
 		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
 
 		counts_.reset(new counter_t[counts_len_]);
-		std::fill(counts_.get(), counts_.get() + counts_len_, 0);
+		std::uninitialized_fill(counts_.get(), counts_.get() + counts_len_, 0);
 	}
 
 	// not to be copied
@@ -161,49 +160,11 @@ public:
 	hdr_histogram___impl_t(hdr_histogram___impl_t && other) = default;
 	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t && other) = default;
 
-#if 0
-	hdr_histogram___impl_t(hdr_histogram___impl_t const& other)
-	{
-		negative_inf_                   = other.negative_inf_;
-		positive_inf_                   = other.positive_inf_;
-		total_count_                    = other.total_count_;
-		counts_nonzero_                 = other.counts_nonzero_;
-		counts_len_                     = other.counts_len_;
-
-		sub_bucket_count                = other.sub_bucket_count;
-		sub_bucket_half_count           = other.sub_bucket_half_count;
-		sub_bucket_mask                 = other.sub_bucket_mask;
-		unit_magnitude                  = other.unit_magnitude;
-		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
-
-		counts_.reset(new counter_t[counts_len_]);
-		std::copy(other.counts_.get(), other.counts_.get() + counts_len_, counts_.get());
-	}
-
-	hdr_histogram___impl_t(hdr_histogram___impl_t&& other) noexcept
-	{
-		negative_inf_                   = other.negative_inf_;
-		positive_inf_                   = other.positive_inf_;
-		total_count_                    = other.total_count_;
-		counts_nonzero_                 = other.counts_nonzero_;
-		counts_len_                     = other.counts_len_;
-
-		sub_bucket_count                = other.sub_bucket_count;
-		sub_bucket_half_count           = other.sub_bucket_half_count;
-		sub_bucket_mask                 = other.sub_bucket_mask;
-		unit_magnitude                  = other.unit_magnitude;
-		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
-
-		counts_ = std::move(other.counts_);
-	}
-#endif
-
 public: // reads
 
 	counter_t negative_inf() const noexcept { return negative_inf_; }
 	counter_t positive_inf() const noexcept { return positive_inf_; }
 	uint64_t  total_count() const noexcept { return total_count_; }
-	uint32_t  counts_nonzero() const noexcept { return counts_nonzero_; }
 	uint32_t  counts_len() const noexcept { return counts_len_; }
 
 	using counts_range_t    = meow::string_ref<counter_t const>;
@@ -250,10 +211,7 @@ public:
 			int32_t const counts_index = counts_index_for(value);
 			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
 
-			counter_t& counter = this->counts_[counts_index];
-
-			counts_nonzero_ += (counter == 0);
-			counter         += increment_by;
+			this->counts_[counts_index] + increment_by;
 		}
 
 		this->total_count_ += increment_by;
@@ -268,9 +226,6 @@ public:
 		{
 			counter_t&       dst_counter = this->counts_[i];
 			counter_t const& src_counter = other.counts_[i];
-
-			if ((dst_counter == 0) && (src_counter != 0))
-				this->counts_nonzero_ += 1;
 
 			dst_counter += src_counter;
 		}
@@ -459,8 +414,8 @@ private:
 	uint8_t    sub_bucket_half_count_magnitude;
 	// 8
 
-	uint32_t   counts_nonzero_;
 	uint32_t   counts_len_;
+	uint32_t   padding____; // just make it explicit here
 	// 16
 
 	uint64_t   total_count_;
