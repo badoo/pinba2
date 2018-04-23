@@ -97,10 +97,12 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 			continue;
 		}
 
-		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
+		// complete bucket, return upper time bound for this bucket
+		// bucket_id is the upper_bound / bucket_d (as opposed to previous hash->flat implementation, btw)
+		if (next_has_values == need_values)
 		{
 			// ff::fmt(stdout, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
-			return conf.min_value + conf.bucket_d * (bucket_id + 1);
+			return conf.min_value + conf.bucket_d * bucket_id;
 		}
 
 		// incomplete bucket, interpolate, assuming flat time distribution within bucket
@@ -108,7 +110,9 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 			duration_t const d = conf.bucket_d * need_values / next_has_values;
 
 			// ff::fmt(stdout, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
-			return conf.min_value + conf.bucket_d * bucket_id + d;
+
+			assert(bucket_id > 0); // we have no bucket_ids < 1, since hdr has no values < 1
+			return conf.min_value + conf.bucket_d * (bucket_id - 1) + d;
 		}
 	}
 
@@ -139,7 +143,11 @@ struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 
 	void increment(histogram_conf_t const& conf, duration_t const d)
 	{
-		this->base_t::increment(conf.hdr, (d / conf.unit_size).nsec);
+		// round the value up, to nearest multiple of unit_size
+		int64_t value = (d / conf.unit_size).nsec;          // this basically rounds down
+		value += ((value * conf.unit_size.nsec) != d.nsec); // add 1 if we already had a multiple of unit_size
+
+		this->base_t::increment(conf.hdr, value);
 	}
 
 	void merge_other_with_same_conf(hdr_histogram_t const& other, histogram_conf_t const& conf)
@@ -194,25 +202,6 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 	}
 
 	assert(read_position <= counts_r.size());
-
-#if 0
-	size_t insert_position = 0;
-	for (size_t i = 0; i < counts_r.size(); i++)
-	{
-		uint32_t const count = counts_r[i];
-		if (count == 0) // XXX: predicts badly, no idea how to improve
-			continue;
-
-		// uint32_t const bucket_id = (uint32_t) hdr.value_at_index(i);
-		// flat.values.push_back({ .bucket_id = bucket_id, .value = count });
-
-		histogram_value_t& hv_value = flat.values[insert_position++];
-		hv_value.bucket_id = (uint32_t) hdr.value_at_index(i); // gotta cast here, since flat_histogram_t uses uint32_t
-		hv_value.value     = count;
-	}
-
-	assert(insert_position == hdr.counts_nonzero()); // sanity
-#endif
 
 	return flat;
 }
