@@ -134,6 +134,22 @@ namespace { namespace aux {
 
 				return result;
 			}
+
+			void remap_key_to_from(key_t& result, key_t const& flat_key) const
+			{
+				assert(split_key_d.size() == result.size());
+
+				// for (uint32_t i = 0; i < result.size(); i++)
+				// {
+				// 	descriptor_t const& descriptor = split_key_d[i];
+				// 	result[d.remap_to] = flat_key[i];
+				// }
+
+				for (auto const& d : split_key_d)
+				{
+					result[d.remap_to] = flat_key[d.remap_from];
+				}
+			}
 		};
 
 	public: // aggregation
@@ -347,25 +363,34 @@ namespace { namespace aux {
 				auto const fetch_by_timer_tags = [&](key_info_t const& ki, key_subrange_t out_range, packed_timer_t const *t) -> bool
 				{
 					uint32_t const n_tags_required = out_range.size();
-					uint32_t       n_tags_found = 0;
-					std::fill(out_range.begin(), out_range.end(), 0); // FIXME: this is not needed anymore ?
+					// uint32_t       n_tags_found = 0;
+					// std::fill(out_range.begin(), out_range.end(), 0); // FIXME: this is not needed anymore ?
 
 					for (uint32_t i = 0; i < n_tags_required; ++i)
 					{
+						bool tag_found = false;
+
 						for (uint32_t tag_i = 0; tag_i < t->tag_count; ++tag_i)
 						{
 							if (t->tag_name_ids[tag_i] != ki.timer_tag_r[i].d.timer_tag)
 								continue;
 
-							n_tags_found++;
+							tag_found = true;
 							out_range[i] = t->tag_value_ids[tag_i];
+							break;
 
-							if (n_tags_found == n_tags_required)
-								return true;
+							// if (n_tags_found == n_tags_required)
+							// 	return true;
 						}
+
+						// each full run of inner loop - must get us a tag
+						// so if it didn't -> just return false
+						if (!tag_found)
+							return false;
 					}
 
-					return (n_tags_found == n_tags_required);
+					return true;
+					// return (n_tags_found == n_tags_required);
 				};
 
 				auto const find_request_tags = [&](key_info_t const& ki, key_t *out_key) -> bool
@@ -467,7 +492,9 @@ namespace { namespace aux {
 
 						// LOG_DEBUG(globals_->logger(), "found key '{0}'", key_to_string(key_inprogress));
 
-						key_t const k = ki_.remap_key(key_inprogress);
+						// key_t const k = ki_.remap_key(key_inprogress);
+						key_t k = {};
+						ki_.remap_key_to_from(k, key_inprogress);
 
 						// LOG_DEBUG(globals_->logger(), "remapped key '{0}'", key_to_string(k));
 
