@@ -211,7 +211,7 @@ public:
 			int32_t const counts_index = counts_index_for(value);
 			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
 
-			this->counts_[counts_index] + increment_by;
+			this->counts_[counts_index] += increment_by;
 		}
 
 		this->total_count_ += increment_by;
