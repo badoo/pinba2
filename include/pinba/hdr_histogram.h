@@ -125,7 +125,7 @@ inline meow::error_t hdr_histogram_configure___sig_figures(
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class CounterT>
-struct hdr_histogram___impl_t
+struct hdr_histogram___impl_t : private boost::noncopyable
 {
 	using self_t    = hdr_histogram___impl_t;
 	using counter_t = CounterT;
@@ -251,7 +251,7 @@ public:
 				if (tmp == nullptr)
 					throw std::bad_alloc();
 
-				std::uninitialized_fill(counts_ + counts_len_, counts_ + counts_maxlen_, 0);
+				std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
 				counts_len_ = counts_maxlen_;
 				counts_ = tmp;
 			}
