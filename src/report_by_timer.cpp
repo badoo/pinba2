@@ -393,25 +393,28 @@ namespace { namespace aux {
 					key_subrange_t out_range = ki_.rtag_key_subrange(*out_key);
 
 					uint32_t const n_tags_required = out_range.size();
-					uint32_t       n_tags_found = 0;
-					std::fill(out_range.begin(), out_range.end(), 0); // FIXME: this is not needed anymore ?
 
 					for (uint32_t tag_i = 0; tag_i < n_tags_required; ++tag_i)
 					{
+						bool tag_found = false;
+
 						for (uint16_t i = 0, i_end = packet->tag_count; i < i_end; ++i)
 						{
 							if (packet->tag_name_ids[i] != ki.request_tag_r[tag_i].d.request_tag)
 								continue;
 
-							n_tags_found++;
 							out_range[tag_i] = packet->tag_value_ids[i];
-
-							if (n_tags_found == n_tags_required)
-								return true;
+							tag_found = true;
+							break;
 						}
+
+						// each full run of inner loop - must get us a tag
+						// so if it didn't -> just return false
+						if (!tag_found)
+							return false;
 					}
 
-					return (n_tags_found == n_tags_required);
+					return true;
 				};
 
 				auto const find_request_fields = [&](key_info_t const& ki, key_t *out_key) -> bool
@@ -430,7 +433,6 @@ namespace { namespace aux {
 				};
 
 				key_t key_inprogress;
-				key_inprogress.fill(0); // zerofill the key for now
 
 				bool const tags_found = find_request_tags(ki_, &key_inprogress);
 				if (!tags_found)
