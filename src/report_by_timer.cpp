@@ -36,14 +36,15 @@ namespace { namespace aux {
 		{
 			uint64_t last_unique; // TODO: maybe move this field to agg hashtable, will need to change it to uint32_t
 
-			key_t    key;
-			data_t   data;
+			key_t        key;
+			data_t       data;
+			histogram_t  hv;
 		};
 
 		struct tick_t : public report_tick_t
 		{
 			std::deque<tick_item_t>  items;
-			std::deque<histogram_t>  hvs;
+			// std::deque<histogram_t>  hvs;
 		};
 
 	public: // key extraction and transformation
@@ -200,8 +201,8 @@ namespace { namespace aux {
 				item.last_unique = 0;
 				item.key = k;
 
-				if (conf_.hv_bucket_count > 0)
-					tick_->hvs.emplace_back();
+				// if (conf_.hv_bucket_count > 0)
+				// 	tick_->hvs.emplace_back();
 
 				assert(tick_->items.size() < size_t(INT_MAX));
 				uint32_t const new_off = static_cast<uint32_t>(tick_->items.size() - 1);
@@ -229,7 +230,8 @@ namespace { namespace aux {
 
 				if (conf_.hv_bucket_count > 0)
 				{
-					histogram_t& hv = tick_->hvs[offset];
+					// histogram_t& hv = tick_->hvs[offset];
+					histogram_t& hv = item.hv;
 
 					// optimize common case when hit_count == 1, and there is no need to divide
 					duration_t d = timer->value;
@@ -306,9 +308,11 @@ namespace { namespace aux {
 				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
 
 				// hvs
-				result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
-				for (auto const& hv : tick_->hvs)
-					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
+				// result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
+				// for (auto const& hv : tick_->hvs)
+				// 	result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
+				for (auto const& item : tick_->items)
+					result.mem_used += item.hv.map_cref().bucket_count() * sizeof(*item.hv.map_cref().begin());
 
 				// current tick ht
 				result.mem_used += sizeof(tick_ht_);
@@ -542,10 +546,18 @@ namespace { namespace aux {
 			using ring_t       = report_history_ringbuffer_t;
 			using ringbuffer_t = ring_t::ringbuffer_t;
 
+			struct history_row_t
+			{
+				key_t             key;
+				data_t            data;
+				flat_histogram_t  hv;
+			};
+
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
 			{
-				std::deque<tick_item_t>        items; // should be the same as aggregator tick items, to move data
-				std::vector<flat_histogram_t>  hvs;   // keep this as vector, as we can preallocate (and need to copy anyway)
+				std::vector<history_row_t>        items; // should be the same as aggregator tick items, to move data
+				// std::deque<row_t>        items; // should be the same as aggregator tick items, to move data
+				// std::vector<flat_histogram_t>  hvs;   // keep this as vector, as we can preallocate (and need to copy anyway)
 			};
 
 		public:
@@ -572,6 +584,19 @@ namespace { namespace aux {
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
 
+				h_tick->items.reserve(agg_tick->items.size()); // we know the size in advance, mon
+
+				for (size_t i = 0; i < agg_tick->items.size(); i++)
+				{
+					auto const& src_item = agg_tick->items[i];
+
+					h_tick->items.emplace_back(history_row_t{
+						.key  = src_item.key,
+						.data = src_item.data,
+						.hv   = std::move(histogram___convert_ht_to_flat(src_item.hv))
+					});
+				}
+#if 0
 				// can MOVE items, since the format is intentionally the same
 				h_tick->items = std::move(agg_tick->items);
 
@@ -588,6 +613,7 @@ namespace { namespace aux {
 					// sanity
 					assert(h_tick->items.size() == agg_tick->hvs.size());
 				}
+#endif
 
 				ring_.append(std::move(h_tick));
 			}
@@ -608,9 +634,9 @@ namespace { namespace aux {
 					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 					result.mem_used += sizeof(tick);
 					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
-					result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
-					for (flat_histogram_t const& hv : tick.hvs)
-						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
+					// result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
+					// for (flat_histogram_t const& hv : tick.hvs)
+					// 	result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
 				}
 
 				return result;
@@ -762,8 +788,9 @@ namespace { namespace aux {
 
 						for (size_t i = 0; i < tick.items.size(); i++)
 						{
-							tick_item_t const& src = tick.items[i];
-							row_t            & dst = to[tick.items[i].key];
+							// tick_item_t const& src = tick.items[i];
+							history_row_t const& src = tick.items[i];
+							row_t              & dst = to[tick.items[i].key];
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.hit_count  += src.data.hit_count;
@@ -773,7 +800,8 @@ namespace { namespace aux {
 
 							if (need_histograms)
 							{
-								flat_histogram_t const& src_hv = tick.hvs[i];
+								// flat_histogram_t const& src_hv = tick.hvs[i];
+								flat_histogram_t const& src_hv = src.hv;
 
 								// try preallocate
 								if (dst.saved_hv.empty())
@@ -788,7 +816,7 @@ namespace { namespace aux {
 						repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
 						if (need_histograms)
-							hv_appends  += tick.hvs.size();
+							hv_appends  += tick.items.size();
 					}
 
 					LOG_DEBUG(snapshot_ctx->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
