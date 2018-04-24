@@ -214,7 +214,14 @@ namespace { namespace aux {
 				if (conf_.hv_bucket_count > 0)
 				{
 					histogram_t& hv = tick_->hvs[offset];
-					hv.increment(hv_conf_, (timer->value / timer->hit_count));
+
+					// optimize common case when hit_count == 1, and there is no need to divide
+					duration_t d = timer->value;
+
+					if (__builtin_expect(timer->hit_count > 1, 0))
+						d = d / timer->hit_count;
+
+					hv.increment(hv_conf_, d);
 				}
 			}
 
