@@ -36,14 +36,25 @@ namespace { namespace aux {
 		{
 			uint64_t last_unique; // TODO: maybe move this field to agg hashtable, will need to change it to uint32_t
 
-			key_t        key;
+			// key_t        key;
 			data_t       data;
 			histogram_t  hv;
 		};
 
+		// map: key -> offset in tick->items and tick->hvs
+		struct hashtable_t
+			: public google::dense_hash_map<key_t, tick_item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+		{
+			hashtable_t()
+			{
+				this->set_empty_key(report_key_impl___make_empty<NKeys>());
+			}
+		};
+
 		struct tick_t : public report_tick_t
 		{
-			std::deque<tick_item_t>  items;
+			hashtable_t              ht;
+			// std::deque<tick_item_t>  items;
 			// std::deque<histogram_t>  hvs;
 		};
 
@@ -157,6 +168,7 @@ namespace { namespace aux {
 
 		struct aggregator_t : public report_agg_t
 		{
+#if 0
 			// uint32_t with UINT_MAX as default value, since we use default-constructed values in raw_hash_
 			struct item_offset_t
 			{
@@ -184,7 +196,9 @@ namespace { namespace aux {
 					this->set_empty_key(report_key_impl___make_empty<NKeys>());
 				}
 			};
+#endif
 
+#if 0
 			uint32_t raw_item_offset_get(key_t const& k)
 			{
 				item_offset_t& off = tick_ht_[k];
@@ -210,12 +224,12 @@ namespace { namespace aux {
 				off.set(new_off);
 				return new_off;
 			}
-
+#endif
 			void raw_item_increment(key_t const& k, packet_t const *packet, packed_timer_t const *timer)
 			{
-				uint32_t const offset = this->raw_item_offset_get(k);
+				// uint32_t const offset = this->raw_item_offset_get(k);
 
-				tick_item_t& item = tick_->items[offset];
+				tick_item_t& item = tick_->ht[k];
 
 				item.data.hit_count  += timer->hit_count;
 				item.data.time_total += timer->value;
@@ -290,8 +304,8 @@ namespace { namespace aux {
 				report_tick_ptr result = std::move(tick_);
 				tick_ = meow::make_intrusive<tick_t>();
 
-				tick_ht_.clear();
-				tick_ht_.resize(0);
+				// tick_ht_.clear();
+				// tick_ht_.resize(0);
 
 				return result;
 			}
@@ -300,23 +314,23 @@ namespace { namespace aux {
 			{
 				report_estimates_t result = {};
 
-				result.row_count = tick_->items.size();
+				result.row_count = tick_->ht.size();
 
 				result.mem_used += sizeof(*tick_);
 
 				// items
-				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
+				result.mem_used += tick_->ht.bucket_count() * sizeof(*tick_->ht.begin());
 
 				// hvs
 				// result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
 				// for (auto const& hv : tick_->hvs)
 				// 	result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
-				for (auto const& item : tick_->items)
-					result.mem_used += item.hv.map_cref().bucket_count() * sizeof(*item.hv.map_cref().begin());
+				for (auto const& ht_pair : tick_->ht)
+					result.mem_used += ht_pair.second.hv.map_cref().bucket_count() * sizeof(*ht_pair.second.hv.map_cref().begin());
 
 				// current tick ht
-				result.mem_used += sizeof(tick_ht_);
-				result.mem_used += tick_ht_.bucket_count() * sizeof(*tick_ht_.begin());
+				result.mem_used += sizeof(tick_->ht);
+				result.mem_used += tick_->ht.bucket_count() * sizeof(*tick_->ht.begin());
 
 				return result;
 			}
@@ -536,7 +550,6 @@ namespace { namespace aux {
 			timer_bloom_t                timer_bloom_;
 
 			boost::intrusive_ptr<tick_t> tick_;
-			hashtable_t                  tick_ht_;
 		};
 
 	public: // history
@@ -584,14 +597,15 @@ namespace { namespace aux {
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
 
-				h_tick->items.reserve(agg_tick->items.size()); // we know the size in advance, mon
+				h_tick->items.reserve(agg_tick->ht.size()); // we know the size in advance, mon
 
-				for (size_t i = 0; i < agg_tick->items.size(); i++)
+				for (auto const& src_pair : agg_tick->ht)
 				{
-					auto const& src_item = agg_tick->items[i];
+					auto const& src_key  = src_pair.first;
+					auto const& src_item = src_pair.second;
 
 					h_tick->items.emplace_back(history_row_t{
-						.key  = src_item.key,
+						.key  = src_key,
 						.data = src_item.data,
 						.hv   = std::move(histogram___convert_ht_to_flat(src_item.hv))
 					});
