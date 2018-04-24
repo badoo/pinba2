@@ -134,6 +134,22 @@ namespace { namespace aux {
 
 				return result;
 			}
+
+			void remap_key_to_from(key_t& result, key_t const& flat_key) const
+			{
+				assert(split_key_d.size() == result.size());
+
+				// for (uint32_t i = 0; i < result.size(); i++)
+				// {
+				//     descriptor_t const& descriptor = split_key_d[i];
+				//     result[d.remap_to] = flat_key[i];
+				// }
+
+				for (auto const& d : split_key_d)
+				{
+					result[d.remap_to] = flat_key[d.remap_from];
+				}
+			}
 		};
 
 	public: // aggregation
@@ -465,7 +481,9 @@ namespace { namespace aux {
 
 						// LOG_DEBUG(globals_->logger(), "found key '{0}'", key_to_string(key_inprogress));
 
-						key_t const k = ki_.remap_key(key_inprogress);
+						// key_t const k = ki_.remap_key(key_inprogress);
+						key_t k = {};
+						ki_.remap_key_to_from(k, key_inprogress);
 
 						// LOG_DEBUG(globals_->logger(), "remapped key '{0}'", key_to_string(k));
 
