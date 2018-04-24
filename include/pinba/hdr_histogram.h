@@ -150,7 +150,7 @@ public:
 		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
 
 		// allocate small part on init
-		counts_len_                     = conf.sub_bucket_count;
+		counts_len_                     = conf.sub_bucket_half_count;
 		counts_ = (counter_t*)calloc(1, counts_len_ * sizeof(counter_t));
 		if (counts_ == nullptr)
 			throw std::bad_alloc();
