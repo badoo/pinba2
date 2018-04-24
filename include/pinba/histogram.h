@@ -159,23 +159,24 @@ public:
 
 		d -= conf.min_value;
 
-		if (d.nsec <= 0) // <=, since we fit upper-bound match to prev bucket
+		if (__builtin_expect(d.nsec <= 0, 0)) // <=, since we fit upper-bound match to prev bucket
 		{
 			negative_inf_ += increment_by;
 		}
 		else
 		{
-			uint32_t bucket_id = d.nsec / conf.bucket_d.nsec;
+			// this fits multiples of bucket_d.nsec into previous bucket
+			// i.e. d=2ms,   bucket_d=1ms -> bucket_id = 1
+			// but  d=1.5ms, bucket_d=1ms -> bucket_id = 1
+			// but  d=1ms,   bucket_d=1ms -> bucket_id = 0
+			// but  d=0.5ms, bucket_d=1ms -> bucket_id = 0
+			//
+			// rem is never == 0, when quot == 0, since we've checked for d == 0 above.
+			auto const divrem = std::div(d.nsec, conf.bucket_d.nsec);
+			uint32_t const bucket_id = divrem.quot - (divrem.rem == 0);
 
 			if (bucket_id < conf.bucket_count)
 			{
-				// try fit exact upper-bound match to previous bucket
-				if (bucket_id > 0)
-				{
-					if (d == bucket_id * conf.bucket_d)
-						bucket_id -= 1;
-				}
-
 				map_[bucket_id] += increment_by;
 			}
 			else
