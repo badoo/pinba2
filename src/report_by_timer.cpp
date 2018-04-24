@@ -252,19 +252,13 @@ namespace { namespace aux {
 
 						packet_bloom_.add(kd.timer_tag);
 						timer_bloom_.add(kd.timer_tag);
-
-						LOG_ERROR(globals_->logger(), "[report] bloom adding: [{0}] {1}", globals_->dictionary()->get_word(kd.timer_tag), kd.timer_tag);
 					}
 
 					for (auto const& ttf : conf_.timertag_filters)
 					{
 						packet_bloom_.add(ttf.name_id);
 						timer_bloom_.add(ttf.name_id);
-
-						LOG_ERROR(globals_->logger(), "[report] bloom adding: [{0}] {1}", globals_->dictionary()->get_word(ttf.name_id), ttf.name_id);
 					}
-
-					LOG_ERROR(globals_->logger(), "[report] tbloom: {0}", timer_bloom_.to_string());
 				}
 			}
 
