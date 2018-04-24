@@ -385,7 +385,6 @@ namespace { namespace aux {
 					}
 
 					return true;
-					// return (n_tags_found == n_tags_required);
 				};
 
 				auto const find_request_tags = [&](key_info_t const& ki, key_t *out_key) -> bool
