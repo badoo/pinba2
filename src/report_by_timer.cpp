@@ -46,6 +46,7 @@ namespace { namespace aux {
 			: public google::dense_hash_map<key_t, tick_item_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			hashtable_t()
+				: google::dense_hash_map<key_t, tick_item_t, report_key_impl___hasher_t, report_key_impl___equal_t>(64 * 1024)
 			{
 				this->set_empty_key(report_key_impl___make_empty<NKeys>());
 			}
