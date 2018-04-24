@@ -301,10 +301,16 @@ namespace { namespace aux {
 				result.row_count = tick_->items.size();
 
 				result.mem_used += sizeof(*tick_);
+
+				// items
 				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
+
+				// hvs
+				result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
 				for (auto const& hv : tick_->hvs)
 					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
 
+				// current tick ht
 				result.mem_used += sizeof(tick_ht_);
 				result.mem_used += tick_ht_.bucket_count() * sizeof(*tick_ht_.begin());
 
@@ -705,7 +711,7 @@ namespace { namespace aux {
 					for (auto const *src_hv_values : row->saved_hv)
 					{
 						flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, src_hv_values);
-						row->merged_hv.value_count  += src->value_count;
+						row->merged_hv.total_count  += src->total_count;
 						row->merged_hv.negative_inf += src->negative_inf;
 						row->merged_hv.positive_inf += src->positive_inf;
 					}

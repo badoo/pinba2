@@ -71,7 +71,7 @@ struct histogram_t
 
 private:
 	map_t     map_;
-	uint32_t  value_count_; // total number of measurements, includes inf
+	uint32_t  total_count_; // total number of measurements, includes inf
 	uint32_t  negative_inf_;
 	uint32_t  positive_inf_;
 
@@ -79,7 +79,7 @@ public:
 
 	histogram_t()
 		: map_()
-		, value_count_(0)
+		, total_count_(0)
 		, negative_inf_(0)
 		, positive_inf_(0)
 	{
@@ -87,7 +87,7 @@ public:
 
 	histogram_t(histogram_t const& other)
 		: map_(other.map_)
-		, value_count_(other.value_count_)
+		, total_count_(other.total_count_)
 		, negative_inf_(other.negative_inf_)
 		, positive_inf_(other.positive_inf_)
 	{
@@ -102,7 +102,7 @@ public:
 	void operator=(histogram_t&& other) noexcept
 	{
 		map_.swap(other.map_);
-		std::swap(value_count_, other.value_count_);
+		std::swap(total_count_, other.total_count_);
 		std::swap(negative_inf_, other.negative_inf_);
 		std::swap(positive_inf_, other.positive_inf_);
 	}
@@ -112,7 +112,7 @@ public:
 		map_.clear();
 		map_.resize(0);
 
-		value_count_  = 0;
+		total_count_  = 0;
 		negative_inf_ = 0;
 		positive_inf_ = 0;
 	}
@@ -122,9 +122,9 @@ public:
 		return map_;
 	}
 
-	uint32_t value_count() const noexcept
+	uint32_t total_count() const noexcept
 	{
-		return value_count_;
+		return total_count_;
 	}
 
 	uint32_t negative_inf() const noexcept
@@ -142,7 +142,7 @@ public:
 		for (auto const& pair : other.map_)
 			map_[pair.first] += pair.second;
 
-		value_count_ += other.value_count_;
+		total_count_ += other.total_count_;
 		negative_inf_ += other.negative_inf_;
 		positive_inf_ += other.positive_inf_;
 	}
@@ -184,7 +184,7 @@ public:
 			}
 		}
 
-		value_count_ += increment_by;
+		total_count_ += increment_by;
 	}
 };
 
@@ -208,7 +208,7 @@ typedef std::vector<histogram_value_t> histogram_values_t;
 struct flat_histogram_t
 {
 	histogram_values_t  values;
-	uint32_t            value_count;
+	uint32_t            total_count;
 	uint32_t            negative_inf;
 	uint32_t            positive_inf;
 };
@@ -216,7 +216,7 @@ static_assert(sizeof(flat_histogram_t) == (sizeof(histogram_values_t)+4*sizeof(u
 
 inline void histogram___convert_ht_to_flat(histogram_t const& ht, flat_histogram_t *flat)
 {
-	flat->value_count  = ht.value_count();
+	flat->total_count  = ht.total_count();
 	flat->negative_inf = ht.negative_inf();
 	flat->positive_inf = ht.positive_inf();
 
@@ -243,23 +243,23 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	if (percentile == 0.)
 		return conf.min_value;
 
-	if (hv.value_count() == 0) // no values in histogram, nothing to do
+	if (hv.total_count() == 0) // no values in histogram, nothing to do
 		return conf.min_value;
 
 	uint32_t required_sum = [&]()
 	{
-		uint32_t const res = std::ceil(hv.value_count() * percentile / 100.0);
-		return (res > hv.value_count()) ? hv.value_count() : res;
+		uint32_t const res = std::ceil(hv.total_count() * percentile / 100.0);
+		return (res > hv.total_count()) ? hv.total_count() : res;
 	}();
 
-	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count(), required_sum);
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.total_count(), required_sum);
 
 	// fastpath - are we in negative_inf?, <= here !
 	if (required_sum <= hv.negative_inf())
 		return conf.min_value;
 
 	// fastpath - are we going to hit positive_inf?
-	if (required_sum > (hv.value_count() - hv.positive_inf()))
+	if (required_sum > (hv.total_count() - hv.positive_inf()))
 		return conf.min_value + conf.bucket_d * conf.bucket_count;
 
 	// already past negative_inf, adjust
@@ -309,8 +309,8 @@ inline duration_t get_percentile(histogram_t const& hv, histogram_conf_t const& 
 	// dump map contents to stderr, as we're going to die anyway
 	{
 		ff::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
-		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, value_count: {3}, hv_size: {4}\n",
-			__func__, hv.negative_inf(), hv.positive_inf(), hv.value_count(), hv.map_cref().size());
+		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, total_count: {3}, hv_size: {4}\n",
+			__func__, hv.negative_inf(), hv.positive_inf(), hv.total_count(), hv.map_cref().size());
 
 		for (auto const& pair : map)
 			ff::fmt(stderr, "  [{0}] -> {1}\n", pair.first, pair.second);
@@ -325,16 +325,16 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 	if (percentile == 0.)
 		return conf.min_value;
 
-	if (hv.value_count == 0) // no values in histogram, nothing to do
+	if (hv.total_count == 0) // no values in histogram, nothing to do
 		return conf.min_value;
 
 	uint32_t required_sum = [&]()
 	{
-		uint32_t const res = std::ceil(hv.value_count * percentile / 100.0);
-		return (res > hv.value_count) ? hv.value_count : res;
+		uint32_t const res = std::ceil(hv.total_count * percentile / 100.0);
+		return (res > hv.total_count) ? hv.total_count : res;
 	}();
 
-	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.value_count, required_sum);
+	// ff::fmt(stdout, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, hv.total_count, required_sum);
 
 	// fastpath - very low percentile, nothing to do
 	if (required_sum == 0)
@@ -345,7 +345,7 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 		return conf.min_value;
 
 	// fastpath - are we going to hit positive infinity?
-	if (required_sum > (hv.value_count - hv.positive_inf))
+	if (required_sum > (hv.total_count - hv.positive_inf))
 		return conf.min_value + conf.bucket_d * conf.bucket_count;
 
 	// already past negative_inf, adjust
@@ -386,8 +386,8 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 	// dump hv contents to stderr, as we're going to die anyway
 	{
 		ff::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
-		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, value_count: {3}, hv_size: {4}\n",
-			__func__, hv.negative_inf, hv.positive_inf, hv.value_count, hv.values.size());
+		ff::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, total_count: {3}, hv_size: {4}\n",
+			__func__, hv.negative_inf, hv.positive_inf, hv.total_count, hv.values.size());
 
 		for (auto const& item : hv.values)
 			ff::fmt(stderr, "[{0}] -> {1}\n", item.bucket_id, item.value);

@@ -27,7 +27,7 @@ using hvalues_ref_t = meow::string_ref<histogram_value_t>;
 struct histogram_husk_t
 {
 	hvalues_ref_t  values;
-	uint32_t       value_count;
+	uint32_t       total_count;
 	uint32_t       negative_inf;
 	uint32_t       positive_inf;
 };
@@ -51,7 +51,7 @@ void hv_storage___from_histograms_range(hv_storage_t *hv_storage, meow::string_r
 	{
 		histogram_husk_t flat_hv = {
 			.values       = {},
-			.value_count  = hv.value_count(),
+			.total_count  = hv.total_count(),
 			.negative_inf = hv.negative_inf(),
 			.positive_inf = hv.positive_inf(),
 		};
@@ -83,8 +83,8 @@ void hv_storage___from_histograms_range(hv_storage_t *hv_storage, meow::string_r
 	// histogram_value_t *hvalue_ptr = &*hv_storage->values_store.begin();
 	// for (auto& flat_hv : hv_storage->hvs)
 	// {
-	// 	flat_hv.values = hvalues_ref_t { hvalue_ptr, flat_hv.value_count };
-	// 	hvalue_ptr += flat_hv.value_count;
+	// 	flat_hv.values = hvalues_ref_t { hvalue_ptr, flat_hv.total_count };
+	// 	hvalue_ptr += flat_hv.total_count;
 
 	// 	std::sort(flat_hv.values.begin(), flat_hv.values.end());
 	// }

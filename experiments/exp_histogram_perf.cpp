@@ -509,7 +509,7 @@ inline void debug_dump_histogram(SinkT& sink, Histogram const& hv, meow::str_ref
 template<class Histogram>
 inline void histogram___convert_hdr_to_flat(Histogram const& hv, typename Histogram::config_t const& conf, flat_histogram_t *flat)
 {
-	flat->value_count  = hv.total_count();
+	flat->total_count  = hv.total_count();
 	flat->negative_inf = hv.negative_inf();
 	flat->positive_inf = hv.positive_inf();
 
