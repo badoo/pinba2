@@ -141,7 +141,7 @@ public:
 		positive_inf_                   = 0;
 		total_count_                    = 0;
 		counts_nonzero_                 = 0;
-		counts_len_                     = conf.counts_len;
+		counts_maxlen_                  = conf.counts_len;
 
 		sub_bucket_count                = conf.sub_bucket_count;
 		sub_bucket_half_count           = conf.sub_bucket_half_count;
@@ -149,8 +149,16 @@ public:
 		unit_magnitude                  = conf.unit_magnitude;
 		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
 
-		counts_.reset(new counter_t[counts_len_]);
-		std::fill(counts_.get(), counts_.get() + counts_len_, 0);
+		// allocate small part on init
+		counts_len_                     = conf.sub_bucket_count;
+		counts_ = (counter_t*)calloc(1, counts_len_ * sizeof(counter_t));
+		if (counts_ == nullptr)
+			throw std::bad_alloc();
+	}
+
+	~hdr_histogram___impl_t()
+	{
+		free(counts_);
 	}
 
 	// not to be copied
@@ -158,35 +166,20 @@ public:
 	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t const& other) = delete;
 
 	// movable
-	hdr_histogram___impl_t(hdr_histogram___impl_t && other) = default;
-	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t && other) = default;
-
-#if 0
-	hdr_histogram___impl_t(hdr_histogram___impl_t const& other)
-	{
-		negative_inf_                   = other.negative_inf_;
-		positive_inf_                   = other.positive_inf_;
-		total_count_                    = other.total_count_;
-		counts_nonzero_                 = other.counts_nonzero_;
-		counts_len_                     = other.counts_len_;
-
-		sub_bucket_count                = other.sub_bucket_count;
-		sub_bucket_half_count           = other.sub_bucket_half_count;
-		sub_bucket_mask                 = other.sub_bucket_mask;
-		unit_magnitude                  = other.unit_magnitude;
-		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
-
-		counts_.reset(new counter_t[counts_len_]);
-		std::copy(other.counts_.get(), other.counts_.get() + counts_len_, counts_.get());
-	}
 
 	hdr_histogram___impl_t(hdr_histogram___impl_t&& other) noexcept
 	{
+		(*this) = std::move(other); // call move operator=()
+	}
+
+	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t&& other) noexcept
+	{
 		negative_inf_                   = other.negative_inf_;
 		positive_inf_                   = other.positive_inf_;
 		total_count_                    = other.total_count_;
 		counts_nonzero_                 = other.counts_nonzero_;
 		counts_len_                     = other.counts_len_;
+		counts_maxlen_                  = other.counts_maxlen_;
 
 		sub_bucket_count                = other.sub_bucket_count;
 		sub_bucket_half_count           = other.sub_bucket_half_count;
@@ -194,9 +187,11 @@ public:
 		unit_magnitude                  = other.unit_magnitude;
 		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
 
-		counts_ = std::move(other.counts_);
+		counts_ = other.counts_;
+		other.counts_ = nullptr;
+
+		return *this;
 	}
-#endif
 
 public: // reads
 
@@ -211,12 +206,12 @@ public: // reads
 
 	counts_range_t get_counts_range() const
 	{
-		return { this->counts_.get(), this->counts_len_ };
+		return { this->counts_, this->counts_len_ };
 	}
 
 	counts_range_nc_t mutable_counts_range()
 	{
-		return { this->counts_.get(), this->counts_len_ };
+		return { this->counts_, this->counts_len_ };
 	}
 
 	uint64_t get_allocated_size() const
@@ -250,6 +245,17 @@ public:
 			int32_t const counts_index = counts_index_for(value);
 			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
 
+			if ((uint32_t)counts_index >= counts_len_)
+			{
+				counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
+				if (tmp == nullptr)
+					throw std::bad_alloc();
+
+				std::uninitialized_fill(counts_ + counts_len_, counts_ + counts_maxlen_, 0);
+				counts_len_ = counts_maxlen_;
+				counts_ = tmp;
+			}
+
 			counter_t& counter = this->counts_[counts_index];
 
 			counts_nonzero_ += (counter == 0);
@@ -262,7 +268,18 @@ public:
 
 	void merge_other_with_same_conf(self_t const& other, config_t const& conf)
 	{
-		assert(this->counts_len_ == other.counts_len_);
+		assert(this->counts_maxlen_ == other.counts_maxlen_);
+
+		if (this->counts_len_ < other.counts_len_)
+		{
+			counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
+			if (tmp == nullptr)
+				throw std::bad_alloc();
+
+			std::uninitialized_fill(counts_ + counts_len_, counts_ + counts_maxlen_, 0);
+			counts_len_ = counts_maxlen_;
+			counts_ = tmp;
+		}
 
 		for (uint32_t i = 0; i < other.counts_len_; i++)
 		{
@@ -466,14 +483,15 @@ private:
 	uint64_t   total_count_;
 	// 24
 
-	std::unique_ptr<counter_t[]> counts_; // field order is important to avoid padding
+	counter_t  *counts_; // field order is important to avoid padding
 	// 32
 
+	uint32_t    counts_maxlen_;
 	counter_t   negative_inf_;
 	counter_t   positive_inf_;
-	// 40
+	// 48
 };
-static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 40, "");
+static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 48, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
