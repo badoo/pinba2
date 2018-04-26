@@ -141,13 +141,13 @@ struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 	{
 	}
 
-	void increment(histogram_conf_t const& conf, duration_t const d)
+	void increment(histogram_conf_t const& conf, duration_t const d, uint32_t increment_by = 1)
 	{
 		// round the value up, to nearest multiple of unit_size
 		auto const dr = std::div(d.nsec, conf.unit_size.nsec);
 		int64_t const value = dr.quot + (dr.rem != 0);
 
-		this->base_t::increment(conf.hdr, value);
+		this->base_t::increment(conf.hdr, value, increment_by);
 	}
 
 	void merge_other_with_same_conf(hdr_histogram_t const& other, histogram_conf_t const& conf)
