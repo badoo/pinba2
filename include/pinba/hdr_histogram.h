@@ -276,7 +276,7 @@ public:
 			if (tmp == nullptr)
 				throw std::bad_alloc();
 
-			std::uninitialized_fill(counts_ + counts_len_, counts_ + counts_maxlen_, 0);
+			std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
 			counts_len_ = counts_maxlen_;
 			counts_ = tmp;
 		}
