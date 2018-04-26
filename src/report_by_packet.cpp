@@ -170,7 +170,7 @@ namespace { namespace aux {
 
 				static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)    { return {}; }
 				static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
-				static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return &it->hv; }
+				static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return it->hv.get(); }
 
 				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
 				{
