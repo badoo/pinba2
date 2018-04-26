@@ -156,16 +156,7 @@ namespace { namespace aux {
 		};
 		static_assert(sizeof(item_offset_t) == sizeof(uint32_t), "no padding expected");
 
-		// map: key -> offset in tick->items and tick->hvs
-		struct agg_hashtable_t
-			: public google::dense_hash_map<key_t, item_offset_t, report_key_impl___hasher_t, report_key_impl___equal_t>
-		{
-			agg_hashtable_t()
-			{
-				this->set_empty_key(report_key_impl___make_empty<NKeys>());
-			}
-		};
-
+		// single row of current tick aggregation
 		struct tick_item_t
 		{
 			uint64_t         last_unique;
@@ -189,6 +180,18 @@ namespace { namespace aux {
 			tick_item_t& operator=(tick_item_t&&) = default;
 		};
 
+		// map: key -> offset in tick->items and tick->hvs
+		// having tick_item_t* as value only works with deque, that never invalidates iterators on insert
+		struct agg_hashtable_t
+			// : public google::dense_hash_map<key_t, item_offset_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+			: public google::dense_hash_map<key_t, tick_item_t*, report_key_impl___hasher_t, report_key_impl___equal_t>
+		{
+			agg_hashtable_t()
+			{
+				this->set_empty_key(report_key_impl___make_empty<NKeys>());
+			}
+		};
+
 		struct tick_t : public report_tick_t
 		{
 			agg_hashtable_t          ht;
@@ -199,6 +202,7 @@ namespace { namespace aux {
 
 		struct aggregator_t : public report_agg_t
 		{
+#if 0
 			uint32_t raw_item_offset_get(key_t const& k)
 			{
 				item_offset_t& off = tick_->ht[k];
@@ -218,12 +222,32 @@ namespace { namespace aux {
 				off.set(new_off);
 				return new_off;
 			}
+#endif
+
+			tick_item_t& raw_item_reference(key_t const& k)
+			{
+				tick_item_t *& item_ptr = tick_->ht[k];
+
+				// mapping exists, item exists, just return
+				if (item_ptr != nullptr)
+					return *item_ptr;
+
+				// slowpath - create item and maybe hvs
+
+				tick_->items.emplace_back(k, hv_conf_);
+				tick_item_t& item = tick_->items.back();
+
+				item_ptr = &item;
+				return item;
+			}
 
 			void raw_item_increment(key_t const& k, packet_t const *packet, packed_timer_t const *timer)
 			{
-				uint32_t const offset = this->raw_item_offset_get(k);
+				// uint32_t const offset = this->raw_item_offset_get(k);
 
-				tick_item_t& item = tick_->items[offset];
+				// tick_item_t& item = tick_->items[offset];
+
+				tick_item_t& item = this->raw_item_reference(k);
 
 				item.data.hit_count  += timer->hit_count;
 				item.data.time_total += timer->value;
