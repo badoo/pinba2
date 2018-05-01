@@ -6,10 +6,11 @@
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/repetition/repeat.hpp>
 
-#include <meow/stopwatch.hpp>
 #include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
 
 #include <sparsehash/dense_hash_map>
+
+#include "misc/nmpa.h"
 
 #include "pinba/globals.h"
 #include "pinba/bloom.h"
@@ -161,13 +162,11 @@ namespace { namespace aux {
 		{
 			uint64_t         last_unique;
 
-			key_t            key;
 			data_t           data;
 			hdr_histogram_t  hv;
 
-			tick_item_t(key_t const& k, histogram_conf_t const& hv_conf)
+			tick_item_t(histogram_conf_t const& hv_conf)
 				: last_unique(0)
-				, key(k)
 				, data()
 				, hv(hv_conf)
 			{
@@ -176,14 +175,12 @@ namespace { namespace aux {
 			tick_item_t(tick_item_t const&) = delete;
 			tick_item_t& operator=(tick_item_t const&) = delete;
 
-			tick_item_t(tick_item_t&&) = default;
-			tick_item_t& operator=(tick_item_t&&) = default;
+			tick_item_t(tick_item_t&&) = delete;
+			tick_item_t& operator=(tick_item_t&&) = delete;
 		};
 
-		// map: key -> offset in tick->items and tick->hvs
-		// having tick_item_t* as value only works with deque, that never invalidates iterators on insert
+		// map: key -> pointer to item allocated in nmpa
 		struct agg_hashtable_t
-			// : public google::dense_hash_map<key_t, item_offset_t, report_key_impl___hasher_t, report_key_impl___equal_t>
 			: public google::dense_hash_map<key_t, tick_item_t*, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			agg_hashtable_t()
@@ -194,36 +191,35 @@ namespace { namespace aux {
 
 		struct tick_t : public report_tick_t
 		{
-			agg_hashtable_t          ht;
-			std::deque<tick_item_t>  items;
+			agg_hashtable_t  ht;
+			struct nmpa_s    nmpa;
+
+			// 1 meg, don't be shy
+			static constexpr size_t nmpa_default_chunk_size = 1 * 1024 * 1024;
+
+		public:
+
+			tick_t()
+			{
+				nmpa_init(&nmpa, nmpa_default_chunk_size);
+			}
+
+			~tick_t()
+			{
+				nmpa_free(&nmpa);
+			}
+
+		private: // not movable or copyable
+			tick_t(tick_t const&)            = delete;
+			tick_t(tick_t&&)                 = delete;
+			tick_t& operator=(tick_t const&) = delete;
+			tick_t& operator=(tick_t&&)      = delete;
 		};
 
 	public: // aggregation
 
 		struct aggregator_t : public report_agg_t
 		{
-#if 0
-			uint32_t raw_item_offset_get(key_t const& k)
-			{
-				item_offset_t& off = tick_->ht[k];
-
-				// mapping exists, item exists, just return
-				if (off.is_valid())
-					return off.get();
-
-				// slowpath - create item and maybe hvs
-
-				tick_->items.emplace_back(k, hv_conf_);
-				tick_item_t& item = tick_->items.back();
-
-				assert(tick_->items.size() < size_t(INT_MAX));
-				uint32_t const new_off = static_cast<uint32_t>(tick_->items.size() - 1);
-
-				off.set(new_off);
-				return new_off;
-			}
-#endif
-
 			tick_item_t& raw_item_reference(key_t const& k)
 			{
 				tick_item_t *& item_ptr = tick_->ht[k];
@@ -234,19 +230,21 @@ namespace { namespace aux {
 
 				// slowpath - create item and maybe hvs
 
-				tick_->items.emplace_back(k, hv_conf_);
-				tick_item_t& item = tick_->items.back();
+				tick_item_t *new_item = (tick_item_t*)nmpa_alloc(&tick_->nmpa, sizeof(tick_item_t));
+				if (new_item == nullptr)
+					throw std::bad_alloc();
 
-				item_ptr = &item;
-				return item;
+				new (new_item) tick_item_t(hv_conf_);
+
+				// tick_->items.emplace_back(k, hv_conf_);
+				// tick_item_t& item = tick_->items.back();
+
+				item_ptr = new_item;
+				return *item_ptr;
 			}
 
 			void raw_item_increment(key_t const& k, packet_t const *packet, packed_timer_t const *timer)
 			{
-				// uint32_t const offset = this->raw_item_offset_get(k);
-
-				// tick_item_t& item = tick_->items[offset];
-
 				tick_item_t& item = this->raw_item_reference(k);
 
 				item.data.hit_count  += timer->hit_count;
@@ -265,12 +263,14 @@ namespace { namespace aux {
 					hdr_histogram_t& hv = item.hv;
 
 					// optimize common case when hit_count == 1, and there is no need to divide
-					duration_t d = timer->value;
-
-					if (__builtin_expect(timer->hit_count > 1, 0))
-						d = d / timer->hit_count;
-
-					hv.increment(hv_conf_, d);
+					if (__builtin_expect(timer->hit_count == 1, 1))
+					{
+						hv.increment(hv_conf_, timer->value);
+					}
+					else
+					{
+						hv.increment(hv_conf_, (timer->value / timer->hit_count), timer->hit_count);
+					}
 				}
 			}
 
@@ -323,21 +323,21 @@ namespace { namespace aux {
 			{
 				report_estimates_t result = {};
 
-				result.row_count = tick_->items.size();
+				result.row_count = tick_->ht.size();
 
 				// tick
 				result.mem_used += sizeof(*tick_);
 
-				// items base part
-				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
-
-				// hvs storage
-				for (tick_item_t const& item : tick_->items)
-					result.mem_used += item.hv.get_allocated_size();
-
 				// tick ht
 				result.mem_used += sizeof(tick_->ht);
 				result.mem_used += tick_->ht.bucket_count() * sizeof(*tick_->ht.begin());
+
+				// items base part
+				result.mem_used += nmpa_mem_used(&tick_->nmpa);
+
+				// hvs storage
+				for (auto const& ht_pair : tick_->ht)
+					result.mem_used += ht_pair.second->hv.get_allocated_size();
 
 				return result;
 			}
@@ -574,7 +574,7 @@ namespace { namespace aux {
 
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
 			{
-				std::vector<history_row_t> items;
+				std::vector<history_row_t> rows;
 			};
 
 		public:
@@ -602,39 +602,21 @@ namespace { namespace aux {
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
 
-				h_tick->items.reserve(agg_tick->items.size());
+				// reserve, we know the size
+				h_tick->rows.reserve(agg_tick->ht.size());
 
-				for (size_t i = 0; i < agg_tick->items.size(); i++)
+				for (auto const& ht_pair : agg_tick->ht)
 				{
-					h_tick->items.emplace_back();
+					h_tick->rows.emplace_back();
 
-					tick_item_t const& src_item = agg_tick->items[i];
-					history_row_t    & dst_row  = h_tick->items.back();
+					key_t       const& src_key  = ht_pair.first;
+					tick_item_t const& src_item = *ht_pair.second;
+					history_row_t    & dst_row  = h_tick->rows.back();
 
-					dst_row.key  = src_item.key;
+					dst_row.key  = src_key;
 					dst_row.data = src_item.data;
 					dst_row.hv   = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
 				}
-
-#if 0
-
-				// can MOVE items, since the format is intentionally the same
-				h_tick->items = std::move(agg_tick->items);
-
-				// migrate histograms, converting them from hashtable to flat
-				if (rinfo_.hv_enabled)
-				{
-					h_tick->hvs.reserve(agg_tick->hvs.size()); // we know the size in advance, mon
-
-					for (auto const& src_hv : agg_tick->hvs)
-					{
-						h_tick->hvs.emplace_back(std::move(histogram___convert_hdr_to_flat(src_hv, hv_conf_)));
-					}
-
-					// sanity
-					assert(h_tick->items.size() == agg_tick->hvs.size());
-				}
-#endif
 
 				ring_.append(std::move(h_tick));
 			}
@@ -646,7 +628,7 @@ namespace { namespace aux {
 				if (!ring_.get_ringbuffer().empty())
 				{
 					auto const& tick = static_cast<history_tick_t const&>(*ring_.get_ringbuffer().back());
-					result.row_count = tick.items.size();
+					result.row_count = tick.rows.size();
 				}
 
 				result.mem_used += sizeof(*this);
@@ -658,11 +640,11 @@ namespace { namespace aux {
 					// tick
 					result.mem_used += sizeof(tick);
 
-					// items
-					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
+					// rows
+					result.mem_used += tick.rows.size() * sizeof(*tick.rows.begin());
 
 					// hvs
-					for (history_row_t const& h_row : tick.items)
+					for (history_row_t const& h_row : tick.rows)
 						result.mem_used += h_row.hv.values.capacity() * sizeof(*h_row.hv.values.begin());
 				}
 
@@ -813,9 +795,9 @@ namespace { namespace aux {
 
 						n_ticks++;
 
-						for (size_t i = 0; i < tick.items.size(); i++)
+						for (size_t i = 0; i < tick.rows.size(); i++)
 						{
-							history_row_t const& src = tick.items[i];
+							history_row_t const& src = tick.rows[i];
 							row_t              & dst = to[src.key];
 
 							dst.data.req_count  += src.data.req_count;
@@ -836,12 +818,12 @@ namespace { namespace aux {
 							}
 						}
 
-						key_lookups += tick.items.size();
+						key_lookups += tick.rows.size();
 
 						repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
 						if (need_histograms)
-							hv_appends  += tick.items.size();
+							hv_appends  += tick.rows.size();
 					}
 
 					LOG_DEBUG(snapshot_ctx->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",
