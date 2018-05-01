@@ -273,7 +273,7 @@ public:
 					// if it's going to -> just allocate to convert uint16_t to counter_t
 					if (__builtin_expect(((counter_t)counter + increment_by) > std::numeric_limits<uint16_t>::max(), 0))
 					{
-						this->convert_in_place_to_allocated(conf);
+						this->convert_in_place_to_allocated(conf, counts_index);
 						this->counts_[counts_index] += increment_by;
 					}
 					else
@@ -291,7 +291,7 @@ public:
 					}
 					else
 					{
-						this->convert_in_place_to_allocated(conf);
+						this->convert_in_place_to_allocated(conf, counts_index);
 						this->counts_[counts_index] += increment_by;
 					}
 				}
@@ -325,9 +325,10 @@ public:
 		assert(this->counts_maxlen_ == other.counts_maxlen_);
 
 		// just to make it simpler
-		this->convert_in_place_to_allocated(conf);
+		this->convert_in_place_to_allocated(conf, other.counts_len_);
 
 		// maybe reallocate
+		// FIXME: probably not needed
 		if ((this->counts_len_ < other.counts_len_))
 		{
 			counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
@@ -368,12 +369,12 @@ public:
 		return counts_nonzero_ < in_place_max_values;
 	}
 
-	void convert_in_place_to_allocated(config_t const& conf)
+	void convert_in_place_to_allocated(config_t const& conf, uint32_t expected_max_index)
 	{
 		if (!in_place_mode())
 			return;
 
-		uint32_t max_bucket_id = 0;
+		uint32_t max_bucket_id = expected_max_index;
 		for (uint32_t i = 0; i < counts_nonzero_; i++)
 		{
 			if (in_place_.bucket_ids[i] > max_bucket_id)
