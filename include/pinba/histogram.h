@@ -136,8 +136,8 @@ struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 {
 	using base_t = hdr_histogram___impl_t<uint32_t>;
 
-	hdr_histogram_t(histogram_conf_t const& conf)
-		: base_t(conf.hdr)
+	hdr_histogram_t(struct nmpa_s *nmpa, histogram_conf_t const& conf)
+		: base_t(nmpa, conf.hdr)
 	{
 	}
 

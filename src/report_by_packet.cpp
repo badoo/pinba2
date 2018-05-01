@@ -24,8 +24,22 @@ namespace { namespace aux {
 
 	struct report_tick___by_packet_t
 		: public report_tick_t
-		, public report_row___by_packet_t
+		, report_row___by_packet_t
 	{
+		struct nmpa_s nmpa;
+
+	public:
+
+		report_tick___by_packet_t(histogram_conf_t const& hv_conf)
+		{
+			nmpa_init(&nmpa, 1024);
+			this->hv = meow::make_unique<hdr_histogram_t>(&nmpa, hv_conf);
+		}
+
+		~report_tick___by_packet_t()
+		{
+			nmpa_free(&nmpa);
+		}
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,8 +114,7 @@ namespace { namespace aux {
 		virtual report_tick_ptr tick_now(timeval_t curr_tv) override
 		{
 			tick_ptr result = std::move(tick_);
-			tick_ = meow::make_intrusive<tick_t>();
-			tick_->hv = meow::make_unique<hdr_histogram_t>(hv_conf_);
+			tick_ = meow::make_intrusive<tick_t>(hv_conf_);
 			return std::move(result);
 		}
 
@@ -112,8 +125,7 @@ namespace { namespace aux {
 			result.row_count = 1; // always a single row (no aggregation)
 
 			result.mem_used += sizeof(*tick_);
-			if (tick_->hv)
-				result.mem_used += tick_->hv->get_allocated_size();
+			result.mem_used += nmpa_mem_used(&tick_->nmpa);
 
 			return result;
 		}
@@ -192,10 +204,6 @@ namespace { namespace aux {
 					, hashtable_t& to
 					, report_snapshot_t::merge_flags_t flags)
 				{
-					MEOW_DEFER(
-						ticks.clear();
-					);
-
 					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::with_histograms));
 
 					for (auto const& tick : ticks)
@@ -217,11 +225,20 @@ namespace { namespace aux {
 						if (need_histograms)
 						{
 							if (!dst.hv)
-								dst.hv = meow::make_unique<hdr_histogram_t>(snapshot_ctx->hv_conf);
+							{
+								// FIXME: ugly
+								// take a pointer to current tick nmpa
+								// this forces us to hold on to ticks for the lifetime of this snapshot
+								struct nmpa_s *hv_nmpa = const_cast<struct nmpa_s*>(&src.nmpa);
+								dst.hv = meow::make_unique<hdr_histogram_t>(hv_nmpa, snapshot_ctx->hv_conf);
+							}
 
 							dst.hv->merge_other_with_same_conf(*src.hv, snapshot_ctx->hv_conf);
 						}
 					}
+
+					// NOTE: do NOT clear ticks here, since we've taken pointer to one of the tick->nmpa
+					// ticks.clear();
 				}
 			};
 			using snapshot_t = report_snapshot__impl_t<snapshot_traits>;

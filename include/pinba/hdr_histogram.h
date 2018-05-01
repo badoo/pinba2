@@ -12,6 +12,8 @@
 #include <meow/str_ref.hpp>
 #include <meow/format/format.hpp>
 
+#include "misc/nmpa.h"
+
 #include "pinba/globals.h"
 #include "pinba/limits.h"
 
@@ -135,8 +137,10 @@ struct hdr_histogram___impl_t : private boost::noncopyable
 
 public:
 
-	hdr_histogram___impl_t(config_t const& conf)
+	hdr_histogram___impl_t(struct nmpa_s *nmpa, config_t const& conf)
 	{
+		nmpa_                           = nmpa;
+
 		negative_inf_                   = 0;
 		positive_inf_                   = 0;
 		total_count_                    = 0;
@@ -151,14 +155,15 @@ public:
 
 		// allocate small part on init
 		counts_len_                     = conf.sub_bucket_half_count;
-		counts_ = (counter_t*)calloc(1, counts_len_ * sizeof(counter_t));
+		counts_ = (counter_t*)nmpa_calloc(nmpa_, counts_len_ * sizeof(counter_t));
 		if (counts_ == nullptr)
 			throw std::bad_alloc();
 	}
 
 	~hdr_histogram___impl_t()
 	{
-		free(counts_);
+		// not supposed to free anything from nmpa
+		// and it won't work anyway
 	}
 
 	// not to be copied
@@ -174,6 +179,8 @@ public:
 
 	hdr_histogram___impl_t& operator=(hdr_histogram___impl_t&& other) noexcept
 	{
+		nmpa_                           = other.nmpa;
+
 		negative_inf_                   = other.negative_inf_;
 		positive_inf_                   = other.positive_inf_;
 		total_count_                    = other.total_count_;
@@ -247,7 +254,7 @@ public:
 
 			if ((uint32_t)counts_index >= counts_len_)
 			{
-				counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
+				counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
 				if (tmp == nullptr)
 					throw std::bad_alloc();
 
@@ -272,7 +279,7 @@ public:
 
 		if (this->counts_len_ < other.counts_len_)
 		{
-			counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
+			counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
 			if (tmp == nullptr)
 				throw std::bad_alloc();
 
@@ -467,6 +474,8 @@ public: // utilities
 	}
 
 private:
+	struct nmpa_s *nmpa_;
+	// 8
 
 	// FIXME: experiment with small types, they seem to generate too many instructions to extend
 	uint16_t   sub_bucket_count;
@@ -474,24 +483,25 @@ private:
 	uint16_t   sub_bucket_mask;
 	uint8_t    unit_magnitude;
 	uint8_t    sub_bucket_half_count_magnitude;
-	// 8
+	// 16
 
 	uint32_t   counts_nonzero_;
 	uint32_t   counts_len_;
-	// 16
-
-	uint64_t   total_count_;
 	// 24
 
-	counter_t  *counts_; // field order is important to avoid padding
+	uint64_t   total_count_;
 	// 32
+
+	counter_t  *counts_;
+	// 40
 
 	uint32_t    counts_maxlen_;
 	counter_t   negative_inf_;
 	counter_t   positive_inf_;
-	// 48
+	uint32_t    padding____; // explicitly put it somewhere, as we know it exists
+	// 56
 };
-static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 48, "");
+static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 56, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -165,10 +165,10 @@ namespace { namespace aux {
 			data_t           data;
 			hdr_histogram_t  hv;
 
-			tick_item_t(histogram_conf_t const& hv_conf)
+			tick_item_t(struct nmpa_s *nmpa, histogram_conf_t const& hv_conf)
 				: last_unique(0)
 				, data()
-				, hv(hv_conf)
+				, hv(nmpa, hv_conf)
 			{
 			}
 
@@ -192,21 +192,24 @@ namespace { namespace aux {
 		struct tick_t : public report_tick_t
 		{
 			agg_hashtable_t  ht;
-			struct nmpa_s    nmpa;
+			struct nmpa_s    item_nmpa;
+			struct nmpa_s    hv_nmpa;
 
-			// 1 meg, don't be shy
-			static constexpr size_t nmpa_default_chunk_size = 1 * 1024 * 1024;
+			static constexpr size_t item_nmpa_default_chunk_size = 128 * 1024;
+			static constexpr size_t hv_nmpa_default_chunk_size   = 128 * 1024;
 
 		public:
 
 			tick_t()
 			{
-				nmpa_init(&nmpa, nmpa_default_chunk_size);
+				nmpa_init(&item_nmpa, item_nmpa_default_chunk_size);
+				nmpa_init(&hv_nmpa, hv_nmpa_default_chunk_size);
 			}
 
 			~tick_t()
 			{
-				nmpa_free(&nmpa);
+				nmpa_free(&hv_nmpa);
+				nmpa_free(&item_nmpa);
 			}
 
 		private: // not movable or copyable
@@ -230,11 +233,11 @@ namespace { namespace aux {
 
 				// slowpath - create item and maybe hvs
 
-				tick_item_t *new_item = (tick_item_t*)nmpa_alloc(&tick_->nmpa, sizeof(tick_item_t));
+				tick_item_t *new_item = (tick_item_t*)nmpa_alloc(&tick_->item_nmpa, sizeof(tick_item_t));
 				if (new_item == nullptr)
 					throw std::bad_alloc();
 
-				new (new_item) tick_item_t(hv_conf_);
+				new (new_item) tick_item_t(&tick_->hv_nmpa, hv_conf_);
 
 				// tick_->items.emplace_back(k, hv_conf_);
 				// tick_item_t& item = tick_->items.back();
@@ -332,12 +335,9 @@ namespace { namespace aux {
 				result.mem_used += sizeof(tick_->ht);
 				result.mem_used += tick_->ht.bucket_count() * sizeof(*tick_->ht.begin());
 
-				// items base part
-				result.mem_used += nmpa_mem_used(&tick_->nmpa);
-
-				// hvs storage
-				for (auto const& ht_pair : tick_->ht)
-					result.mem_used += ht_pair.second->hv.get_allocated_size();
+				// pools
+				result.mem_used += nmpa_mem_used(&tick_->item_nmpa);
+				result.mem_used += nmpa_mem_used(&tick_->hv_nmpa);
 
 				return result;
 			}

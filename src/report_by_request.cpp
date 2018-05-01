@@ -41,6 +41,28 @@ namespace { namespace aux {
 		{
 			std::deque<tick_item_t>      items;
 			std::deque<hdr_histogram_t>  hvs;
+
+			struct nmpa_s                hv_nmpa;
+
+			static constexpr size_t hv_nmpa_default_chunk_size   = 128 * 1024;
+
+		public:
+
+			tick_t()
+			{
+				nmpa_init(&hv_nmpa, hv_nmpa_default_chunk_size);
+			}
+
+			~tick_t()
+			{
+				nmpa_free(&hv_nmpa);
+			}
+
+		private: // not movable or copyable
+			tick_t(tick_t const&)            = delete;
+			tick_t(tick_t&&)                 = delete;
+			tick_t& operator=(tick_t const&) = delete;
+			tick_t& operator=(tick_t&&)      = delete;
 		};
 
 	public: // aggregator
@@ -91,7 +113,7 @@ namespace { namespace aux {
 				item.key = k;
 
 				if (conf_.hv_bucket_count > 0)
-					tick_->hvs.emplace_back(hv_conf_);
+					tick_->hvs.emplace_back(&tick_->hv_nmpa, hv_conf_);
 
 				assert(tick_->items.size() < size_t(INT_MAX));
 				uint32_t const new_off = static_cast<uint32_t>(tick_->items.size() - 1);
