@@ -24,7 +24,7 @@ namespace { namespace aux {
 
 	struct report_tick___by_packet_t
 		: public report_tick_t
-		, report_row___by_packet_t
+		, public report_row___by_packet_t
 	{
 		struct nmpa_s nmpa;
 

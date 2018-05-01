@@ -239,9 +239,6 @@ namespace { namespace aux {
 
 				new (new_item) tick_item_t(&tick_->hv_nmpa, hv_conf_);
 
-				// tick_->items.emplace_back(k, hv_conf_);
-				// tick_item_t& item = tick_->items.back();
-
 				item_ptr = new_item;
 				return *item_ptr;
 			}
