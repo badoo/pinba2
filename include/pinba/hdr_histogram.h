@@ -140,7 +140,6 @@ public:
 		negative_inf_                   = 0;
 		positive_inf_                   = 0;
 		total_count_                    = 0;
-		counts_nonzero_                 = 0;
 		counts_maxlen_                  = conf.counts_len;
 
 		sub_bucket_count                = conf.sub_bucket_count;
@@ -149,11 +148,12 @@ public:
 		unit_magnitude                  = conf.unit_magnitude;
 		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
 
-		// allocate small part on init
-		counts_len_                     = conf.sub_bucket_half_count;
-		counts_ = (counter_t*)calloc(1, counts_len_ * sizeof(counter_t));
-		if (counts_ == nullptr)
-			throw std::bad_alloc();
+		// in_place_mode on init
+		counts_nonzero_                 = 0;
+		counts_len_                     = 0;
+		counts_                         = nullptr;
+
+		// no zerofill needed for in_place, since counts_len_ == 0
 	}
 
 	~hdr_histogram___impl_t()
@@ -187,8 +187,18 @@ public:
 		unit_magnitude                  = other.unit_magnitude;
 		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
 
-		counts_ = other.counts_;
-		other.counts_ = nullptr;
+		counts_                         = other.counts_;
+
+		// copy in_place part here, in case there is one
+		// no need to zero out other.in_place_
+		if (!counts_)
+			in_place_ = other.in_place_;
+
+		// force empty (and therefore in_place mode) for other
+		other.counts_                   = nullptr;
+		other.counts_nonzero_           = 0;
+		other.counts_len_               = 0;
+
 
 		return *this;
 	}
@@ -206,13 +216,14 @@ public: // reads
 
 	counts_range_t get_counts_range() const
 	{
+		assert((this->in_place_mode() == false) && "must not be called when in_place_mode is active");
 		return { this->counts_, this->counts_len_ };
 	}
 
-	counts_range_nc_t mutable_counts_range()
-	{
-		return { this->counts_, this->counts_len_ };
-	}
+	// counts_range_nc_t mutable_counts_range()
+	// {
+	// 	return { this->counts_, this->counts_len_ };
+	// }
 
 	uint64_t get_allocated_size() const
 	{
@@ -245,21 +256,64 @@ public:
 			int32_t const counts_index = counts_index_for(value);
 			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
 
-			if ((uint32_t)counts_index >= counts_len_)
+			if (this->in_place_mode())
 			{
-				counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
-				if (tmp == nullptr)
-					throw std::bad_alloc();
+				uint32_t counter_offset = 0;
+				for (/**/; counter_offset < counts_nonzero_; counter_offset++)
+				{
+					if (in_place_.bucket_ids[counter_offset] == (uint32_t)counts_index)
+						break;
+				}
 
-				std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
-				counts_len_ = counts_maxlen_;
-				counts_ = tmp;
+				if (counter_offset != counts_nonzero_) // found, increment locally
+				{
+					uint16_t& counter = in_place_.bucket_values[counter_offset];
+
+					// counter might overflow (which is really unlikely),
+					// if it's going to -> just allocate to convert uint16_t to counter_t
+					if (__builtin_expect(((counter_t)counter + increment_by) > std::numeric_limits<uint16_t>::max(), 0))
+					{
+						this->convert_in_place_to_allocated(conf);
+						this->counts_[counts_index] += increment_by;
+					}
+					else
+					{
+						counter += increment_by;
+					}
+				}
+				else // not found, need to add another
+				{
+					if (this->in_place_got_space()) // add in-place if there is space
+					{
+						in_place_.bucket_ids[counts_nonzero_] = counts_index;
+						in_place_.bucket_values[counts_nonzero_] = increment_by;
+						counts_nonzero_ += 1;
+					}
+					else
+					{
+						this->convert_in_place_to_allocated(conf);
+						this->counts_[counts_index] += increment_by;
+					}
+				}
 			}
+			else
+			{
+				if ((uint32_t)counts_index >= counts_len_)
+				{
+					counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
+					if (tmp == nullptr)
+						throw std::bad_alloc();
 
-			counter_t& counter = this->counts_[counts_index];
+					std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
+					counts_len_ = counts_maxlen_;
+					counts_ = tmp;
+				}
 
-			counts_nonzero_ += (counter == 0);
-			counter         += increment_by;
+				counter_t& counter = this->counts_[counts_index];
+
+				counts_nonzero_ += (counter == 0);
+				counter         += increment_by;
+			}
 		}
 
 		this->total_count_ += increment_by;
@@ -270,7 +324,11 @@ public:
 	{
 		assert(this->counts_maxlen_ == other.counts_maxlen_);
 
-		if (this->counts_len_ < other.counts_len_)
+		// just to make it simpler
+		this->convert_in_place_to_allocated(conf);
+
+		// maybe reallocate
+		if ((this->counts_len_ < other.counts_len_))
 		{
 			counter_t *tmp = (counter_t*)realloc(counts_, counts_maxlen_ * sizeof(counter_t));
 			if (tmp == nullptr)
@@ -281,6 +339,7 @@ public:
 			counts_ = tmp;
 		}
 
+		// migrate counters
 		for (uint32_t i = 0; i < other.counts_len_; i++)
 		{
 			counter_t&       dst_counter = this->counts_[i];
@@ -295,6 +354,55 @@ public:
 		this->negative_inf_ += other.negative_inf_;
 		this->positive_inf_ += other.positive_inf_;
 		this->total_count_ += other.total_count_;
+	}
+
+public:
+
+	bool in_place_mode() const
+	{
+		return counts_ == nullptr;
+	}
+
+	bool in_place_got_space() const
+	{
+		return counts_nonzero_ < in_place_max_values;
+	}
+
+	void convert_in_place_to_allocated(config_t const& conf)
+	{
+		if (!in_place_mode())
+			return;
+
+		uint32_t max_bucket_id = 0;
+		for (uint32_t i = 0; i < counts_nonzero_; i++)
+		{
+			if (in_place_.bucket_ids[i] > max_bucket_id)
+				max_bucket_id = in_place_.bucket_ids[i];
+		}
+
+		{
+			// bucket_ids store count_index_for() results, so they're indexes already
+			uint32_t const new_len = (max_bucket_id < sub_bucket_half_count)
+										? sub_bucket_half_count
+										: counts_maxlen_;
+
+			counter_t *tmp = (counter_t*)malloc(new_len * sizeof(counter_t));
+			if (tmp == nullptr)
+				throw std::bad_alloc();
+
+			std::uninitialized_fill(tmp, tmp + new_len, 0);
+			counts_len_ = new_len;
+			counts_ = tmp;
+		}
+
+		// just need to increment buckets required, no other counters change
+		for (uint32_t i = 0; i < counts_nonzero_; i++)
+		{
+			uint32_t const counts_index = in_place_.bucket_ids[i];
+			this->counts_[counts_index] += in_place_.bucket_values[i];
+		}
+
+		assert(this->in_place_mode() == false);
 	}
 
 public:
@@ -466,7 +574,8 @@ public: // utilities
 		return counts_index(bucket_index, sub_bucket_index);
 	}
 
-private:
+// private: // screw that
+public:
 
 	// FIXME: experiment with small types, they seem to generate too many instructions to extend
 	uint16_t   sub_bucket_count;
@@ -480,31 +589,47 @@ private:
 	uint32_t   counts_len_;
 	// 16
 
-	uint64_t   total_count_;
+	counter_t  *counts_; // field order is important to avoid padding
 	// 24
 
-	counter_t  *counts_; // field order is important to avoid padding
+	uint64_t   total_count_;
 	// 32
 
 	uint32_t    counts_maxlen_;
 	counter_t   negative_inf_;
 	counter_t   positive_inf_;
-	// 48
+
+	// 44
+
+	// immediate values, no allocation
+	// 14 = (128 - 44) / 6
+	// 128 - total struct size
+	// 44  - fixed fields total size
+	// 6   - bytes per bucket (4 bytes id, 2 bytes count)
+	static constexpr size_t const max_object_size     = 128;
+	static constexpr size_t const fixed_fields_size   = 44; // the fields above
+	static constexpr size_t const in_place_max_values = (max_object_size - fixed_fields_size) / 6; // 14
+	struct {
+		uint32_t bucket_ids[in_place_max_values];
+		uint16_t bucket_values[in_place_max_values];
+	} in_place_;
 };
-static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 48, "");
+static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 128, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class SinkT, class Histogram>
 inline void hdr_histogram___debug_dump(SinkT& sink, Histogram const& hv, meow::str_ref func_name)
 {
-	auto const counts_r = hv.get_counts_range();
+	// auto const counts_r = hv.get_counts_range();
 
-	meow::format::fmt(stderr, "{0} internal failure, dumping histogram\n", func_name);
+	meow::format::fmt(stderr, "{0} internal failure, dumping histogram [{1}]\n",
+		func_name, hv.in_place_mode() ? "in_place_mode" : "allocated_mode");
+
 	meow::format::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, total_count: {3}, hv_size: {4}\n",
-		func_name, hv.negative_inf(), hv.positive_inf(), hv.total_count(), counts_r.size());
+		func_name, hv.negative_inf(), hv.positive_inf(), hv.total_count(), hv.counts_len());
 
-	for (uint32_t i = 0; i < counts_r.size(); i++)
+	for (uint32_t i = 0; i < hv.counts_len(); i++)
 		meow::format::fmt(stderr, "  [{0}] -> {1}\n", hv.value_at_index(i), hv.count_at_index(i));
 }
 

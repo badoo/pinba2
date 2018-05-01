@@ -187,21 +187,33 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 	flat.values.clear();
 	flat.values.resize(hdr.counts_nonzero()); // FIXME: this does useless zero init
 
-	auto const counts_r = hdr.get_counts_range();
-
-	uint32_t read_position = 0;
-	for (uint32_t i = 0; i < hdr.counts_nonzero(); i++)
+	if (hdr.in_place_mode())
 	{
-		while (counts_r[read_position] == 0)
-			read_position++;
-
-		histogram_value_t& hv_value = flat.values[i];
-		hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position);
-		hv_value.value     = counts_r[read_position];
-		read_position++;
+		for (uint32_t i = 0; i < hdr.counts_nonzero(); i++)
+		{
+			histogram_value_t& hv_value = flat.values[i];
+			hv_value.bucket_id = (uint32_t) hdr.value_at_index(hdr.in_place_.bucket_ids[i]);
+			hv_value.value     = hdr.in_place_.bucket_values[i];
+		}
 	}
+	else
+	{
+		auto const counts_r = hdr.get_counts_range();
 
-	assert(read_position <= counts_r.size());
+		uint32_t read_position = 0;
+		for (uint32_t i = 0; i < hdr.counts_nonzero(); i++)
+		{
+			while (counts_r[read_position] == 0)
+				read_position++;
+
+			histogram_value_t& hv_value = flat.values[i];
+			hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position);
+			hv_value.value     = counts_r[read_position];
+			read_position++;
+		}
+
+		assert(read_position <= counts_r.size());
+	}
 
 	return flat;
 }
