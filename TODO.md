@@ -13,6 +13,7 @@
 	- [ ] plain-C API
 	- [ ] Go server, wrapping it, with http interface and stuff.
 - [ ] transient memory stats (aka. memory used by data, that was read from the network, and not yet aggregated)
+	- [ ] do it like innodb does with 'show engine status'
 	- [ ] udp buffers
 	- [ ] udp batches
 	- [ ] repacked batches
@@ -40,9 +41,6 @@
 	- [ ] split permanent dictionary into it's own api, use for all tag names (never refcount them)
 	- [ ] maybe rework dictionaries to be report-based (this virtually eliminates the need for repacker, but will prob require report thread-splitting)
 	- [ ] hash strings only once, hack hash table impls to accept hashes instead of strings (impossible with unordered_map?)
-- [ ] try hdr_histogram_c
-	- [ ] hack to allow for dynamic resize (currently too expensive to use, as they preallocate on creation)
-	- [ ] also need to figure out what to do with negative/positive inf in our histograms, and significant digits setting
 - [ ] {medium} thread cpu + numa affinity
 	- [ ] coordinator (or packet relay for that matter) affinity + priority
 	- [ ] repacker affinity + config support
@@ -121,3 +119,7 @@
 - [x] {easy, worth it?} per repacker dictionary caches (reduces locking on global dictionary)
 - [x] {easy} SO_REUSEPORT for udp threads
 	- this reduces kernel lock contention (in my test about halves rusage for udp collector threads)
+- [x] try hdr_histogram_c
+	- [x] {actually done} rewritten hdr histogram to suit our needs, now using it at 'current tick' aggregation stage
+	- [x] {won't do} hack to allow for dynamic resize (currently too expensive to use, as they preallocate on creation)
+	- [x] also need to figure out what to do with negative/positive inf in our histograms, and significant digits setting

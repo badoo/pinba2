@@ -470,38 +470,40 @@ mysql> CREATE TABLE IF NOT EXISTS `pinba`.`active` (
     ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
 
 
-mysql> select *, packets_received/uptime as packets_per_sec, ru_utime/uptime utime_per_sec from active\G
+mysql> select *, packets_received/uptime as packets_per_sec, timers_scanned/uptime as timers_per_sec, ru_utime/uptime utime_per_sec from active\G
 *************************** 1. row ***************************
-                          id: 4
-                  table_name: ./pinba/tag_info_pinger_lookup_hosts
-               internal_name: ./pinba/tag_info_pinger_lookup_hosts
+                          id: 1
+                  table_name: ./pinba/tag_report_perf___10us
+               internal_name: ./pinba/tag_report_perf___10us
                         kind: report_by_timer_data
-                      uptime: 10969.727857174
+                      uptime: 2316.135996475
              time_window_sec: 60
                   tick_count: 60
-            approx_row_count: 299
-             approx_mem_used: 17853360
-                batches_sent: 1040257
-            batches_received: 1040257
-            packets_received: 988809394
+            approx_row_count: 10830
+             approx_mem_used: 117561688
+                batches_sent: 185186
+            batches_received: 185186
+            packets_received: 38144533
                 packets_lost: 0
-          packets_aggregated: 437364881
-    packets_dropped_by_bloom: 114079108
-  packets_dropped_by_filters: 437365405
+          packets_aggregated: 6634543
+    packets_dropped_by_bloom: 31509990
+  packets_dropped_by_filters: 0
    packets_dropped_by_rfield: 0
      packets_dropped_by_rtag: 0
  packets_dropped_by_timertag: 0
-              timers_scanned: 437364881
-           timers_aggregated: 437364881
+              timers_scanned: 1455859105
+           timers_aggregated: 1097993658
+     timers_skipped_by_bloom: 357865447
    timers_skipped_by_filters: 0
       timers_skipped_by_tags: 0
-                    ru_utime: 182.768
-                    ru_stime: 7.552
-              last_tick_time: 1508859475.6637123
-  last_tick_prepare_duration: 0.0016342540000000001
-last_snapshot_merge_duration: 0.009539584
-             packets_per_sec: 90139.82907090415
-               utime_per_sec: 0.016661124357836562
+                    ru_utime: 182.947086
+                    ru_stime: 4.105066
+              last_tick_time: 1525363484.9716723
+  last_tick_prepare_duration: 0.006995009000000001
+last_snapshot_merge_duration: 0.000000266
+             packets_per_sec: 16469.038544391762      // 16.5k packets/sec
+              timers_per_sec: 628896.7355846566       // 628k timers/sec, ~38 timers/packet
+               utime_per_sec: 0.0789880586798154      // at ~8% cpu!
 1 row in set (0.01 sec)
 ```
 
