@@ -39,8 +39,30 @@ namespace { namespace aux {
 
 		struct tick_t : public report_tick_t
 		{
-			std::deque<tick_item_t>  items;
-			std::deque<histogram_t>  hvs;
+			std::deque<tick_item_t>      items;
+			std::deque<hdr_histogram_t>  hvs;
+
+			struct nmpa_s                hv_nmpa;
+
+			static constexpr size_t hv_nmpa_default_chunk_size   = 128 * 1024;
+
+		public:
+
+			tick_t()
+			{
+				nmpa_init(&hv_nmpa, hv_nmpa_default_chunk_size);
+			}
+
+			~tick_t()
+			{
+				nmpa_free(&hv_nmpa);
+			}
+
+		private: // not movable or copyable
+			tick_t(tick_t const&)            = delete;
+			tick_t(tick_t&&)                 = delete;
+			tick_t& operator=(tick_t const&) = delete;
+			tick_t& operator=(tick_t&&)      = delete;
 		};
 
 	public: // aggregator
@@ -91,7 +113,7 @@ namespace { namespace aux {
 				item.key = k;
 
 				if (conf_.hv_bucket_count > 0)
-					tick_->hvs.emplace_back();
+					tick_->hvs.emplace_back(&tick_->hv_nmpa, hv_conf_);
 
 				assert(tick_->items.size() < size_t(INT_MAX));
 				uint32_t const new_off = static_cast<uint32_t>(tick_->items.size() - 1);
@@ -115,24 +137,20 @@ namespace { namespace aux {
 
 				if (conf_.hv_bucket_count > 0)
 				{
-					histogram_t& hv = tick_->hvs[offset];
+					auto& hv = tick_->hvs[offset];
 					hv.increment(hv_conf_, packet->request_time);
 				}
 			}
 
 		public:
 
-			aggregator_t(pinba_globals_t *globals, report_conf___by_request_t const& conf)
+			aggregator_t(pinba_globals_t *globals, report_conf___by_request_t const& conf, report_info_t const& rinfo)
 				: globals_(globals)
 				, stats_(nullptr)
 				, conf_(conf)
+				, hv_conf_(histogram___configure_with_rinfo(rinfo))
 				, tick_(meow::make_intrusive<tick_t>())
 			{
-				hv_conf_ = histogram_conf_t {
-					.bucket_count = conf.hv_bucket_count,
-					.bucket_d     = conf.hv_bucket_d,
-					.min_value    = conf.hv_min_value,
-				};
 			}
 
 			virtual void stats_init(report_stats_t *stats) override
@@ -157,14 +175,20 @@ namespace { namespace aux {
 
 				result.row_count = tick_->items.size();
 
+				// tick
 				result.mem_used += sizeof(*tick_);
-				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
-				result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
-				for (auto const& hv : tick_->hvs)
-					result.mem_used += hv.map_cref().bucket_count() * sizeof(*hv.map_cref().begin());
 
+				// tick ht
 				result.mem_used += sizeof(tick_ht_);
 				result.mem_used += tick_ht_.bucket_count() * sizeof(*tick_ht_.begin());
+
+				// items
+				result.mem_used += tick_->items.size() * sizeof(*tick_->items.begin());
+
+				// hvs
+				result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
+				for (hdr_histogram_t const& hv : tick_->hvs)
+					result.mem_used += hv.get_allocated_size();
 
 				return result;
 			}
@@ -215,7 +239,6 @@ namespace { namespace aux {
 			pinba_globals_t              *globals_;
 			report_stats_t               *stats_;
 			report_conf___by_request_t   conf_;
-
 			histogram_conf_t             hv_conf_;
 
 			boost::intrusive_ptr<tick_t> tick_;
@@ -241,6 +264,7 @@ namespace { namespace aux {
 				: globals_(globals)
 				, stats_(nullptr)
 				, rinfo_(rinfo)
+				, hv_conf_(histogram___configure_with_rinfo(rinfo))
 				, ring_(rinfo.tick_count)
 			{
 			}
@@ -269,7 +293,7 @@ namespace { namespace aux {
 
 					for (auto const& src_hv : agg_tick->hvs)
 					{
-						h_tick->hvs.emplace_back(std::move(histogram___convert_ht_to_flat(src_hv)));
+						h_tick->hvs.emplace_back(std::move(histogram___convert_hdr_to_flat(src_hv, hv_conf_)));
 					}
 
 					// sanity
@@ -290,11 +314,18 @@ namespace { namespace aux {
 				}
 
 				result.mem_used += sizeof(*this);
+
 				for (auto const& tick_base : ring_.get_ringbuffer())
 				{
 					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
+
+					// tick
 					result.mem_used += sizeof(tick);
+
+					// items
 					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
+
+					// hvs
 					result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
 					for (flat_histogram_t const& hv : tick.hvs)
 						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
@@ -497,13 +528,14 @@ namespace { namespace aux {
 			virtual report_snapshot_ptr get_snapshot() override
 			{
 				using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
-				return meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_}, ring_.get_ringbuffer());
+				return meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_, hv_conf_}, ring_.get_ringbuffer());
 			}
 
 		private:
 			pinba_globals_t              *globals_;
 			report_stats_t               *stats_;
 			report_info_t                rinfo_;
+			histogram_conf_t             hv_conf_;
 
 			report_history_ringbuffer_t  ring_;
 		};
@@ -541,7 +573,7 @@ namespace { namespace aux {
 
 		virtual report_agg_ptr create_aggregator() override
 		{
-			return std::make_shared<aggregator_t>(globals_, conf_);
+			return std::make_shared<aggregator_t>(globals_, conf_, rinfo_);
 		}
 
 		virtual report_history_ptr create_history() override

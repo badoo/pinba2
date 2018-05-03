@@ -80,12 +80,14 @@ int main(int argc, char const *argv[])
 
 				for (auto pos = snapshot->pos_first(); !snapshot->pos_equal(pos, snapshot->pos_last()); pos = snapshot->pos_next(pos))
 				{
-					auto const *hv = snapshot->get_histogram(pos);
+					auto const *hv_conf = snapshot->histogram_conf();
+					auto const *hv      = snapshot->get_histogram(pos);
+
 					if (hv == nullptr)
 						continue;
 
 					auto const *flat_hv = static_cast<flat_histogram_t const*>(hv);
-					total_d = total_d + get_percentile(*flat_hv, {rinfo->hv_bucket_count, rinfo->hv_bucket_d}, 99.9);
+					total_d = total_d + get_percentile(*flat_hv, *hv_conf, 99.9);
 				}
 
 				ff::fmt(sink, "total p(99.9) = {0}\n", total_d);

@@ -34,14 +34,8 @@ noinst_PROGRAMS = \
 	exp_nanomsg_connect \
 	exp_nanomsg_ticker \
 	exp_nanomsg_poller \
-	exp_percentiles \
 	exp_protobuf_nmpa \
-	exp_aggregation \
 	exp_histogram_perf \
-	#
-
-exp_aggregation_SOURCES = \
-	exp_aggregation.cpp \
 	#
 
 exp_collector_SOURCES = \
@@ -70,10 +64,6 @@ exp_nanomsg_ticker_SOURCES = \
 
 exp_nanomsg_poller_SOURCES = \
 	exp_nanomsg_poller.cpp \
-	#
-
-exp_percentiles_SOURCES = \
-	exp_percentiles.cpp \
 	#
 
 exp_protobuf_nmpa_SOURCES = \

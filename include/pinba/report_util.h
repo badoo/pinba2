@@ -16,6 +16,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
+#include "pinba/histogram.h"
 #include "pinba/report_key.h"
 
 #include "t1ha/t1ha.h"
@@ -186,12 +187,14 @@ struct report_snapshot_ctx_t
 	pinba_globals_t     *globals;        // globals for logging / dictionary
 	report_stats_t      *stats;          // stats that we might want to update
 	report_info_t       rinfo;           // report info, immutable copy taken in ctor
+	histogram_conf_t    hv_conf;         // histogram conf, immutable copy taken in ctor
 	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks
 
-	report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri)
+	report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri, histogram_conf_t const& hvcf)
 		: globals(g)
 		, stats(st) // TODO:
 		, rinfo(ri)
+		, hv_conf(hvcf)
 	{
 	}
 
@@ -232,6 +235,11 @@ private:
 	virtual report_info_t const* report_info() const override
 	{
 		return &rinfo;
+	}
+
+	virtual histogram_conf_t const* histogram_conf() const override
+	{
+		return &hv_conf;
 	}
 
 	virtual dictionary_t const* dictionary() const override
@@ -493,6 +501,29 @@ private:
 	uint32_t      max_ticks_;
 	ringbuffer_t  ringbuffer_;
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+inline histogram_conf_t histogram___configure_with_rinfo(report_info_t const& rinfo)
+{
+	if (!rinfo.hv_enabled)
+		return {};
+
+	histogram_conf_t hv_conf = {
+		.min_value      = rinfo.hv_min_value,
+		.max_value      = rinfo.hv_min_value + (rinfo.hv_bucket_count * rinfo.hv_bucket_d),
+		.unit_size      = rinfo.hv_bucket_d, // NOTE: if you change this to be != bucket_d, fix conversion hdr -> flat
+		.precision_bits = 7,
+		.bucket_d       = rinfo.hv_bucket_d,
+		.hdr            = {},
+	};
+
+	auto const err = hdr_histogram_configure(&hv_conf.hdr, hv_conf);
+	if (err)
+		throw std::runtime_error(ff::fmt_str("bad histogram config: {0}", err));
+
+	return hv_conf;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
