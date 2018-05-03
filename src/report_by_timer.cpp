@@ -172,6 +172,13 @@ namespace { namespace aux {
 			{
 			}
 
+			~tick_item_t()
+			{
+				// NOTE: this dtor is never called!
+				// since we allocate this object in nmpa and never destroy (only free memory in tick->item_nmpa)
+				// therefore this->hv dtor is never called either (memory is freed by tick->hv_nmpa)
+			}
+
 			tick_item_t(tick_item_t const&) = delete;
 			tick_item_t& operator=(tick_item_t const&) = delete;
 
