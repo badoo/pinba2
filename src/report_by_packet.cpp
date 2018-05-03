@@ -229,6 +229,8 @@ namespace { namespace aux {
 								// FIXME: ugly
 								// take a pointer to current tick nmpa
 								// this forces us to hold on to ticks for the lifetime of this snapshot
+								// FIXME: this is also racy
+								// not many people use info with percentiles, but still - two concurrent selects might corrupt hv and nmpa
 								struct nmpa_s *hv_nmpa = const_cast<struct nmpa_s*>(&src.nmpa);
 								dst.hv = meow::make_unique<hdr_histogram_t>(hv_nmpa, snapshot_ctx->hv_conf);
 							}

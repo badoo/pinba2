@@ -414,13 +414,14 @@ This table lists all reports known to the engine with additional information abo
 | packets_received | packets received and processed |
 | packets_lost | packets that could not be processed and had to be dropped (aka, report couldn't cope with such packet rate) |
 | packets_aggregated | number of packets that we took useful information from |
-| packets_dropped_by_bloom | number of packets dropped by bloom filter |
+| packets_dropped_by_bloom | number of packets dropped by packet-level bloom filter |
 | packets_dropped_by_filters | number of packets dropped by packet-level filters |
 | packets_dropped_by_rfield | number of packets dropped by request_field aggregation |
 | packets_dropped_by_rtag | number of packets dropped by request_tag aggregation |
 | packets_dropped_by_timertag | number of packets dropped by timer_tag aggregation (i.e. no useful timers) |
 | timers_scanned | number of timers scanned |
 | timers_aggregated | number of timers that we took useful information from |
+| timers_skipped_by_bloom | number of timers skipped by timer-level bloom filter |
 | timers_skipped_by_filters | number of timers skipped by timertag filters |
 | timers_skipped_by_tags | number of timers skipped by not having required tags present |
 | ru_utime | rusage: user time |
@@ -436,36 +437,38 @@ Table comment syntax
 example
 
 ```sql
-mysql> CREATE TABLE if not exists `active` (
-    `id` int(10) unsigned NOT NULL,
-    `table_name` varchar(128) NOT NULL,
-    `internal_name` varchar(128) NOT NULL,
-    `kind` varchar(64) NOT NULL,
-    `uptime` double unsigned NOT NULL,
-    `time_window_sec` int(10) unsigned NOT NULL,
-    `tick_count` int(10) NOT NULL,
-    `approx_row_count` int(10) unsigned NOT NULL,
-    `approx_mem_used` bigint(20) unsigned NOT NULL,
-    `batches_sent` bigint(20) unsigned NOT NULL,
-    `batches_received` bigint(20) unsigned NOT NULL,
-    `packets_received` bigint(20) unsigned NOT NULL,
-    `packets_lost` bigint(20) unsigned NOT NULL,
-    `packets_aggregated` bigint(20) unsigned NOT NULL,
-    `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
-    `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
-    `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
-    `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
-    `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
-    `timers_scanned` bigint(20) unsigned NOT NULL,
-    `timers_aggregated` bigint(20) unsigned NOT NULL,
-    `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
-    `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
-    `ru_utime` double NOT NULL,
-    `ru_stime` double NOT NULL,
-    `last_tick_time` double NOT NULL,
-    `last_tick_prepare_duration` double NOT NULL,
-    `last_snapshot_merge_duration` double NOT NULL
+mysql> CREATE TABLE IF NOT EXISTS `pinba`.`active` (
+      `id` int(10) unsigned NOT NULL,
+      `table_name` varchar(128) NOT NULL,
+      `internal_name` varchar(128) NOT NULL,
+      `kind` varchar(64) NOT NULL,
+      `uptime` double unsigned NOT NULL,
+      `time_window_sec` int(10) unsigned NOT NULL,
+      `tick_count` int(10) NOT NULL,
+      `approx_row_count` int(10) unsigned NOT NULL,
+      `approx_mem_used` bigint(20) unsigned NOT NULL,
+      `batches_sent` bigint(20) unsigned NOT NULL,
+      `batches_received` bigint(20) unsigned NOT NULL,
+      `packets_received` bigint(20) unsigned NOT NULL,
+      `packets_lost` bigint(20) unsigned NOT NULL,
+      `packets_aggregated` bigint(20) unsigned NOT NULL,
+      `packets_dropped_by_bloom` bigint(20) unsigned NOT NULL,
+      `packets_dropped_by_filters` bigint(20) unsigned NOT NULL,
+      `packets_dropped_by_rfield` bigint(20) unsigned NOT NULL,
+      `packets_dropped_by_rtag` bigint(20) unsigned NOT NULL,
+      `packets_dropped_by_timertag` bigint(20) unsigned NOT NULL,
+      `timers_scanned` bigint(20) unsigned NOT NULL,
+      `timers_aggregated` bigint(20) unsigned NOT NULL,
+      `timers_skipped_by_bloom` bigint(20) unsigned NOT NULL,
+      `timers_skipped_by_filters` bigint(20) unsigned NOT NULL,
+      `timers_skipped_by_tags` bigint(20) unsigned NOT NULL,
+      `ru_utime` double NOT NULL,
+      `ru_stime` double NOT NULL,
+      `last_tick_time` double NOT NULL,
+      `last_tick_prepare_duration` double NOT NULL,
+      `last_snapshot_merge_duration` double NOT NULL
     ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
+
 
 mysql> select *, packets_received/uptime as packets_per_sec, ru_utime/uptime utime_per_sec from active\G
 *************************** 1. row ***************************
