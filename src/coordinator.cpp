@@ -150,6 +150,16 @@ namespace { namespace aux {
 			auto const *rinfo        = report_->info();
 			auto const tick_interval = rinfo->time_window / rinfo->tick_count;
 
+			// FIXME(antoxa): temporary solution to aid migration from hash to hdr histograms
+			// create objects early, to avoid exceptions inside worker thread
+			report_agg_ = report_->create_aggregator();
+			report_agg_->stats_init(&stats_);
+
+			report_history_ = report_->create_history();
+			report_history_->stats_init(&stats_);
+
+			std::atomic_thread_fence(std::memory_order_seq_cst);
+
 			std::thread t([this, tick_interval]()
 			{
 				PINBA___OS_CALL(globals_, set_thread_name, conf_.thread_name);
@@ -157,12 +167,6 @@ namespace { namespace aux {
 				MEOW_DEFER(
 					LOG_DEBUG(globals_->logger(), "{0}; exiting", conf_.thread_name);
 				);
-
-				report_agg_ = report_->create_aggregator();
-				report_agg_->stats_init(&stats_);
-
-				report_history_ = report_->create_history();
-				report_history_->stats_init(&stats_);
 
 				//
 
