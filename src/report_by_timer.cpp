@@ -850,8 +850,16 @@ namespace { namespace aux {
 
 			virtual report_snapshot_ptr get_snapshot() override
 			{
+				report_snapshot_ctx_t const sctx = {
+					.globals        = globals_,
+					.stats          = stats_,
+					.rinfo          = rinfo_,
+					.hv_conf        = hv_conf_,
+					.nmpa           = {} // don't need this at the moment
+				};
+
 				using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
-				return meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_, hv_conf_}, ring_.get_ringbuffer());
+				return meow::make_unique<snapshot_t>(sctx, ring_.get_ringbuffer());
 			}
 
 		private:

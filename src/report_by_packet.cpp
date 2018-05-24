@@ -226,26 +226,28 @@ namespace { namespace aux {
 						{
 							if (!dst.hv)
 							{
-								// FIXME: ugly
-								// take a pointer to current tick nmpa
-								// this forces us to hold on to ticks for the lifetime of this snapshot
-								// FIXME: this is also racy
-								// not many people use info with percentiles, but still - two concurrent selects might corrupt hv and nmpa
-								struct nmpa_s *hv_nmpa = const_cast<struct nmpa_s*>(&src.nmpa);
-								dst.hv = meow::make_unique<hdr_histogram_t>(hv_nmpa, snapshot_ctx->hv_conf);
+								dst.hv = meow::make_unique<hdr_histogram_t>(&snapshot_ctx->nmpa, snapshot_ctx->hv_conf);
 							}
 
 							dst.hv->merge_other_with_same_conf(*src.hv, snapshot_ctx->hv_conf);
 						}
 					}
 
-					// NOTE: do NOT clear ticks here, since we've taken pointer to one of the tick->nmpa
-					// ticks.clear();
+					// can clear ticks here, as we've merged hvs with hdr already
+					ticks.clear();
 				}
 			};
 			using snapshot_t = report_snapshot__impl_t<snapshot_traits>;
 
-			return meow::make_unique<snapshot_t>(report_snapshot_ctx_t{globals_, stats_, rinfo_, hv_conf_}, ring_.get_ringbuffer());
+			report_snapshot_ctx_t const sctx = {
+				.globals        = globals_,
+				.stats          = stats_,
+				.rinfo          = rinfo_,
+				.hv_conf        = hv_conf_,
+				.nmpa           = nmpa_autofree_t(64 * 1024),
+			};
+
+			return meow::make_unique<snapshot_t>(sctx, ring_.get_ringbuffer());
 		}
 
 	private:

@@ -153,6 +153,30 @@ std::string report_key_to_string(report_key_base_t<N> const& k, dictionary_t con
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct nmpa_autofree_t : public nmpa_s
+{
+	nmpa_autofree_t() : nmpa_autofree_t(1024)
+	{
+	}
+
+	explicit nmpa_autofree_t(size_t block_sz)
+	{
+		nmpa_init(this, block_sz);
+	}
+
+	nmpa_autofree_t(struct nmpa_s const& nmpa)
+	{
+		*((nmpa_s*)this) = nmpa;
+	}
+
+	~nmpa_autofree_t()
+	{
+		nmpa_free(this);
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 /*
 struct report_snapshot_traits___example
 {
@@ -188,15 +212,23 @@ struct report_snapshot_ctx_t
 	report_stats_t      *stats;          // stats that we might want to update
 	report_info_t       rinfo;           // report info, immutable copy taken in ctor
 	histogram_conf_t    hv_conf;         // histogram conf, immutable copy taken in ctor
-	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks
+	nmpa_autofree_t     nmpa;            // snapshot-local nmpa, initialize with nmpa_create() or nmpa_init() or {}
+	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks, keep it last member to simplify calling code
 
-	report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri, histogram_conf_t const& hvcf)
-		: globals(g)
-		, stats(st) // TODO:
-		, rinfo(ri)
-		, hv_conf(hvcf)
-	{
-	}
+	// report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri, histogram_conf_t const& hvcf, struct nmpa_s n)
+	// 	: globals(g)
+	// 	, stats(st) // TODO:
+	// 	, rinfo(ri)
+	// 	, hv_conf(hvcf)
+	// 	, nmpa(n)
+	// {
+	// }
+
+	// ~report_snapshot_ctx_t()
+	// {
+	// 	// nmpa MUST have been initialized by the calling code
+	// 	nmpa_free(&nmpa);
+	// }
 
 	pinba_logger_t* logger() const
 	{
