@@ -395,7 +395,7 @@ private:
 		auto       *table = handler->current_table();
 
 		report_state_t           *rstate     = row->report_state.get();
-		report_info_t const      *rinfo      = rstate->info;
+		report_info_t const      *rinfo      = &rstate->info;
 		report_stats_t const     *rstats     = rstate->stats;
 		report_estimates_t const *restimates = &rstate->estimates;
 

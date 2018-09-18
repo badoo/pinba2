@@ -37,6 +37,11 @@ struct report_info_t
 	duration_t  hv_min_value;
 };
 
+// TODO: a lot of different threads modifying this struct
+//       a lot of false sharding happening
+//       copying is tedious to code (as atomics are non-copyable)
+//       actually there is a memory corruption risk when returning report_state_t
+//        (aka report gets deleted when selecting -> dangling pointers)
 struct report_stats_t
 {
 	mutable std::mutex lock;
@@ -85,7 +90,7 @@ struct report_estimates_t
 struct report_state_t
 {
 	uint32_t             id;
-	report_info_t const  *info;
+	report_info_t        info;
 	report_stats_t       *stats;
 	report_estimates_t   estimates;
 };

@@ -611,7 +611,7 @@ namespace { namespace aux {
 			{
 				state->id        = rhost->id();
 				state->stats     = rhost->stats();
-				state->info      = rhost->report()->info();
+				state->info      = *rhost->report()->info();
 
 				auto const a_est = rhost->report_agg()->get_estimates();
 				auto const h_est = rhost->report_history()->get_estimates();
