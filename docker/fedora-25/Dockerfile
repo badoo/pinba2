@@ -1,6 +1,7 @@
 FROM        fedora:25
 MAINTAINER  Anton Povarov "anton.povarov@gmail.com"
 
+# TODO: Use multi-stage builds https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
 RUN         dnf install -y git-core gcc gcc-c++ boost-devel cmake autoconf automake libtool mariadb-devel
 RUN         dnf install -y file hostname mariadb-server
 

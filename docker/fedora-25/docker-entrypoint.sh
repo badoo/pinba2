@@ -36,7 +36,7 @@ if [ $1 = "mysqld" ]; then
 	# ..dary
 
 	# create root user with no password
-	# TODO: Use --init-file option (https://dev.mysql.com/doc/refman/8.0/en/server-options.html#option_mysqld_init-file)
+	# TODO: Use --init-file https://mariadb.com/kb/en/library/server-system-variables/#init_file
 	mysql --protocol=socket -uroot <<-EOSQL
 			SET @@SESSION.SQL_LOG_BIN=0;
 			DELETE from mysql.user;
@@ -46,14 +46,14 @@ if [ $1 = "mysqld" ]; then
 	EOSQL
 
 	# install plugin and create default db
-	# TODO: Use --init-file option (https://dev.mysql.com/doc/refman/8.0/en/server-options.html#option_mysqld_init-file)
+	# TODO: Use --init-file https://mariadb.com/kb/en/library/server-system-variables/#init_file
 	mysql --protocol=socket -uroot <<-EOSQL
 		INSTALL PLUGIN pinba SONAME 'libpinba_engine2.so';
 		CREATE DATABASE pinba;
 	EOSQL
 
 	# TODO: create default tables from scripts/default_tables.sql
-	# TODO: Use --init-file option (https://dev.mysql.com/doc/refman/8.0/en/server-options.html#option_mysqld_init-file)
+	# TODO: Use --init-file https://mariadb.com/kb/en/library/server-system-variables/#init_file
 	#       need to fix install process for that
 
 	# terminate mysql server to start it in foreground
