@@ -29,3 +29,5 @@ pinba_config.h.in~
 *.la
 *.lo
 *.sublime-*
+.idea
+

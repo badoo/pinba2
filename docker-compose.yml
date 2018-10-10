@@ -1,0 +1,16 @@
+version: '3.2'
+services:
+
+  fedora-25:
+    image: anton-povarov/pinba2:fedora-25
+    container_name: pinba2-fedora-25
+    build:
+      context: .
+      dockerfile: docker/fedora-25/Dockerfile
+
+  debian-mariadb:
+    image: anton-povarov/pinba2:debian-mariadb
+    container_name: pinba2-debian-mariadb
+    build:
+      context: .
+      dockerfile: docker/debian-mariadb/Dockerfile

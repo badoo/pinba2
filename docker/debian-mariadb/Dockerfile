@@ -2,7 +2,7 @@ FROM		mariadb:10.1
 
 MAINTAINER	Anton Povarov "anton.povarov@gmail.com"
 
-COPY		build-from-source.sh /opt/
+COPY		./docker/build-from-source.sh /opt/
 COPY		10-pinba-init.sh /docker-entrypoint-initdb.d/
 
 RUN			apt-get update && \
