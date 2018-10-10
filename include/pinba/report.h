@@ -40,7 +40,7 @@ struct report_info_t
 // TODO: a lot of different threads modifying this struct
 //       a lot of false sharding happening
 //       copying is tedious to code (as atomics are non-copyable)
-//       actually there is a memory corruption risk when returning report_state_t
+//       actually there is a memory corruption risk when returning report_state_t and report_snapshot_t
 //        (aka report gets deleted when selecting -> dangling pointers)
 struct report_stats_t
 {
@@ -73,6 +73,9 @@ struct report_stats_t
 	timeval_t  last_tick_tv          = {0,0};       // last tick happened at this time
 	duration_t last_tick_prepare_d   = {0};         // how long did last tick processing take
 	duration_t last_snapshot_merge_d = {0};         // how long did last snapshot merge take
+
+	std::atomic<uint64_t> last_snapshot_src_rows  = {0}; // number of source (from all ticks) rows merged
+	std::atomic<uint64_t> last_snapshot_uniq_rows = {0}; // number of final unique rows after merge
 
 	timeval_t ru_utime = {0,0};
 	timeval_t ru_stime = {0,0};

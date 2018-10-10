@@ -182,7 +182,7 @@ struct report_snapshot_traits___example
 {
 	using src_ticks_t = ; // source ticks_ringbuffer_t
 	using hashtable_t = ; // result hashtable (that we're going to iterate over)
-	using totals_t    = ; // struct, holding overall report data totals
+	using totals_t    = ; // struct, holding merged report data totals
 
 	// merge ticks from src_ticks_t to hashtable_t
 	static void merge_ticks_into_data(
@@ -191,11 +191,17 @@ struct report_snapshot_traits___example
 			, hashtable_t& to
 			, report_snapshot_t::merge_flags_t flags);
 
+	// calculate raw report stats
+	static void calculate_raw_stats(
+		  report_snapshot_ctx_t *snapshot_ctx
+		, src_ticks_t& ticks
+		, report_raw_stats_t *stats);
+
 	// calculate totals over the final report
 	static void calculate_totals(
 		  report_snapshot_ctx_t *snapshot_ctx
-		, totals_t *totals
-		, hashtable_t const& data);
+		, hashtable_t const& data
+		, totals_t *totals);
 
 	// get iterator keys/values/histograms at iterator
 	static report_key_t key_at_position(hashtable_t const&, iterator_t const&);
@@ -203,6 +209,11 @@ struct report_snapshot_traits___example
 	static histogram_t* hv_at_position(hashtable_t const&, iterator_t const&);
 };
 */
+
+struct report_raw_stats_t
+{
+	uint64_t row_count; // total number of rows in all ticks
+};
 
 // FIXME: stats pointer in this struct should be refcounted,
 //        since report might get deleted while we're touching snapshot
@@ -284,6 +295,14 @@ private:
 		if (this->is_prepared())
 			return;
 
+		report_raw_stats_t raw_stats = {};
+
+		if (this->stats)
+		{
+			Traits::calculate_raw_stats(this, ticks_, &raw_stats);
+			this->stats->last_snapshot_src_rows = raw_stats.row_count;
+		}
+
 		meow::stopwatch_t sw;
 
 		Traits::merge_ticks_into_data(this, ticks_, data_, flags);
@@ -291,10 +310,13 @@ private:
 		prepared_ = true;
 
 		if (this->stats)
+		{
 			this->stats->last_snapshot_merge_d = duration_from_timeval(sw.stamp());
+			this->stats->last_snapshot_uniq_rows = this->row_count();
+		}
 
 		if (flags & merge_flags::with_totals)
-			Traits::calculate_totals(this, &totals_, data_);
+			Traits::calculate_totals(this, data_, &totals_);
 
 		// do NOT clear ticks here, as snapshot impl might want to keep ref to it
 		// ticks_.clear();

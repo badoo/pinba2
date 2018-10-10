@@ -307,10 +307,22 @@ namespace { namespace aux {
 			{
 				report_estimates_t result = {};
 
-				if (!ring_.get_ringbuffer().empty())
+				for (auto const& tick_base : ring_.get_ringbuffer())
 				{
-					auto const& tick = static_cast<history_tick_t const&>(*ring_.get_ringbuffer().back());
-					result.row_count = tick.items.size();
+					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
+					result.row_count += tick.items.size();
+				}
+
+				if (stats_->last_snapshot_src_rows && stats_->last_snapshot_uniq_rows)
+				{
+					// got stats, adjust by stats based uniq to total rows ratio
+					double const uniq_to_raw_fraction = (double)stats_->last_snapshot_uniq_rows / stats_->last_snapshot_src_rows;
+					result.row_count *= uniq_to_raw_fraction;
+				}
+				else
+				{
+					// no stats, use average tick size (aka lean low and assume, all values repeat every tick)
+					result.row_count /= ring_.get_ringbuffer().size();
 				}
 
 				result.mem_used += sizeof(*this);
@@ -442,7 +454,20 @@ namespace { namespace aux {
 					return &row->merged_hv;
 				}
 
-				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
+				static void calculate_raw_stats(report_snapshot_ctx_t *snapshot_ctx, src_ticks_t const& ticks, report_raw_stats_t *stats)
+				{
+					for (auto const& tick_base : ticks)
+					{
+						if (!tick_base)
+							continue;
+
+						auto const& tick = static_cast<history_tick_t const&>(*tick_base);
+
+						stats->row_count += tick.items.size();
+					}
+				}
+
+				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, hashtable_t const& data, totals_t *totals)
 				{
 					for (auto const& data_pair : data)
 					{
