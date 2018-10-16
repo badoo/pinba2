@@ -15,7 +15,7 @@ RUN dnf install -y \
     mariadb-server
 
 RUN git clone --branch master --single-branch --depth 1 https://github.com/anton-povarov/meow /_src/meow
-RUN git clone --branch master --single-branch --depth 1 https://github.com/nanomsg/nanomsg /_src/nanomsg
+RUN curl -L https://github.com/nanomsg/nanomsg/archive/1.1.5.tar.gz | tar xvz -C /tmp && mv -v /tmp/nanomsg-1.1.5 /_src/nanomsg
 
 COPY . /_src/pinba2
 RUN /_src/pinba2/docker/build-from-source.sh
