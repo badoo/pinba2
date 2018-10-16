@@ -184,7 +184,18 @@ namespace { namespace aux {
 				static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
 				static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return it->hv.get(); }
 
-				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, totals_t *totals, hashtable_t const& data)
+				static void calculate_raw_stats(report_snapshot_ctx_t *snapshot_ctx, src_ticks_t const& ticks, report_raw_stats_t *stats)
+				{
+					for (auto const& tick_base : ticks)
+					{
+						if (!tick_base)
+							continue;
+
+						stats->row_count += 1;
+					}
+				}
+
+				static void calculate_totals(report_snapshot_ctx_t *snapshot_ctx, hashtable_t const& data, totals_t *totals)
 				{
 					auto const& row = data[0].data;
 

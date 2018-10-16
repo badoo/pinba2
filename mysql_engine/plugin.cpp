@@ -5,7 +5,8 @@
 
 #include "pinba/dictionary.h"
 
-#include <time.h>
+#include <time.h>   // localtime_r (non-portable include?)
+#include <stdio.h>  // stderr, just in case :-|
 
 #include <meow/format/format.hpp>
 #include <meow/format/inserter/as_printf.hpp>
@@ -186,13 +187,13 @@ static int pinba_engine_init(void *p)
 		struct mysql_logger_t : public logger_t
 		{
 		private:
-			ff::fd_sink_t  sink_;
-			log_level_t    level_;
+			ff::FILE_sink_t  sink_;
+			log_level_t      level_;
 
 		public:
 
-			explicit mysql_logger_t(int fd, log_level_t lvl = log_level::debug)
-				: sink_(fd)
+			explicit mysql_logger_t(FILE *f, log_level_t lvl = log_level::debug)
+				: sink_(f)
 				, level_(lvl)
 			{
 			}
@@ -265,7 +266,7 @@ static int pinba_engine_init(void *p)
 
 		// don't care about std::bad_alloc exception here, let's crash!
 		// need logger to be initialized to log real engine init errors
-		return std::make_shared<mysql_logger_t>(STDERR_FILENO, log_level);
+		return std::make_shared<mysql_logger_t>(stderr, log_level);
 	}();
 
 	try
