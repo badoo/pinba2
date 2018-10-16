@@ -1,7 +1,5 @@
-FROM        fedora:25
-MAINTAINER  Anton Povarov "anton.povarov@gmail.com"
+FROM        fedora:25 as builder
 
-# TODO: Use multi-stage builds https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
 RUN         dnf install -y git-core gcc gcc-c++ boost-devel cmake autoconf automake libtool mariadb-devel
 RUN         dnf install -y file hostname mariadb-server
 
@@ -13,9 +11,12 @@ RUN         mkdir -p /_src && cd /_src && \
 
 RUN         /_src/pinba2/docker/build-from-source.sh
 
-RUN         dnf remove -y git-core gcc gcc-c++ boost-devel cmake autoconf automake libtool mariadb-devel && \
-			dnf autoremove -y && \
-			dnf clean all
+FROM        fedora:25
+MAINTAINER  Anton Povarov "anton.povarov@gmail.com"
+
+RUN         dnf install -y file hostname mariadb-server
+
+COPY --from=builder /usr/lib64/mysql/plugin/libpinba_engine2.so /usr/lib64/mysql/plugin/libpinba_engine2.so
 
 COPY        docker-entrypoint.sh /usr/local/bin/
 RUN         ln -snf /usr/local/bin/docker-entrypoint.sh /
