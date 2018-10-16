@@ -19,8 +19,8 @@ RUN git clone --branch master --single-branch --depth 1 https://github.com/anton
 # TODO: Use https://github.com/nanomsg/nanomsg/archive/1.1.5.tar.gz
 RUN git clone --branch master --single-branch --depth 1 https://github.com/nanomsg/nanomsg /_src/nanomsg
 
-ADD . /_src/pinba2
-
+COPY . /_src/pinba2
+RUN find /_src/pinba2
 WORKDIR /_src
 RUN /_src/pinba2/docker/build-from-source.sh
 
