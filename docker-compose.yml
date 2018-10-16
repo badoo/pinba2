@@ -6,7 +6,7 @@ services:
     container_name: pinba2-fedora-25
     build:
       context: .
-      dockerfile: docker/fedora-25/Dockerfile
+      dockerfile: Dockerfile
 
   debian-mariadb:
     image: anton-povarov/pinba2:debian-mariadb
