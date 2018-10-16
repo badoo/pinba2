@@ -256,8 +256,12 @@ public:
 			{
 				counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
 				if (tmp == nullptr)
-					throw std::bad_alloc();
-
+				{
+					// we're noexcept, can't throw, so silently ignore the operation, best we can do for the time being
+					// TODO: fix this somehow properly (maybe have a counter for this error type? needed at all? reasonable reaction possible?)
+					// throw std::bad_alloc();
+					return false;
+				}
 				std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
 				counts_len_ = counts_maxlen_;
 				counts_ = tmp;
