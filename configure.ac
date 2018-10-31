@@ -156,33 +156,7 @@ else
 	if test "$mysql_headers_found" = "1"; then
 		AC_MSG_RESULT([found])
 	else
-		AC_MSG_RESULT([not found])
-	fi
-
-	# now check installed headers
-	if test "$mysql_headers_found" != "1"; then
-		AC_MSG_CHECKING([mysql installed headers in $with_mysql/include/mysql])
-		mysql_headers_found=0
-		HEADERS="private/handler.h private/table.h"
-
-		for file in $HEADERS; do
-			if test -r "$with_mysql/include/mysql/$file"; then
-				mysql_headers_found=1
-				mysql_headers_type="installed"
-			fi
-		done
-
-		if test "$mysql_headers_found" = "1"; then
-			AC_MSG_RESULT([found])
-		else
-			AC_MSG_RESULT([not found])
-		fi
-	fi
-
-	if test "$mysql_headers_found" != "1"; then
-		AC_MSG_ERROR([couldn't find either configured sources or installed headers])
-	else
-		AC_MSG_NOTICE([using $with_mysql ($mysql_headers_type)])
+		AC_MSG_ERROR([not found])
 	fi
 
 	# now check for version
@@ -191,9 +165,6 @@ else
 			MYSQL_INC="-DPINBA_USE_MYSQL_SOURCE -I$with_mysql -I$with_mysql/sql -I$with_mysql/regex -I$with_mysql/include"
 			# these are for mysql 5.7
 			MYSQL_INC="$MYSQL_INC -I$with_mysql/libbinlogevents/export -I$with_mysql/libbinlogevents/include"
-			;;
-		"installed")
-			MYSQL_INC="-I$with_mysql/include -I$with_mysql/include/mysql -I$with_mysql/include/mysql/private"
 			;;
 		*)
 			;;
@@ -204,6 +175,8 @@ else
 
 	CFLAGS="$MYSQL_INC"
 	CXXFLAGS="$MYSQL_INC"
+
+	MYSQL_SERVICES_LIB="$with_mysql/libservices/libmysqlservices.a"
 
 	AC_MSG_CHECKING([for MySQL version >= 5.1])
 	AC_TRY_RUN([
@@ -321,6 +294,7 @@ AC_SUBST(DEPS_CFLAGS)
 AC_SUBST(DEPS_LIBS)
 
 AC_SUBST(MYSQL_ENGINE_CFLAGS)
+AC_SUBST(MYSQL_SERVICES_LIB)
 AC_SUBST(INSTALL_STRIP_FLAG)
 
 AC_SUBST(EXPERIMENT_DIR)

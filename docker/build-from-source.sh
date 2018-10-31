@@ -14,7 +14,7 @@ PACKAGES="hostname mariadb-server"
 # mkdir -p /_src && cd /_src
 
 # # pull sources
-# git clone https://github.com/anton-povarov/pinba2
+# git clone https://github.com/marko/pinba2
 # git clone https://github.com/anton-povarov/meow
 # git clone https://github.com/nanomsg/nanomsg
 
@@ -36,7 +36,7 @@ make install
 cd /_src/pinba2
 ./buildconf.sh
 ./configure --prefix=/_install/pinba2 \
-	--with-mysql=/usr \
+	--with-mysql=/home/builder/rpm/mariadb-10.1.26 \
 	--with-boost=/usr \
 	--with-meow=/_src/meow \
 	--with-nanomsg=/_install/nanomsg
@@ -47,5 +47,5 @@ make -j4
 cp /_src/pinba2/mysql_engine/.libs/libpinba_engine2.so `mysql_config --plugindir`
 
 # clean everything
-rm -rf /_src
-rm -rf /_install
+#rm -rf /_src
+#rm -rf /_install
