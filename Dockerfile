@@ -17,10 +17,8 @@ RUN dnf install -y \
     mariadb-server \
     rpm-build
 
-# https://github.com/rpm-software-management/mock/wiki
 RUN	dnf builddep -y \
-    mariadb \
-    mock
+    mariadb
 
 RUN         useradd builder -u 1000 -m -G users,wheel && \
             mkdir /home/builder/rpm && \
@@ -38,13 +36,13 @@ RUN			rpm -i mariadb*.rpm
 WORKDIR		/home/builder/rpm
 RUN			rpmbuild --nocheck -bi mariadb.spec
 
-
 USER 		root
 WORKDIR		/root
 
 # TODO: Create v1.0.0 release and use it instead
 RUN git clone --branch master --single-branch --depth 1 https://github.com/anton-povarov/meow /_src/meow
 # https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#using-pipes
+# TODO: Set SHELL instead
 RUN set -o pipefail && curl -L https://github.com/nanomsg/nanomsg/archive/1.1.5.tar.gz | tar xvz -C /tmp && mv -v /tmp/nanomsg-1.1.5 /_src/nanomsg
 COPY . /_src/pinba2
 RUN /_src/pinba2/docker/build-from-source.sh
