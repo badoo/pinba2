@@ -68,8 +68,9 @@ More Info
 --------
 
 - [TODO](TODO.md)
-- [Building and Installing](wiki/Building_Installing.md) - use docker, really
-- [Configuration](wiki/Configuration.md) - optional, should run fine with default settings
+- [Building](docs/index.md#building) - use docker, really
+- [Installing](docs/index.md#installation) - use docker, really
+- [Configuration](docs/index.md#configuration) - optional, should run fine with default settings
 - [User-defined reports + examples](#user-defined-reports)
 
 
@@ -78,12 +79,7 @@ Docker
 
 ### Fedora 25
 
-Kinda works. [`Dockerfile`](docker/fedora-25/)
-
-### MariaDB
-
-Unfinished. [`Dockerfile`](docker/debian-mariadb/).
-
+[`Dockerfile`](Dockerfile)
 
 Basics
 ------

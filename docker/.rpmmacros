@@ -1,0 +1,7 @@
+# macros
+%_topdir    /home/builder/rpm
+%_sourcedir %{_topdir}
+%_builddir  %{_topdir}
+%_specdir   %{_topdir}
+%_rpmdir    %{_topdir}
+%_srcrpmdir %{_topdir}

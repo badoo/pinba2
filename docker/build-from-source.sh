@@ -18,7 +18,7 @@ make install
 cd /_src/pinba2
 ./buildconf.sh
 ./configure --prefix=/_install/pinba2 \
-	--with-mysql=/usr \
+	--with-mysql=/home/builder/rpm/mariadb-10.1.26 \
 	--with-boost=/usr \
 	--with-meow=/_src/meow \
 	--with-nanomsg=/_install/nanomsg

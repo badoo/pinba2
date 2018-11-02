@@ -34,5 +34,6 @@ libpinba_engine2_la_LDFLAGS = \
 
 libpinba_engine2_la_LIBADD = \
 	../src/libpinba2.a \
+	$(MYSQL_SERVICES_LIB) \
 	$(DEPS_LIBS) \
 	#
