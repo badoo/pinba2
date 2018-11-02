@@ -13,8 +13,8 @@ RUN dnf install -y \
     git-core \
     hostname \
     libtool \
-    mariadb-devel \
-    mariadb-server \
+    mariadb-devel-3:10.1.26-2.fc25.x86_64 \
+    mariadb-server-3:10.1.26-2.fc25.x86_64 \
     rpm-build
 
 RUN	dnf builddep -y \
@@ -30,7 +30,7 @@ COPY        --chown=root:root ./docker/sudoers /etc/sudoers
 USER		builder
 WORKDIR		/home/builder
 
-RUN			dnf download --source mariadb
+RUN			dnf download --source mariadb-10.1.26-2.fc25.src
 RUN			rpm -i mariadb*.rpm
 
 WORKDIR		/home/builder/rpm
