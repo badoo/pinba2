@@ -1,0 +1,9 @@
+version: '3.2'
+services:
+
+  fedora-25:
+    image: badoo/pinba2:fedora-25
+    container_name: pinba2-fedora-25
+    build:
+      context: .
+      dockerfile: Dockerfile
