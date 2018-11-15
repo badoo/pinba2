@@ -53,8 +53,12 @@ if [ $1 = "mysqld" ]; then
 	EOSQL
 
 	# TODO: create default tables from scripts/default_tables.sql
-	# TODO: Use --init-file https://mariadb.com/kb/en/library/server-system-variables/#init_file
-	#       need to fix install process for that
+    if [[ -z "${MYSQL_INIT_PATH}" ]]; then
+        echo 'MYSQL_INIT_PATH not found. Skipping ...'
+    else
+        echo 'MYSQL_INIT_PATH found. Importing dump ...'
+        mysql --protocol=socket -uroot pinba < "${MYSQL_INIT_PATH}"
+    fi
 
 	# terminate mysql server to start it in foreground
 	if ! kill -s TERM "$pid" || ! wait "$pid"; then
