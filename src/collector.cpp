@@ -200,8 +200,6 @@ namespace { namespace aux {
 
 		fd_handle_t try_bind_to_addr(os_addrinfo_t *ai)
 		{
-			throw std::runtime_error("emulate!");
-
 			fd_handle_t fd { os_unix::socket_ex(ai->ai_family, ai->ai_socktype, ai->ai_protocol) };
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEADDR, 1);
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);
