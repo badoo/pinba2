@@ -129,6 +129,11 @@ namespace { namespace aux {
 			this->try_resolve_listen_addr_port();
 		}
 
+		~collector_impl_t()
+		{
+			this->shutdown();
+		}
+
 		virtual void startup() override
 		{
 			if (!threads_.empty())
@@ -165,6 +170,9 @@ namespace { namespace aux {
 
 		virtual void shutdown() override
 		{
+			if (threads_.empty())
+				return;
+
 			{
 				std::unique_lock<std::mutex> lk_(shutdown_mtx_);
 				shutdown_cli_sock_.send(1); // there is no need to send multiple times, threads exit on poll signal
@@ -174,6 +182,8 @@ namespace { namespace aux {
 			{
 				threads_[i].join();
 			}
+
+			threads_.clear();
 		}
 
 	private:
@@ -190,6 +200,8 @@ namespace { namespace aux {
 
 		fd_handle_t try_bind_to_addr(os_addrinfo_t *ai)
 		{
+			throw std::runtime_error("emulate!");
+
 			fd_handle_t fd { os_unix::socket_ex(ai->ai_family, ai->ai_socktype, ai->ai_protocol) };
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEADDR, 1);
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);

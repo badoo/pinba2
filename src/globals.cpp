@@ -150,9 +150,9 @@ namespace { namespace aux {
 
 		virtual void shutdown() override
 		{
-			collector_->shutdown();
-			repacker_->shutdown();
-			coordinator_->shutdown();
+			collector_.reset();
+			repacker_.reset();
+			coordinator_.reset();
 		}
 
 		virtual pinba_globals_t* globals() const override
