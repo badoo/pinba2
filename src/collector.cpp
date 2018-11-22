@@ -191,6 +191,11 @@ namespace { namespace aux {
 		void try_resolve_listen_addr_port()
 		{
 			os_addrinfo_list_ptr ai_list = os_unix::getaddrinfo_ex(conf_->address.c_str(), conf_->port.c_str(), AF_INET, SOCK_DGRAM, 0);
+			MEOW_UNIX_ADDRINFO_LIST_FOR_EACH(curr_addr, ai_list)
+			{
+				LOG_INFO(globals_->logger(), "udp_reader; resolved {0}:{1} -> {2}", conf_->address, conf_->port, curr_addr->ai_addr);
+			}
+
 			os_addrinfo_t *ai = ai_list.get(); // take 1st item for now
 
 			// commit if everything is ok
