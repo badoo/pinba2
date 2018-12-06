@@ -147,6 +147,13 @@ struct dictionary_t : private boost::noncopyable
 		{
 		}
 
+		word_t(word_t&& other)
+			: refcount(other.refcount)
+			, id(other.id)
+			, str(std::move(other.str))
+		{
+		}
+
 		void set(uint32_t i, str_ref s)
 		{
 			id = i;
@@ -376,12 +383,18 @@ private:
 	// get or create a word, REFCOUNT IS NOT MODIFIED, i.e. even if just created -> refcount == 0
 	word_t* get_or_add___wrlocked(shard_t *shard, str_ref const word)
 	{
-		// re-check word existence, might've appeated while upgrading the lock
-		auto it = shard->hash.find(word);
-		if (shard->hash.end() != it)
-			return it->second;
+		// just insert, word might've appeared while upgrading the lock
+		// if that's the case - good, we'd have some non-null pointer in value (and just return)
+		word_t *& hashed_word_ptr = shard->hash[word];
+		if (hashed_word_ptr != nullptr)
+			return hashed_word_ptr;
 
-		// need to insert, going to be really slow, mon
+		// auto it = shard->hash.find(word);
+		// if (shard->hash.end() != it)
+		// 	return it->second;
+
+		// word wasn't there, so create new one and set
+		// going to be really slow, mon
 
 		shard->mem_used_by_word_strings += word.size();
 
@@ -414,7 +427,11 @@ private:
 			}
 		}();
 
-		shard->hash.insert({ str_ref { w->str }, w });
+		// commit now
+		hashed_word_ptr = w;
+
+		// TODO: use c++11 dense hash + emplace here (or maybe just try insert at the start of this func)
+		// shard->hash.insert({ str_ref { w->str }, w });
 
 		return w;
 	}
