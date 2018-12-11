@@ -177,8 +177,6 @@ else
 	CFLAGS="$MYSQL_INC"
 	CXXFLAGS="$MYSQL_INC"
 
-	MYSQL_SERVICES_LIB="$with_mysql/libservices/libmysqlservices.a"
-
 	AC_MSG_CHECKING([for MySQL version >= 5.1])
 	AC_TRY_RUN([
 		#include <stdlib.h>
@@ -201,6 +199,15 @@ else
 
 	MYSQL_ENGINE_CFLAGS="-DMYSQL_DYNAMIC_PLUGIN -DMYSQL_SERVER=1 $MYSQL_INC"
 fi
+
+
+AC_ARG_ENABLE(libmysqlservices,
+	[AS_HELP_STRING([--enable-libmysqlservices], [link against libmysqlservices from mariadb (required)])
+	],
+	[
+		DEPS_LIBS="$DEPS_LIBS $with_mysql/libservices/libmysqlservices.a"
+	]
+)
 
 
 AC_ARG_ENABLE(static-build,
