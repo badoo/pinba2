@@ -168,6 +168,8 @@ static int pinba_engine_init(void *p)
 {
 	DBUG_ENTER(__func__);
 
+	LOG_NOTICE(logger, "version {0}, git: {1}, build: {2}", PINBA_VERSION, PINBA_VCS_FULL_HASH, PINBA_BUILD_STRING);
+
 	auto *h = static_cast<handlerton*>(p);
 	h->state = SHOW_OPTION_YES;
 	h->flags = HTON_ALTER_NOT_SUPPORTED | HTON_NO_PARTITION | HTON_TEMPORARY_NOT_SUPPORTED;
