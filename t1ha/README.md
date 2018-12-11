@@ -1,18 +1,24 @@
-t1ha
+﻿t1ha
 ========================================
 Fast Positive Hash, aka "Позитивный Хэш"
 by [Positive Technologies](https://www.ptsecurity.com).
+Included in the [Awesome C](https://github.com/kozross/awesome-c) list of open source C software.
 
 *The Future will Positive. Всё будет хорошо.*
-[![Build Status](https://travis-ci.org/leo-yuriev/t1ha.svg?branch=devel)](https://travis-ci.org/leo-yuriev/t1ha)
-[![Build status](https://ci.appveyor.com/api/projects/status/ptug5fl2ouxdo68h/branch/devel?svg=true)](https://ci.appveyor.com/project/leo-yuriev/t1ha/branch/devel)
+[![License: Zlib](https://img.shields.io/badge/License-Zlib-lightgrey.svg)](https://opensource.org/licenses/Zlib)
+[![Build Status](https://travis-ci.org/leo-yuriev/t1ha.svg?branch=master)](https://travis-ci.org/leo-yuriev/t1ha)
+[![Build status](https://ci.appveyor.com/api/projects/status/ptug5fl2ouxdo68h/branch/master?svg=true)](https://ci.appveyor.com/project/leo-yuriev/t1ha/branch/master)
+[![CircleCI](https://circleci.com/gh/leo-yuriev/t1ha/tree/master.svg?style=svg)](https://circleci.com/gh/leo-yuriev/t1ha/tree/master)
+[![Coverity Scan Status](https://scan.coverity.com/projects/12918/badge.svg)](https://scan.coverity.com/projects/leo-yuriev-t1ha)
 
 ## Briefly, it is a portable 64-bit hash function:
-  1. Intended for 64-bit little-endian platforms, predominantly for x86_64,
-     but portable and without penalties could run on any 64-bit CPU.
-  2. In most cases up to 15% faster than City64, xxHash, mum-hash, metro-hash
-     and all others portable hash-functions (which are not uses specific hardware tricks).
-  3. Currently not suitable for cryptography.
+  1. Intended for 64-bit little-endian platforms, predominantly for Elbrus and x86_64,
+     but portable and without penalties it can run on any 64-bit CPU.
+  2. In most cases up to 15% faster than StadtX hash, xxHash, mum-hash, metro-hash, etc.
+     and all others portable hash-functions (which do not use specific hardware tricks).
+  3. Provides a set of _terraced_ hash functions.
+  4. Currently not suitable for cryptography.
+  5. Licensed under [zlib License](https://en.wikipedia.org/wiki/Zlib_License).
 
 Also pay attention to [Erlang](https://github.com/lemenkov/erlang-t1ha)
 and [Golang](https://github.com/dgryski/go-t1ha) implementations.
@@ -22,8 +28,10 @@ and [Golang](https://github.com/dgryski/go-t1ha) implementations.
 # Usage
 The `t1ha` library provides several terraced hash functions
 with the dissimilar properties and for a different cases.
-
 These functions briefly described below, see [t1ha.h](t1ha.h) for more API details.
+
+To use in your own project you may link with the t1ha-library,
+or just add to your project corresponding source files from `/src` directory.
 
 Please, feel free to fill an issue or make pull request.
 
@@ -34,7 +42,7 @@ Please, feel free to fill an issue or make pull request.
   Provides fast-as-possible hashing for current CPU, including 32-bit
   systems and engaging the available hardware acceleration.
   You can rest assured that t1ha0 faster than all other fast hashes
-  (with comparable quality) so, otherwise we will extending and refine it time-to-time.
+  (with comparable quality) so, otherwise we will extend and refine it time-to-time.
 
   On the other hand, without warranty that the hash result will be same
   for particular key on another machine or another version.
@@ -46,27 +54,29 @@ Please, feel free to fill an issue or make pull request.
 
   Also should be noted, the quality of t1ha0() hashing is a subject
   for tradeoffs with performance. Therefore the quality and strength
-  of t1ha0() may be lower than t1ha1(), especially on 32-bit targets,
-  but then much faster.
+  of `t1ha0()` may be lower than `t1ha1()` and `t1ha2()`,
+  especially on 32-bit targets, but then much faster.
   However, guaranteed that it passes all SMHasher tests.
 
-  Internally t1ha0() selects most faster implementation for current CPU,
+  Internally `t1ha0()` selects most faster implementation for current CPU,
   for now these are includes:
 
  | Implementation          | Platform/CPU                           |
  | :---------------------- | :------------------------------------- |
- | `_t1ha_ia32aes_avx()`   | x86 with AES-NI and AVX extensions     |
- | `_t1ha_ia32aes_noavx()` | x86 with AES-NI without AVX extensions |
- | `_t1ha_32le()`          | 32-bit little-endian                   |
- | `_t1ha_32be()`          | 32-bit big-endian                      |
+ | `t1ha0_ia32aes_avx()`   | x86 with AES-NI and AVX extensions     |
+ | `t1ha0_ia32aes_avx2()`  | x86 with AES-NI and AVX2 extensions    |
+ | `t1ha0_ia32aes_noavx()` | x86 with AES-NI without AVX extensions |
+ | `t1ha0_32le()`          | 32-bit little-endian                   |
+ | `t1h0a_32be()`          | 32-bit big-endian                      |
  | `t1ha1_le()`            | 64-bit little-endian                   |
- | `t1ha1_be()`            | 32-bit big-endian                      |
+ | `t1ha1_be()`            | 64-bit big-endian                      |
+ | `t1ha2_atonce()`        | 64-bit little-endian                   |
 
 
-`t1ha1` = 64 bits, fast portable hash
+`t1ha1` = 64 bits, baseline fast portable hash
 -------------------------------------
 
-  The main generic version of "Fast Positive Hash" with reasonable quality
+  The first version of "Fast Positive Hash" with reasonable quality
   for checksum, hash tables and thin fingerprinting. It is stable, e.g.
   returns same result on all architectures and CPUs.
 
@@ -74,31 +84,45 @@ Please, feel free to fill an issue or make pull request.
   2. Efficiency on modern 64-bit CPUs, but not in a hardware.
   3. Strong as possible, until no penalties on performance.
 
-  The main version is intended for little-endian systems and will runs
+  Unfortunatelly, [Yves Orton](https://github.com/demerphq/smhasher) discovered
+  that `t1ha1()` family fails the strict avalanche criteria in some cases.
+  This flaw is insignificant for the `t1ha1()` purposes and imperceptible
+  from a practical point of view.
+  However, nowadays this issue has resolved in the next `t1ha2()` function,
+  that was initially planned to providing a bit more quality.
+
+  The basic version of `t1ha1()` intends for little-endian systems and will run
   slowly on big-endian. Therefore a dedicated big-endian version is also
-  provided, but returns the different result than the main version.
+  provided, but returns the different result than the basic version.
 
 
-`t1ha2` = 64 bits, little more attention for quality and strength
+`t1ha2` = 64 and 128 bits, slightly more attention for quality and strength
 -----------------------------------------------------------------
-  The next-step version of "Fast Positive Hash",
-  but not yet finished and therefore not available.
+  The recommended version of "Fast Positive Hash" with good quality
+  for checksum, hash tables and fingerprinting. It is stable, e.g.
+  returns same result on all architectures and CPUs.
+
+  1. Portable and extremely efficiency on modern 64-bit CPUs.
+  2. Great quality of hashing and still faster than other non-t1ha hashes.
+  3. Provides streaming mode and 128-bit result.
+
+  The `t1ha2()` is intended for little-endian systems and will run
+  slightly slowly on big-endian systems.
 
 
-`t1ha3` = 128 bits, fast non-cryptographic fingerprinting
+`t1ha3` = 128 and 256 bits, fast non-cryptographic fingerprinting
 ---------------------------------------------------------
   The next-step version of "Fast Positive Hash",
   but not yet finished and therefore not available.
 
 
-#### Planned: `t1ha4` = 128 bits, fast alternative for SipHash
+#### Planned: `t1ha4` = 128 and 256 bits, fast insecure fingerprinting
 
-#### Planned: `t1ha5` = 256 bits, fast insecure fingerprinting
+#### Planned: `t1ha5` = 256 bits, fast Cryptographic, but with some limitations
 
-#### Planned: `t1ha6` = 256 bits, Cryptographic
+#### Planned: `t1ha6` = 256 and 512 bits, Cryptographic with reasonable resistance to acceleration on GPU and FPGA.
 
-#### Planned: `t1ha7` = 256 bits, Cryptographic with reasonable resistance to acceleration on GPU and FPGA.
-
+#### Planned: `t1ha7` = 256, 512 and 1024 bits, Cryptographic, Strong Post-Quantum
 
 ********************************************************************************
 
@@ -111,7 +135,8 @@ Please, feel free to fill an issue or make pull request.
        - but unfortunately _t1ha_ could be dramatically slowly
          on architectures without native 64-bit operations.
   2. This implementation of _t1ha_ requires **modern GNU C compatible compiler**,
-     includes Clang/LLVM, or **Visual Studio 2015**.
+     including Clang/LLVM, or **Visual Studio 2013/2015/2017**.
+     For proper performance please use one of: GNU C 5.5 or later, CLANG 5.0 or later, Microsoft Visual Studio 2017 15.6 or later.
 
 #### Acknowledgement:
 The _t1ha_ was originally developed by Leonid Yuriev (Леонид Юрьев)
@@ -121,6 +146,92 @@ for _The 1Hippeus project - zerocopy messaging in the spirit of Sparta!_
 ********************************************************************************
 
 ## Benchmarking and Testing
+
+Current version of t1ha library includes tool for basic testing and benchmarking.
+Just try `make check` from t1ha directory.
+
+To comparison benchmark also includes `xxHash`, `StadtX` and `HighwayHash` functions.
+For example actual results for `Intel(R) Core(TM) i7-4600U CPU`:
+```
+$ CC=gcc-8 CXX=g++-8 make all && sudo make check
+...
+Testing t1ha2_atonce... Ok
+Testing t1ha2_atonce128... Ok
+Testing t1ha2_stream... Ok
+Testing t1ha2_stream128... Ok
+Testing t1ha1_64le... Ok
+Testing t1ha1_64be... Ok
+Testing t1ha0_32le... Ok
+Testing t1ha0_32be... Ok
+Testing t1ha0_ia32aes_noavx... Ok
+Testing t1ha0_ia32aes_avx... Ok
+Testing t1ha0_ia32aes_avx2... Ok
+Testing HighwayHash64_pure_c... Ok
+Testing HighwayHash64_portable_cxx... Ok
+Testing HighwayHash64_sse41... Ok
+Testing HighwayHash64_avx2... Ok
+Testing StadtX... Ok
+
+Preparing to benchmarking...
+ - suggest enable rdpmc for usermode (echo 2 | sudo tee /sys/devices/cpu/rdpmc)
+ - running on CPU#3
+ - use RDPMC_perf as clock source for benchmarking
+ - assume it cheap and stable
+ - measure granularity and overhead: 53 cycle, 0.0188679 iteration/cycle
+
+Bench for tiny keys (7 bytes):
+t1ha2_atonce            :     18.188 cycle/hash,  2.598 cycle/byte,  0.385 byte/cycle,  1.155 Gb/s @3GHz
+t1ha2_atonce128*        :     36.969 cycle/hash,  5.281 cycle/byte,  0.189 byte/cycle,  0.568 Gb/s @3GHz
+t1ha2_stream*           :     84.237 cycle/hash, 12.034 cycle/byte,  0.083 byte/cycle,  0.249 Gb/s @3GHz
+t1ha2_stream128*        :    101.812 cycle/hash, 14.545 cycle/byte,  0.069 byte/cycle,  0.206 Gb/s @3GHz
+t1ha1_64le              :     19.188 cycle/hash,  2.741 cycle/byte,  0.365 byte/cycle,  1.094 Gb/s @3GHz
+t1ha0                   :     14.102 cycle/hash,  2.015 cycle/byte,  0.496 byte/cycle,  1.489 Gb/s @3GHz
+xxhash32                :     18.859 cycle/hash,  2.694 cycle/byte,  0.371 byte/cycle,  1.114 Gb/s @3GHz
+xxhash64                :     27.188 cycle/hash,  3.884 cycle/byte,  0.257 byte/cycle,  0.772 Gb/s @3GHz
+StadtX                  :     19.188 cycle/hash,  2.741 cycle/byte,  0.365 byte/cycle,  1.094 Gb/s @3GHz
+HighwayHash64_pure_c    :    630.000 cycle/hash, 90.000 cycle/byte,  0.011 byte/cycle,  0.033 Gb/s @3GHz
+HighwayHash64_portable  :    507.500 cycle/hash, 72.500 cycle/byte,  0.014 byte/cycle,  0.041 Gb/s @3GHz
+HighwayHash64_sse41     :     69.625 cycle/hash,  9.946 cycle/byte,  0.101 byte/cycle,  0.302 Gb/s @3GHz
+HighwayHash64_avx2      :     57.500 cycle/hash,  8.214 cycle/byte,  0.122 byte/cycle,  0.365 Gb/s @3GHz
+
+Bench for large keys (16384 bytes):
+t1ha2_atonce            :   3544.000 cycle/hash,  0.216 cycle/byte,  4.623 byte/cycle, 13.869 Gb/s @3GHz
+t1ha2_atonce128*        :   3590.000 cycle/hash,  0.219 cycle/byte,  4.564 byte/cycle, 13.691 Gb/s @3GHz
+t1ha2_stream*           :   3600.000 cycle/hash,  0.220 cycle/byte,  4.551 byte/cycle, 13.653 Gb/s @3GHz
+t1ha2_stream128*        :   3618.000 cycle/hash,  0.221 cycle/byte,  4.528 byte/cycle, 13.585 Gb/s @3GHz
+t1ha1_64le              :   3562.818 cycle/hash,  0.217 cycle/byte,  4.599 byte/cycle, 13.796 Gb/s @3GHz
+t1ha0                   :   1281.203 cycle/hash,  0.078 cycle/byte, 12.788 byte/cycle, 38.364 Gb/s @3GHz
+xxhash32                :   8203.360 cycle/hash,  0.501 cycle/byte,  1.997 byte/cycle,  5.992 Gb/s @3GHz
+xxhash64                :   4128.240 cycle/hash,  0.252 cycle/byte,  3.969 byte/cycle, 11.906 Gb/s @3GHz
+StadtX                  :   3631.000 cycle/hash,  0.222 cycle/byte,  4.512 byte/cycle, 13.537 Gb/s @3GHz
+HighwayHash64_pure_c    :  55309.000 cycle/hash,  3.376 cycle/byte,  0.296 byte/cycle,  0.889 Gb/s @3GHz
+HighwayHash64_portable  :  44433.000 cycle/hash,  2.712 cycle/byte,  0.369 byte/cycle,  1.106 Gb/s @3GHz
+HighwayHash64_sse41     :   6567.000 cycle/hash,  0.401 cycle/byte,  2.495 byte/cycle,  7.485 Gb/s @3GHz
+HighwayHash64_avx2      :   4528.996 cycle/hash,  0.276 cycle/byte,  3.618 byte/cycle, 10.853 Gb/s @3GHz
+```
+
+The `test` tool support a set of command line options to selecting functions and size of keys for benchmarking.
+For more info please run `./test --help`.
+
+### The `--hash-stdin-strings` option
+One noteable option is `--hash-stdin-strings`, it intended to estimate hash collisions on your custom data.
+With this option `test` tool will hash each line from standard input and print its hash to standard output.
+
+For instance, you could count collisions for lines from some `words.list` file by bash's command:
+```
+  ./t1ha/test --hash-stdin-strings < words.list | sort | uniq -c -d | wc -l
+```
+
+More complex example - count `xxhash()` collisions for lines from `words.list` and 0...10000 numbers,
+with distinction only in 32 bit of hash values:
+```
+  (cat words.list && seq 0 10000) | \
+     ./t1ha/test --xxhash --hash-stdin-strings | \
+     cut --bytes=-8 | sort | uniq -c -d | wc -l
+```
+
+
+### SMHasher
 [_SMHasher_](https://github.com/aappleby/smhasher/wiki) is a wellknown
 test suite designed to test the distribution, collision,
 and performance properties of non-cryptographic hash functions.
@@ -142,13 +253,12 @@ make
 ./SMHasher t1ha
 ```
 
-For properly performance please use at least GCC 5.4 or Clang 3.8,
-at the worst Visual Studio 2015 (MSVC 19).
+For properly performance please use at least GCC 5.5, Clang 6.0 or Visual Studio 2017.
 
 ### Scores
 
-Please take in account that the results is significantly depends on actual CPU, compiler version and CFLAGS.
-The results below were obtained on:
+Please take in account that the results is significantly depend on actual CPU, compiler version and CFLAGS.
+The results below were obtained in **2016** with:
  - CPU: `Intel(R) Core(TM) i7-6700K CPU`;
  - Compiler: `gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.4)`;
  - CFLAGS: `-march=native -O3 -fPIC`;
