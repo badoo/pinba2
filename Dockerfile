@@ -53,7 +53,8 @@ MAINTAINER Anton Povarov "anton.povarov@gmail.com"
 RUN dnf install -y \
     file \
     hostname \
-    mariadb-server
+    jemalloc \
+    mariadb-server-3:10.1.26-2.fc25.x86_64
 
 COPY --from=builder /_src/pinba2/mysql_engine/.libs/libpinba_engine2.so /usr/lib64/mysql/plugin/libpinba_engine2.so
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

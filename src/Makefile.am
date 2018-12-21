@@ -31,12 +31,11 @@ libpinba2_a_SOURCES = \
 	report_by_packet.cpp \
 	report_by_request.cpp \
 	report_by_timer.cpp \
-	../t1ha/src/t1ha0.c \
-	../t1ha/src/t1ha1.c \
 	../proto/pinba.pb-c.c \
 	#
 
 libpinba2_a_LIBADD = \
+	../t1ha/libt1ha.a \
 	$(DEPS_LIBS) \
 	#
 
@@ -51,5 +50,6 @@ pinba2_SOURCES = \
 
 pinba2_LDADD = \
 	libpinba2.a \
+	../t1ha/libt1ha.a \
 	$(DEPS_LIBS) \
 	#

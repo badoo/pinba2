@@ -168,13 +168,6 @@ static int pinba_engine_init(void *p)
 {
 	DBUG_ENTER(__func__);
 
-	auto *h = static_cast<handlerton*>(p);
-	h->state = SHOW_OPTION_YES;
-	h->flags = HTON_ALTER_NOT_SUPPORTED | HTON_NO_PARTITION | HTON_TEMPORARY_NOT_SUPPORTED;
-	h->create = [](handlerton *hton, TABLE_SHARE *table, MEM_ROOT *mem_root) -> handler* {
-		return new (mem_root) pinba_handler_t(hton, table);
-	};
-
 	auto const log_level = meow::logging::log_level::enum_from_str_ref(pinba_variables()->log_level);
 	assert(log_level != meow::logging::log_level::_none); // checked in mysql sysvar check function
 
@@ -269,6 +262,8 @@ static int pinba_engine_init(void *p)
 		return std::make_shared<mysql_logger_t>(stderr, log_level);
 	}();
 
+	LOG_NOTICE(logger, "version {0}, git: {1}, build: {2}", PINBA_VERSION, PINBA_VCS_FULL_HASH, PINBA_BUILD_STRING);
+
 	try
 	{
 		// TODO: take more values from global mysql config (aka pinba_variables)
@@ -317,6 +312,13 @@ static int pinba_engine_init(void *p)
 		LOG_ERROR(logger, "engine initialization failed: {0}", e.what());
 		DBUG_RETURN(HA_ERR_INTERNAL_ERROR);
 	}
+
+	auto *h = static_cast<handlerton*>(p);
+	h->state = SHOW_OPTION_YES;
+	h->flags = HTON_ALTER_NOT_SUPPORTED | HTON_NO_PARTITION | HTON_TEMPORARY_NOT_SUPPORTED;
+	h->create = [](handlerton *hton, TABLE_SHARE *table, MEM_ROOT *mem_root) -> handler* {
+		return new (mem_root) pinba_handler_t(hton, table);
+	};
 
 	DBUG_RETURN(0);
 }

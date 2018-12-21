@@ -21,7 +21,8 @@ cd /_src/pinba2
 	--with-mysql=/home/builder/rpm/mariadb-10.1.26 \
 	--with-boost=/usr \
 	--with-meow=/_src/meow \
-	--with-nanomsg=/_install/nanomsg
+	--with-nanomsg=/_install/nanomsg \
+	--enable-libmysqlservices
 make -j4
 
 # FIXME: this needs to be easier
