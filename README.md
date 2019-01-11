@@ -190,7 +190,7 @@ general syntax for comment is as follows (not all reports use all the fields).
         - uses 'request_time' (for packet/request reports) or 'timer_value' (for timer reports) from incoming packets for percentiles calculation
     - example (alt syntax): 'hv=0:2000:20000,percentiles=99:100'
         - same effect as above
-- &lt;filters&gt;: accept only packets maching these filters into this report
+- &lt;filters&gt;: accept only packets machine these filters into this report
     - to disable: put 'no_filters' here, report will accept all packets
     - any of (separate with commas):
         - 'min_time=&lt;milliseconds&gt;'
