@@ -309,6 +309,11 @@ namespace { namespace aux {
 				.connect(conf_->nn_control);
 		}
 
+		~relay_worker_t()
+		{
+			this->shutdown();
+		}
+
 		void startup()
 		{
 			in_sock_.connect(conf_->nn_input);
@@ -322,6 +327,9 @@ namespace { namespace aux {
 
 		void shutdown()
 		{
+			if (!thread_.joinable()) // has actually started and not shut down yet
+				return;
+
 			// tell relay to stop operation
 			auto const err = this->execute_in_thread([this]()
 			{
@@ -460,7 +468,6 @@ namespace { namespace aux {
 		std::mutex          control_mtx_;
 
 		std::thread         thread_;
-
 	};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

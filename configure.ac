@@ -31,12 +31,13 @@ AC_CHECK_FUNCS([sysconf recvmmsg])
 
 # compiler flags
 common_flags=" -pthread"
-common_flags="$common_flags -Wall -Wextra -Wformat-security -Werror"
-common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers"
+# common_flags="$common_flags -Wall -Wextra"
+# common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers"
+common_flags="$common_flags -Wformat -Wformat-security -Werror"
 common_flags="$common_flags -fno-omit-frame-pointer"
 common_flags="$common_flags -fPIC -DPIC"
-common_flags="$common_flags -D_GNU_SOURCE -D__STDC_FORMAT_MACROS -D_POSIX_SOURCE"
-common_flags="$common_flags -maes -msse4 -msse4.2" # for clang t1ha
+common_flags="$common_flags -D_GNU_SOURCE -D_POSIX_SOURCE"
+common_flags="$common_flags -maes -msse4 -msse4.2"
 
 AX_CFLAGS="-std=gnu11 $common_flags"
 AX_CXXFLAGS="-std=gnu++11 -fno-rtti $common_flags"
@@ -176,8 +177,6 @@ else
 	CFLAGS="$MYSQL_INC"
 	CXXFLAGS="$MYSQL_INC"
 
-	MYSQL_SERVICES_LIB="$with_mysql/libservices/libmysqlservices.a"
-
 	AC_MSG_CHECKING([for MySQL version >= 5.1])
 	AC_TRY_RUN([
 		#include <stdlib.h>
@@ -200,6 +199,15 @@ else
 
 	MYSQL_ENGINE_CFLAGS="-DMYSQL_DYNAMIC_PLUGIN -DMYSQL_SERVER=1 $MYSQL_INC"
 fi
+
+
+AC_ARG_ENABLE(libmysqlservices,
+	[AS_HELP_STRING([--enable-libmysqlservices], [link against libmysqlservices from mariadb (required)])
+	],
+	[
+		DEPS_LIBS="$DEPS_LIBS $with_mysql/libservices/libmysqlservices.a"
+	]
+)
 
 
 AC_ARG_ENABLE(static-build,
@@ -294,7 +302,6 @@ AC_SUBST(DEPS_CFLAGS)
 AC_SUBST(DEPS_LIBS)
 
 AC_SUBST(MYSQL_ENGINE_CFLAGS)
-AC_SUBST(MYSQL_SERVICES_LIB)
 AC_SUBST(INSTALL_STRIP_FLAG)
 
 AC_SUBST(EXPERIMENT_DIR)

@@ -244,6 +244,11 @@ namespace { namespace aux {
 		{
 		}
 
+		~repacker_impl_t()
+		{
+			this->shutdown();
+		}
+
 		virtual void startup() override
 		{
 			out_sock_
@@ -288,6 +293,9 @@ namespace { namespace aux {
 
 		virtual void shutdown() override
 		{
+			if (threads_.empty())
+				return;
+
 			{
 				std::unique_lock<std::mutex> lk_(shutdown_mtx_);
 				shutdown_cli_sock_.send(1); // there is no need to send multiple times, threads exit on poll signal
@@ -297,6 +305,8 @@ namespace { namespace aux {
 			{
 				threads_[i].join();
 			}
+
+			threads_.clear();
 		}
 
 	private:

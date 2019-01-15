@@ -13,7 +13,6 @@ aclocal.m4
 stamp-h1
 m4
 missing
-Makefile
 perf.data
 .deps
 .libs

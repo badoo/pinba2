@@ -633,23 +633,31 @@ namespace { namespace aux {
 			{
 				report_estimates_t result = {};
 
-				for (auto const& tick_base : ring_.get_ringbuffer())
+				result.row_count = [&]() -> uint32_t
 				{
-					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
-					result.row_count += tick.rows.size();
-				}
+					auto const& ringbuf = ring_.get_ringbuffer();
+					if (ringbuf.empty())
+						return 0;
 
-				if (stats_->last_snapshot_src_rows && stats_->last_snapshot_uniq_rows)
-				{
-					// got stats, adjust by stats based uniq to total rows ratio
-					double const uniq_to_raw_fraction = (double)stats_->last_snapshot_uniq_rows / stats_->last_snapshot_src_rows;
-					result.row_count *= uniq_to_raw_fraction;
-				}
-				else
-				{
-					// no stats, use average tick size (aka lean low and assume, all values repeat every tick)
-					result.row_count /= ring_.get_ringbuffer().size();
-				}
+					uint32_t non_unique_rows = 0;
+
+					for (auto const& tick_base : ringbuf)
+					{
+						auto const& tick = static_cast<history_tick_t const&>(*tick_base);
+						non_unique_rows += tick.rows.size();
+					}
+
+					// got stats from snapshot merge with exact values, adjust based uniq to total rows ratio
+					if (stats_->last_snapshot_src_rows && stats_->last_snapshot_uniq_rows)
+					{
+						double const uniq_to_raw_fraction = (double)stats_->last_snapshot_uniq_rows / stats_->last_snapshot_src_rows;
+						return non_unique_rows * uniq_to_raw_fraction;
+					}
+
+					// no stats from snapshot merge yet,
+					// use average tick size (aka lean low and assume, all values repeat every tick)
+					return (uint32_t)std::ceil((double)non_unique_rows / ringbuf.size());
+				}();
 
 				result.mem_used += sizeof(*this);
 

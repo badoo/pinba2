@@ -458,26 +458,6 @@ private:
 
 				STORE_FIELD (5,  duration_seconds_as_double(rinfo->time_window));
 				STORE_FIELD (6,  rinfo->tick_count);
-
-				// case 7:
-				// {
-				// 	uint32_t const approx_rows = [&]()
-				// 	{
-				// 		if (!rstats->last_snapshot_src_rows) // no stats recorded yet
-				// 		{
-				// 			return restimates->nonempty_tick_count
-				// 				? restimates->total_row_count / restimates->nonempty_tick_count
-				// 				: 0;
-				// 		}
-
-				// 		double const uniq_to_raw_fraction = (double)rstats->last_snapshot_uniq_rows / rstats->last_snapshot_src_rows;
-				// 		return uniq_to_raw_fraction * restimates->history_row_count;
-				// 	}();
-
-				// 	(*field)->set_notnull();
-				// 	(*field)->store(approx_rows);
-				// }
-				// break;
 				STORE_FIELD (7,  restimates->row_count);
 				STORE_FIELD (8,  restimates->mem_used);
 				STORE_FIELD (9,  rstats->batches_send_total);
