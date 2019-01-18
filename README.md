@@ -182,13 +182,13 @@ general syntax for comment is as follows (not all reports use all the fields).
 - &lt;histogram+percentiles&gt;: histogram time and percentiles definition
     - 'no_percentiles': disable
     - syntax: 'hv=&lt;min_time_ms&gt;:&lt;max_time_ms&gt;:&lt;bucket_count&gt;,&lt;percentiles&gt;'
-        - &lt;percentiles&gt;=p&lt;number&gt;[,p&lt;number&gt;[...]]
-        - (alt syntax) &lt;percentiles&gt;='percentiles='&lt;number&gt;[:&lt;number&gt;[...]]
-    - example: 'hv=0:2000:20000,p99,p100'
+        - &lt;percentiles&gt;=p&lt;double&gt;[,p&lt;double&gt;[...]]
+        - (alt syntax) &lt;percentiles&gt;='percentiles='&lt;double&gt;[:&lt;double&gt;[...]]
+    - example: 'hv=0:2000:20000,p99,p99.9,p100'
         - this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
-        - also adds 2 percentiles to report 99th and 100th, percentile calculation precision is 0.1ms given above
+        - also adds 3 percentiles to report 99th, 99.9th and 100th, percentile calculation precision is 0.1ms given above
         - uses 'request_time' (for packet/request reports) or 'timer_value' (for timer reports) from incoming packets for percentiles calculation
-    - example (alt syntax): 'hv=0:2000:20000,percentiles=99:100'
+    - example (alt syntax): 'hv=0:2000:20000,percentiles=99:99.9:100'
         - same effect as above
 - &lt;filters&gt;: accept only packets maching these filters into this report
     - to disable: put 'no_filters' here, report will accept all packets

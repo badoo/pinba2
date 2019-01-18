@@ -144,9 +144,9 @@ namespace { namespace aux {
 
 				for (auto const& percentile_s : pct_values_v)
 				{
-					uint32_t pv;
+					double pv = 0.;
 					if (!meow::number_from_string(&pv, percentile_s))
-						return ff::fmt_err("bad percentile_spec: expected integers split by ':', got '{0}'", pct_spec);
+						return ff::fmt_err("bad percentile_spec: expected doubles split by ':', got '{0}'", pct_spec);
 
 					vcf->percentiles.push_back(pv);
 				}
@@ -155,9 +155,9 @@ namespace { namespace aux {
 			{
 				auto const pct_spec = meow::sub_str_ref(pct_s, 1, pct_s.size());
 
-				uint32_t pv;
+				double pv = 0.;
 				if (!meow::number_from_string(&pv, pct_spec))
-					return ff::fmt_err("bad percentile_spec: expected 'p<integer>', got '{0}'", pct_s);
+					return ff::fmt_err("bad percentile_spec: expected 'p<double>', got '{0}'", pct_s);
 
 				vcf->percentiles.push_back(pv);
 			}
@@ -177,7 +177,7 @@ namespace { namespace aux {
 		// makes no sense to have histogram without percentiles specified
 		bool const pct_present = (vcf->percentiles.size() > 0);
 		if (!pct_present)
-			return ff::fmt_err("percentiles=<integer>[:<integer>[...]] or p<numer>[,p<number>[...]] must be present");
+			return ff::fmt_err("percentiles=<double>[:<double>[...]] or p<double>[,p<double>[...]] must be present");
 
 		return {};
 	}
