@@ -141,16 +141,6 @@ namespace { namespace aux {
 
 			stats_->collector_threads.resize(conf_->n_threads);
 
-			// uint32_t const ai_count = [this]()
-			// {
-			// 	uint32_t result = 0;
-			// 	MEOW_UNIX_ADDRINFO_LIST_FOR_EACH(curr_ai, ai_list_)
-			// 	{
-			// 		result++;
-			// 	}
-			// 	return result;
-			// }();
-
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
 				std::vector<fd_handle_t> fds;
@@ -162,16 +152,15 @@ namespace { namespace aux {
 					fds.push_back(std::move(fd_h));
 				}
 
-				// fd_handle_t fd_h = this->try_bind_to_addr(ai_);
+				// XXX(antoxa): move lambda capture is not available in c++11
+				//              so gotta do some ugly stuff here
 
-				// move lambda capture is not available in c++11
-				// int const fd = fd_h.release();
 				size_t const fds_saved_size = fds.size();
-				int fds_saved[fds_saved_size];
+				auto *fds_saved = new int[fds_saved_size];
 				for (uint32_t fd_i = 0; fd_i < fds.size(); fd_i++)
 					fds_saved[fd_i] = fds[fd_i].release();
 
-				std::thread t([this, i, &fds_saved, fds_saved_size]()
+				std::thread t([this, i, fds_saved, fds_saved_size]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
 
@@ -181,12 +170,12 @@ namespace { namespace aux {
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 					);
 
-					// fd_handle_t fd_h { fd };
 					std::vector<fd_handle_t> const fds_local { fds_saved, fds_saved + fds_saved_size };
+					delete [] fds_saved;
+
 					this->eat_udp(i, fds_local);
 				});
 
-				// t.detach();
 				threads_.push_back(move(t));
 			}
 		}
@@ -223,7 +212,6 @@ namespace { namespace aux {
 
 			// commit if everything is ok
 			ai_list_ = std::move(ai_list);
-			ai_      = ai;
 		}
 
 		fd_handle_t try_bind_to_addr(os_addrinfo_t *ai)
@@ -562,7 +550,6 @@ namespace { namespace aux {
 
 	private:
 		os_addrinfo_list_ptr  ai_list_;
-		os_addrinfo_t         *ai_;
 
 		nmsg_socket_t         out_sock_;
 
