@@ -141,15 +141,37 @@ namespace { namespace aux {
 
 			stats_->collector_threads.resize(conf_->n_threads);
 
+			// uint32_t const ai_count = [this]()
+			// {
+			// 	uint32_t result = 0;
+			// 	MEOW_UNIX_ADDRINFO_LIST_FOR_EACH(curr_ai, ai_list_)
+			// 	{
+			// 		result++;
+			// 	}
+			// 	return result;
+			// }();
+
 			for (uint32_t i = 0; i < conf_->n_threads; i++)
 			{
+				std::vector<fd_handle_t> fds;
+
 				// per-thread SO_REUSEPORT bind
-				fd_handle_t fd_h = this->try_bind_to_addr(ai_);
+				MEOW_UNIX_ADDRINFO_LIST_FOR_EACH(curr_ai, ai_list_)
+				{
+					auto fd_h = this->try_bind_to_addr(curr_ai);
+					fds.push_back(std::move(fd_h));
+				}
+
+				// fd_handle_t fd_h = this->try_bind_to_addr(ai_);
 
 				// move lambda capture is not available in c++11
-				int const fd = fd_h.release();
+				// int const fd = fd_h.release();
+				size_t const fds_saved_size = fds.size();
+				int fds_saved[fds_saved_size];
+				for (uint32_t fd_i = 0; fd_i < fds.size(); fd_i++)
+					fds_saved[fd_i] = fds[fd_i].release();
 
-				std::thread t([this, i, fd]()
+				std::thread t([this, i, &fds_saved, fds_saved_size]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
 
@@ -159,8 +181,9 @@ namespace { namespace aux {
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 					);
 
-					fd_handle_t fd_h { fd };
-					this->eat_udp(i, fd_h);
+					// fd_handle_t fd_h { fd };
+					std::vector<fd_handle_t> const fds_local { fds_saved, fds_saved + fds_saved_size };
+					this->eat_udp(i, fds_local);
 				});
 
 				// t.detach();
@@ -190,7 +213,7 @@ namespace { namespace aux {
 
 		void try_resolve_listen_addr_port()
 		{
-			os_addrinfo_list_ptr ai_list = os_unix::getaddrinfo_ex(conf_->address.c_str(), conf_->port.c_str(), AF_INET, SOCK_DGRAM, 0);
+			os_addrinfo_list_ptr ai_list = os_unix::getaddrinfo_ex(conf_->address.c_str(), conf_->port.c_str(), AF_UNSPEC, SOCK_DGRAM, 0);
 			MEOW_UNIX_ADDRINFO_LIST_FOR_EACH(curr_addr, ai_list)
 			{
 				LOG_INFO(globals_->logger(), "udp_reader; resolved {0}:{1} -> {2}", conf_->address, conf_->port, curr_addr->ai_addr);
@@ -208,6 +231,8 @@ namespace { namespace aux {
 			fd_handle_t fd { os_unix::socket_ex(ai->ai_family, ai->ai_socktype, ai->ai_protocol) };
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEADDR, 1);
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);
+			if (ai->ai_family == AF_INET6)
+				os_unix::setsockopt_ex(*fd, IPPROTO_IPV6, IPV6_V6ONLY, int(~0));
 			os_unix::bind_ex(*fd, ai->ai_addr, ai->ai_addrlen);
 
 			return fd;
@@ -230,15 +255,15 @@ namespace { namespace aux {
 			req.reset(); // signal the need to reinit
 		}
 
-		void eat_udp(uint32_t const thread_id, fd_handle_t const& fd)
+		void eat_udp(uint32_t const thread_id, std::vector<fd_handle_t> const& fds)
 		{
 			if (globals_->os_symbols()->has_recvmmsg())
-				this->eat_udp_recvmmsg(thread_id, std::move(fd));
+				this->eat_udp_recvmmsg(thread_id, fds);
 			else
-				this->eat_udp_recv(thread_id, std::move(fd));
+				this->eat_udp_recv(thread_id, fds);
 		}
 
-		void eat_udp_recv(uint32_t const thread_id, fd_handle_t const& fd)
+		void eat_udp_recv(uint32_t const thread_id, std::vector<fd_handle_t> const& fds)
 		{
 			static constexpr size_t const read_buffer_size = 64 * 1024; // max udp message size
 			char buf[read_buffer_size];
@@ -286,90 +311,93 @@ namespace { namespace aux {
 			});
 #endif
 			// process udp packets from the network
-			poller.read_plain_fd(*fd, [&](timeval_t now)
+			for (auto const& fd : fds)
 			{
-				// try receiving as much as possible without blocking
-				while (true)
+				poller.read_plain_fd(*fd, [&](timeval_t now)
 				{
-					++stats_->udp.recv_total;
-
-					int const n = recv(*fd, buf, sizeof(buf), MSG_DONTWAIT);
-					if (n > 0)
+					// try receiving as much as possible without blocking
+					while (true)
 					{
-						++stats_->udp.recv_packets;
+						++stats_->udp.recv_total;
 
-						if (!req)
+						int const n = recv(*fd, buf, sizeof(buf), MSG_DONTWAIT);
+						if (n > 0)
 						{
-							constexpr size_t nmpa_block_size = 16 * 1024;
-							req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
-							request_unpack_pba.allocator_data = &req->nmpa;
-						}
+							++stats_->udp.recv_packets;
 
-						stats_->udp.recv_bytes += uint64_t(n);
+							if (!req)
+							{
+								constexpr size_t nmpa_block_size = 16 * 1024;
+								req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
+								request_unpack_pba.allocator_data = &req->nmpa;
+							}
 
-						Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
-						if (request == NULL) {
-							++stats_->udp.packet_decode_err;
-							continue;
-						}
+							stats_->udp.recv_bytes += uint64_t(n);
 
-						req->requests[req->request_count] = request;
-						req->request_count++;
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
+							if (request == NULL) {
+								++stats_->udp.packet_decode_err;
+								continue;
+							}
 
-						if (req->request_count >= conf_->batch_size)
-						{
-							this->send_current_batch(thread_id, req);
-							// poller.reset_ticker(batch_send_tick, now);
-						}
+							req->requests[req->request_count] = request;
+							req->request_count++;
 
-						continue;
-					}
-
-					if (n < 0) {
-						if (errno == EINTR)
-							continue;
-
-						if (errno == EAGAIN)
-						{
-							++stats_->udp.recv_eagain;
-
-							// need to send current batch if we've got anything
-							if (req && req->request_count > 0)
+							if (req->request_count >= conf_->batch_size)
 							{
 								this->send_current_batch(thread_id, req);
 								// poller.reset_ticker(batch_send_tick, now);
 							}
 
-							// sleep for at least 1ms, before polling again, to let more packets arrive
-							// and save a ton on system calls
-							constexpr struct timespec const sleep_for = {
-								.tv_sec = 0,
-								.tv_nsec = 1 * 1000 * 1000,
-							};
-							nanosleep(&sleep_for, NULL);
+							continue;
+						}
 
+						if (n < 0) {
+							if (errno == EINTR)
+								continue;
+
+							if (errno == EAGAIN)
+							{
+								++stats_->udp.recv_eagain;
+
+								// need to send current batch if we've got anything
+								if (req && req->request_count > 0)
+								{
+									this->send_current_batch(thread_id, req);
+									// poller.reset_ticker(batch_send_tick, now);
+								}
+
+								// sleep for at least 1ms, before polling again, to let more packets arrive
+								// and save a ton on system calls
+								constexpr struct timespec const sleep_for = {
+									.tv_sec = 0,
+									.tv_nsec = 1 * 1000 * 1000,
+								};
+								nanosleep(&sleep_for, NULL);
+
+								return;
+							}
+
+							LOG_ERROR(globals_->logger(), "udp_reader/{0}; recv() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
+							poller.set_shutdown_flag();
 							return;
 						}
 
-						LOG_ERROR(globals_->logger(), "udp_reader/{0}; recv() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
-						poller.set_shutdown_flag();
-						return;
+						// XXX: this will never happen, even if socket is closed from main thread
+						if (n == 0)
+						{
+							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
+							poller.set_shutdown_flag();
+							return;
+						}
 					}
-
-					// XXX: this will never happen, even if socket is closed from main thread
-					if (n == 0)
-					{
-						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
-						poller.set_shutdown_flag();
-						return;
-					}
-				}
-			});
+				});
+			} // for
 
 			poller.loop();
 		}
 
-		void eat_udp_recvmmsg(uint32_t const thread_id, fd_handle_t const& fd)
+		void eat_udp_recvmmsg(uint32_t const thread_id, std::vector<fd_handle_t> const& fds)
 		{
 			size_t const max_message_size   = 64 * 1024; // max udp message size
 			size_t const max_dgrams_to_recv = conf_->batch_size; // FIXME: make a special setting for this
@@ -439,92 +467,95 @@ namespace { namespace aux {
 				this->send_current_batch(thread_id, req);
 			});
 
-			poller.read_plain_fd(*fd, [&](timeval_t now)
+			for (auto const& fd : fds)
 			{
-				// recv as much as possible without blocking
-				// but see comments in EAGAIN handling on sleep() and saving syscalls
-				while (true)
+				poller.read_plain_fd(*fd, [&](timeval_t now)
 				{
-					++stats_->udp.recv_total;
-
-					int const n = globals_->os_symbols()->recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
-					if (n > 0)
+					// recv as much as possible without blocking
+					// but see comments in EAGAIN handling on sleep() and saving syscalls
+					while (true)
 					{
-						stats_->udp.recv_packets += uint64_t(n);
+						++stats_->udp.recv_total;
 
-						for (int i = 0; i < n; i++)
+						int const n = globals_->os_symbols()->recvmmsg(*fd, hdr, max_dgrams_to_recv, MSG_DONTWAIT, NULL);
+						if (n > 0)
 						{
-							if (!req)
+							stats_->udp.recv_packets += uint64_t(n);
+
+							for (int i = 0; i < n; i++)
 							{
-								constexpr size_t nmpa_block_size = 16 * 1024;
-								req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
-								request_unpack_pba.allocator_data = &req->nmpa;
+								if (!req)
+								{
+									constexpr size_t nmpa_block_size = 16 * 1024;
+									req = meow::make_intrusive<raw_request_t>(conf_->batch_size, nmpa_block_size);
+									request_unpack_pba.allocator_data = &req->nmpa;
+								}
+
+								str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
+
+								stats_->udp.recv_bytes += dgram.size();
+
+								Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
+								if (request == NULL) {
+									++stats_->udp.packet_decode_err;
+									continue;
+								}
+
+								req->requests[req->request_count] = request;
+								req->request_count++;
+
+								if (req->request_count >= conf_->batch_size)
+								{
+									this->send_current_batch(thread_id, req);
+									poller.reset_ticker(batch_send_tick, now);
+								}
 							}
 
-							str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
-
-							stats_->udp.recv_bytes += dgram.size();
-
-							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
-							if (request == NULL) {
-								++stats_->udp.packet_decode_err;
-								continue;
-							}
-
-							req->requests[req->request_count] = request;
-							req->request_count++;
-
-							if (req->request_count >= conf_->batch_size)
-							{
-								this->send_current_batch(thread_id, req);
-								poller.reset_ticker(batch_send_tick, now);
-							}
+							continue;
 						}
 
-						continue;
-					}
-
-					if (n < 0)
-					{
-						if (errno == EINTR)
-							continue;
-
-						if (errno == EAGAIN)
+						if (n < 0)
 						{
-							++stats_->udp.recv_eagain;
+							if (errno == EINTR)
+								continue;
 
-							// need to send current batch if we've got anything
-							if (req && req->request_count > 0)
+							if (errno == EAGAIN)
 							{
-								this->send_current_batch(thread_id, req);
-								poller.reset_ticker(batch_send_tick, now);
+								++stats_->udp.recv_eagain;
+
+								// need to send current batch if we've got anything
+								if (req && req->request_count > 0)
+								{
+									this->send_current_batch(thread_id, req);
+									poller.reset_ticker(batch_send_tick, now);
+								}
+
+								// sleep for at least 1ms, before polling again, to let more packets arrive
+								// and save a ton on system calls
+								constexpr struct timespec const sleep_for = {
+									.tv_sec = 0,
+									.tv_nsec = 1 * 1000 * 1000,
+								};
+								nanosleep(&sleep_for, NULL);
+
+								return;
 							}
 
-							// sleep for at least 1ms, before polling again, to let more packets arrive
-							// and save a ton on system calls
-							constexpr struct timespec const sleep_for = {
-								.tv_sec = 0,
-								.tv_nsec = 1 * 1000 * 1000,
-							};
-							nanosleep(&sleep_for, NULL);
-
+							LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
+							poller.set_shutdown_flag();
 							return;
 						}
 
-						LOG_ERROR(globals_->logger(), "udp_reader/{0}; recvmmsg() failed, exiting: {1}:{2}", thread_id, errno, strerror(errno));
-						poller.set_shutdown_flag();
-						return;
-					}
-
-					// XXX: this will never happen, even if socket is closed from main thread
-					if (n == 0)
-					{
-						LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
-						poller.set_shutdown_flag();
-						return;
-					}
-				} // recv loop
-			});
+						// XXX: this will never happen, even if socket is closed from main thread
+						if (n == 0)
+						{
+							LOG_INFO(globals_->logger(), "udp_reader/{0}; recv socket closed, exiting", thread_id);
+							poller.set_shutdown_flag();
+							return;
+						}
+					} // recv loop
+				});
+			} // for
 
 			poller.loop();
 		}
