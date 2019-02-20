@@ -220,7 +220,7 @@ namespace { namespace aux {
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEADDR, 1);
 			os_unix::setsockopt_ex(*fd, SOL_SOCKET, SO_REUSEPORT, 1);
 			if (ai->ai_family == AF_INET6)
-				os_unix::setsockopt_ex(*fd, IPPROTO_IPV6, IPV6_V6ONLY, int(~0));
+				os_unix::setsockopt_ex(*fd, IPPROTO_IPV6, IPV6_V6ONLY, 1);
 			os_unix::bind_ex(*fd, ai->ai_addr, ai->ai_addrlen);
 
 			return fd;
