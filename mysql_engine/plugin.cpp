@@ -351,7 +351,7 @@ static MYSQL_SYSVAR_INT(port,
 static MYSQL_SYSVAR_STR(address,
 	pinba_variables()->address,
 	PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-	"IP address to listen at (use 0.0.0.0 here if you want to listen on all IPs), must not be empty",
+	"IP address to listen at (use * for all IPs, 0.0.0.0 for all v4 IPs, :: for all v6 IPs), must not be empty",
 	[](MYSQL_THD thd, struct st_mysql_sys_var *var, void *tmp, struct st_mysql_value *value)
 	{
 		// disallow empty address
@@ -363,7 +363,7 @@ static MYSQL_SYSVAR_STR(address,
 		return 0;
 	},
 	NULL,
-	"0.0.0.0");
+	"*");
 
 static MYSQL_SYSVAR_STR(log_level,
 	pinba_variables()->log_level,
