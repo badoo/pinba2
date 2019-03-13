@@ -5,19 +5,22 @@ config.sub
 config.nice
 config.status
 configure
+compile
 depcomp
+.dirstamp
 install-sh
 libtool
 ltmain.sh
 aclocal.m4
 stamp-h1
-m4
+m4/
 missing
-perf.data
+perf.data*
 .deps
 .libs
 _configs.sed
 auto_config.h
+pinba2
 pinba_config.h
 pinba_config.h~
 pinba_config.h.in
@@ -29,4 +32,6 @@ pinba_config.h.in~
 *.lo
 *.sublime-*
 .idea
+Makefile
+Makefile.in
 
