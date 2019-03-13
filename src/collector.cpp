@@ -152,15 +152,8 @@ namespace { namespace aux {
 					fds.push_back(std::move(fd_h));
 				}
 
-				// XXX(antoxa): move lambda capture is not available in c++11
-				//              so gotta do some ugly stuff here
-
-				size_t const fds_saved_size = fds.size();
-				auto *fds_saved = new int[fds_saved_size];
-				for (uint32_t fd_i = 0; fd_i < fds.size(); fd_i++)
-					fds_saved[fd_i] = fds[fd_i].release();
-
-				std::thread t([this, i, fds_saved, fds_saved_size]()
+				// TODO(antoxa): replace passing i, with proper thread contexts
+				std::thread t([this, i, fds = std::move(fds)]()
 				{
 					std::string const thr_name = ff::fmt_str("udp_reader/{0}", i);
 
@@ -170,10 +163,7 @@ namespace { namespace aux {
 						LOG_DEBUG(globals_->logger(), "{0}; exiting", thr_name);
 					);
 
-					std::vector<fd_handle_t> const fds_local { fds_saved, fds_saved + fds_saved_size };
-					delete [] fds_saved;
-
-					this->eat_udp(i, fds_local);
+					this->eat_udp(i, fds);
 				});
 
 				threads_.push_back(move(t));
@@ -190,9 +180,9 @@ namespace { namespace aux {
 				shutdown_cli_sock_.send(1); // there is no need to send multiple times, threads exit on poll signal
 			}
 
-			for (uint32_t i = 0; i < conf_->n_threads; i++)
+			for (auto&& thr : threads_)
 			{
-				threads_[i].join();
+				thr.join();
 			}
 
 			threads_.clear();

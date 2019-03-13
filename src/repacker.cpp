@@ -278,16 +278,13 @@ namespace { namespace aux {
 					input_sock.set_option(NN_SOL_SOCKET, NN_RCVBUF, sizeof(raw_request_t) * conf_->nn_input_buffer, conf_->nn_input);
 
 				// start worker threads
-				// since we're targeting c++11 - can't use lambda capture like 'input_sock = move(input_sock)' here :(
-				int const input_fd = input_sock.release();
-				std::thread t([this, i, input_fd]()
+				std::thread t([this, i, input_sock = std::move(input_sock)]() mutable
 				{
-					nmsg_socket_t sock(input_fd);
-					this->worker_thread(i, sock);
+					this->worker_thread(i, input_sock);
 				});
 
 				// t.detach();
-				threads_.push_back(move(t));
+				threads_.push_back(std::move(t));
 			}
 		}
 
@@ -301,9 +298,9 @@ namespace { namespace aux {
 				shutdown_cli_sock_.send(1); // there is no need to send multiple times, threads exit on poll signal
 			}
 
-			for (uint32_t i = 0; i < conf_->n_threads; i++)
+			for (auto&& thr : threads_)
 			{
-				threads_[i].join();
+				thr.join();
 			}
 
 			threads_.clear();
