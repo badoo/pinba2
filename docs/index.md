@@ -1,16 +1,23 @@
 Building
 --------
 
+**examples**
+
+See [Dockerfile](Dockerfile) and [build-from-source.sh](docker/build-from-source.sh).<br/>
+Also there is a rough guide for centos7 in [#17](https://github.com/badoo/pinba2/issues/17) - should be workable for multiple distros really.
+
 **requirements**
 
-- gcc 4.9.4+ (but will increase this requirement to something like gcc6+ soon)
+- c++14 compatible compiler (tested with gcc7+, clang7+)
 - meow: https://github.com/anton-povarov/meow
-- boost: http://boost.org/ (or just install from packages for your distro)
+- boost: http://boost.org/ (or just install from packages for your distro, need headers only)
 - nanomsg: http://nanomsg.org/ (or https://github.com/nanomsg/nanomsg/releases, or just pull master)
+	- build it statically with `-DCMAKE_C_FLAGS="-fPIC -DPIC"` (see build-from-source.sh for an example)
 	- make sure to adjust NN_MAX_SOCKETS cmake option as it limits the number of reports available, 4096 should be enough for ~700 reports.
 - mysql (5.6+) or mariadb (10+)
-	- mysql: need source code, run ./configure, since mysql doesn't install all internal headers we need
-	- mariadb: just install from with your favorite package manager, and point pinba to header files
+	- IMPORTANT: just unpacking sources is not enough, as mysql generates required headers on configure and make
+	- run `cmake . && make` (going to take a while)
+	- cmake might require multiple `*-devel` packages, for stuff like ncurses, openssl, install them using your distro's package manager
 
 **To build, run**
 
@@ -18,16 +25,19 @@ Building
 
     $ ./configure
         --prefix=<path>
-        --with-mysql=<path to configured mysql source code, or mariadb installed headers>
+        --with-mysql=<path to configured mysql sources (built as explained above)>
         --with-nanomsg=<nanomsg install dir>
         --with-meow=<path>
         --with-boost=<path (need headers only)>
+
+    $ make -j4
+
 
 Installation
 ------------
 Unfinished, use containers or
 
-- copy mysql_engine/.libs/libpinba_engine2.so to mysql plugin directory
+- copy mysql_engine/.libs/libpinba_engine2.so (make sure to copy the real .so, not the symlink) to mysql plugin directory
 - install plugin
 - create database pinba
 - create default tables + reports
@@ -38,7 +48,7 @@ Something like this
 	$ echo "install plugin pinba soname 'libpinba_engine2.so';" | mysql
 	$ (maybe change my.cnf here, restart server if you have made changes)
 	$ echo "create database pinba;" | mysql
-	$ cat scripts/default_tables.sql | mysql
+	$ cat scripts/default_tables/*.sql | mysql
 	$ cat scripts/default_reports.sql | mysql
 
 **Jemalloc**
@@ -54,6 +64,7 @@ highly recommended to run mysql/mariadb with jemalloc enabled
 
 - if mysql/mariadb are built with debug enabled (or you're using debug packages) - build with \-\-enable-debug, or stuff will not work
 - make sure that you're building pinba with the same mysql/mariadb version that you're going to install built plugin into, or mysterious crashes might happen
+- MARIADB: you might need to change your `plugin_maturity` setting in my.cnf to `unknown` (should be possible to get rid of this requirement, please file an issue or send PR)
 
 Configuration
 =============
