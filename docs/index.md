@@ -3,7 +3,7 @@ Building
 
 **examples**
 
-See [Dockerfile](Dockerfile) and [build-from-source.sh](docker/build-from-source.sh).<br/>
+See [Dockerfile](../Dockerfile) and [build-from-source.sh](../docker/build-from-source.sh).<br/>
 Also there is a rough guide for centos7 in [#17](https://github.com/badoo/pinba2/issues/17) - should be workable for multiple distros really.
 
 **requirements**

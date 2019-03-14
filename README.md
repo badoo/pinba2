@@ -18,8 +18,8 @@ Key differences from original implementation
 - simpler, more flexible report configuration
     - all use cases from original pinba are covered by only 3 kinds of reports (of which you mostly need one: timer)
     - simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
-        - supports 7 keys max at the moment (never seen anyone using more than 5 anyway)
-        - performance is about the same, regardless of the number of keys used
+        - supports 15 keys max at the moment (never seen anyone using more than 5 anyway)
+        - performance does not degrade when adding more keys to reports
     - more options can be configured per report now
         - stats gathering history: i.e. some reports can aggregate over 60sec, while others - over 300sec, as needed
         - histograms+percentiles: some reports might need very detailed histograms, while others - coarse
@@ -28,6 +28,7 @@ Key differences from original implementation
     - no limits on tag name/value sizes (but keep it reasonable)
 - aggregation performance improved, reduced cpu/memory usage
     - currently handles ~72k simple packets/sec (~200mbps) with 5 medium-complexity reports (4 keys aggregation) @ ~40% overall cpu usage
+    - handles up to 1.4 million packets/sec (~3 gbps) on internal setups on commodity hardware from 2015
     - uses significantly less memory (orders of magnitude) for common cases, since we don't store raw requests by default
     - current goal is to be able to handle 10gpbs of incoming traffic with hundreds of reports
 - select performance - might be slower
