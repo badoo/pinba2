@@ -186,9 +186,14 @@ struct dictionary_t : private boost::noncopyable
 		}
 	};
 
-	// unordered_map handles intense delete-s better than dense hash
+	// unordered_map handles intense MUCH delete-s better than dense hash (but significantly slower on lookups)
 	struct hash_with_ok_erase_t : public std::unordered_map<str_ref, word_t*, dictionary_word_hasher_t>
 	{
+		hash_with_ok_erase_t()
+		{
+			// try speed up lookups by having a sparser map
+			this->max_load_factor(0.3);
+		}
 	};
 
 	// id -> word_t,
@@ -206,6 +211,7 @@ private:
 
 		uint32_t              id;
 		hash_t                hash;
+		// hash_with_ok_erase_t  hash;
 		words_t               words;
 		std::deque<uint32_t>  freelist;
 
@@ -253,7 +259,7 @@ public:
 
 public:
 
-	// get transient work, caller must make sure it stays valid while using
+	// get transient word, caller must make sure it stays valid while using
 	str_ref get_word(uint32_t word_id) const
 	{
 		if (word_id == 0)
@@ -305,7 +311,7 @@ public:
 		}
 	}
 
-	// get or add a word that might get removed with erase_word___ref() later
+	// get or add a word that is never supposed to be removed
 	word_t const* get_or_add___permanent(str_ref const word)
 	{
 		if (!word)
@@ -336,7 +342,7 @@ public:
 		return this->get_or_add___permanent(word)->id;
 	}
 
-	// get or add a word that is never supposed to be removed
+	// get or add a word that might get removed with erase_word___ref() later
 	word_t const* get_or_add___ref(str_ref const word)
 	{
 		if (!word)
@@ -532,8 +538,21 @@ struct repacker_dictionary_t : private boost::noncopyable
 	// 	}
 	// };
 
+	// hashtable should support efficient deletion
+	// but dense_hash_map degrades ridiculously under high number of erases
+	// so standard chaining-based unoredered_map is used
 	struct word_to_id_hash_t : public std::unordered_map<str_ref, word_ptr, dictionary_word_hasher_t>
 	{
+		word_to_id_hash_t()
+		{
+			// at large map sizes (millions) and large string churn rates (mostly unique strings)
+			// lookups become pretty slow (well, chaining)
+			// so try and counter this with larger bucket counts
+			//
+			// gcc8 default is 1.0, which kinda feels too high
+			// clang7 default is 1.0 (libc++)
+			this->max_load_factor(0.3);
+		}
 	};
 
 public: // FIXME
@@ -643,7 +662,7 @@ public:
 			{
 				wordslice_ptr& ws = *it;
 
-				result.reaped_slices      +=1;
+				result.reaped_slices      += 1;
 				result.reaped_words_local += ws->ht.size();
 
 				// reduce refcounts to all words in this slice

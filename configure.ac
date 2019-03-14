@@ -40,7 +40,7 @@ common_flags="$common_flags -D_GNU_SOURCE -D_POSIX_SOURCE"
 common_flags="$common_flags -maes -msse4 -msse4.2"
 
 AX_CFLAGS="-std=gnu11 $common_flags"
-AX_CXXFLAGS="-std=gnu++11 -fno-rtti $common_flags"
+AX_CXXFLAGS="-std=c++14 -fno-rtti $common_flags"
 AX_LDFLAGS="-flto -lrt -ldl"
 
 dnl nonportable pthread expensions
