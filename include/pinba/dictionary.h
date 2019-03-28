@@ -6,7 +6,7 @@
 #include <deque>
 #include <unordered_map>
 
-#include <pthread.h> // need rwlock, which is only available since C++14
+#include <pthread.h>
 
 #include <sparsehash/dense_hash_map>
 
@@ -377,6 +377,8 @@ private:
 	word_t* get_or_add___wrlocked(shard_t *shard, str_ref const word)
 	{
 		// re-check word existence, might've appeated while upgrading the lock
+		// can't just insert here, since the key is str_ref that should refer to word (created below)
+		//  and not the incoming str_ref (that might be transient and just become invalid after this func returns)
 		auto it = shard->hash.find(word);
 		if (shard->hash.end() != it)
 			return it->second;
@@ -414,6 +416,7 @@ private:
 			}
 		}();
 
+		// XXX(antoxa): if this throws -> the word created above is basically 'leaked'
 		shard->hash.insert({ str_ref { w->str }, w });
 
 		return w;
@@ -423,45 +426,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // single threaded cache for dictionary_t
 // transforms word_id -> word only
-// intended to be used in snapshot scans, snapshot data never changes, so we can cache d->size()
-
-// struct snapshot_dictionary_t : private boost::noncopyable
-// {
-// 	using words_t = std::vector<str_ref>;
-
-// 	mutable words_t    words;
-// 	dictionary_t const *d;
-// 	uint32_t           d_words_size;
-
-// 	explicit snapshot_dictionary_t(dictionary_t const *dict)
-// 		: d(dict)
-// 	{
-// 		d_words_size = d->size();
-// 		words.resize(d_words_size);
-// 	}
-
-// 	str_ref get_word(uint32_t word_id) const
-// 	{
-// 		if (word_id == 0)
-// 			return {};
-
-// 		if (word_id > d_words_size)
-// 			return {};
-
-// 		str_ref& word = words[word_id-1];
-
-// 		if (!word) // cache miss
-// 			word = d->get_word(word_id);
-
-// 		return word;
-// 	}
-// };
-
-// single threaded cache for dictionary_t
-// transforms word_id -> word only
-// intended to save on global dictionary locking, by caching stuff locally
+// intended to be used in snapshot scans and save on global dictionary locking, by caching stuff locally
 // should be very efficient for wide reports with many repeating values
 // XXX(antoxa): maybe move this out of global header, somewhere close to report_snapshot impls
+
 struct snapshot_dictionary_t : private boost::noncopyable
 {
 	struct word_id_hasher_t
@@ -499,7 +467,7 @@ public:
 		assert(d != nullptr);
 	}
 
-	// XXX(antoxa): it's important to understand word lifetimes using this function
+	// NOTE(antoxa): it's important to understand word lifetimes using this function
 	// for report snapshots (where this is supposed to be used) - we rely on repacker_state to keep words alive
 	str_ref get_word(uint32_t word_id) const
 	{
@@ -644,10 +612,6 @@ public:
 	{
 		if (!word)
 			return 0;
-
-		// TODO: can optimize this, by storing a `is this word already in current wordslice' bit in `word'
-		//       will need to reset those bits on current wordslice change
-		//       basically trading extra hash lookup on every call for hash scan every wordslice change
 
 		// fastpath - local lookup
 		auto const it = word_to_id.find(word);
