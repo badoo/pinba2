@@ -138,11 +138,10 @@ struct report_snapshot_t
 	// histograms configuration
 	virtual histogram_conf_t const* histogram_conf() const = 0;
 
-	// get dictionary used to translate ids to names, read only
-	virtual dictionary_t const* dictionary() const = 0;
-
-	// get thread-local this snapshot only dictionary
-	// virtual snapshot_dictionary_t const* snapshot_dictionary() const = 0;
+	// get global dictionary used to translate ids to names, read only
+	virtual dictionary_t const*          dictionary() const = 0;
+	// get local dictionary cache, that can do cached word_id -> word translation
+	virtual snapshot_dictionary_t const* snapshot_dictionary() const = 0;
 
 	// prepare snapshot for use
 	// MUST be called before any of the functions below

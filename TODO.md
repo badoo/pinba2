@@ -28,7 +28,6 @@
 - tools
 	- [x] rtag_* reports support in scripts/convert_mysqldump.php
 	- [ ] hv_* reports support in scripts/convert_mysqldump.php
-- [ ] pthread_setname_np portable detection at runtime {?}
 - [ ] {maybe} raw data support
 - [ ] {maybe, not strictly needed} calculate real time window for report snapshots (i.e. skip timeslices that have had no data)
 	- this is debatable, but useful for correct <something>/sec calculations
@@ -41,13 +40,15 @@
 	- [ ] split permanent dictionary into it's own api, use for all tag names (never refcount them)
 	- [ ] maybe rework dictionaries to be report-based (this virtually eliminates the need for repacker, but will prob require report thread-splitting)
 	- [ ] hash strings only once, hack hash table impls to accept hashes instead of strings (impossible with unordered_map?)
+	- [x] {medium} per snapshot merger dictionary caches
+- [ ] {easy} check dense_hash_map impls
+	- [ ] https://github.com/tbricks/sparsehash-c11/commits/development (c++11 move + performance)
+	- [ ] check other hashes in general: https://tessil.github.io/2016/08/29/benchmark-hopscotch-map.html#which-hash-map-should-i-choose
 - [ ] {medium} thread cpu + numa affinity
 	- [ ] coordinator (or packet relay for that matter) affinity + priority
 	- [ ] repacker affinity + config support
 	- [ ] udp collector affinity + config support
 	- [ ] doc, how to assign interrupts to cores + numa nodes (links at least)
-- [ ] {easy} check dense_hash_map impls
-	- [ ] https://github.com/tbricks/sparsehash-c11/commits/development (c++11 move + performance)
 - [ ] {?} increase udp kernel memory (or at least check for it) on startup
 	- kernel udp memory is usually tuned very low
 	- so, it's beneficial to increase it to be able to handle high packet+data rates
@@ -56,13 +57,12 @@
 	- hard to change all clients
 	- not really worth it, since pb unpack doesn't seem to take that much cpu
 - [ ] {hard} maybe replace nanomsg with something doing less locking / syscalls (thorough meamurements first!)
-- [ ] {medium, worth it?} per snapshot merger dictionary caches
 
 # Internals
 - [x] split pinba_globals_t into 'informational' and 'runtime engine' parts (to simplify testing/experiments)
 	- informational: stats, ticker, dictionary, stuff that is just 'cogs'
 	- runtime: udp readers, coorinator, the features meat
-- [ ] split coordinator into 'relay thread' and 'management thread' (maybe even have management be non-threaded?)
+- [x] split coordinator into 'relay thread' and 'management thread' (management is non-threaded, but needs locking, as it can be used from multiple threads)
 - [ ] refactor switches by view type in handler.cpp / view_conf.cpp
 
 # Done
@@ -123,3 +123,4 @@
 	- [x] {actually done} rewritten hdr histogram to suit our needs, now using it at 'current tick' aggregation stage
 	- [x] {won't do} hack to allow for dynamic resize (currently too expensive to use, as they preallocate on creation)
 	- [x] also need to figure out what to do with negative/positive inf in our histograms, and significant digits setting
+- [x] pthread_setname_np portable detection at runtime {?}

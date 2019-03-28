@@ -259,16 +259,18 @@ struct report_snapshot__impl_t
 
 public: // intentional, internal use only
 
-	hashtable_t  data_;      // real data we iterate over
-	src_ticks_t  ticks_;     // ticks we merge our data from (in other thread potentially)
-	totals_t     totals_;    // totals storage
-	bool         prepared_;  // has data been prepared?
+	hashtable_t            data_;      // real data we iterate over
+	src_ticks_t            ticks_;     // ticks we merge our data from (in other thread potentially)
+	snapshot_dictionary_t  snap_d_;    // local snapshot dictionary word_id -> word cache
+	totals_t               totals_;    // totals storage
+	bool                   prepared_;  // has data been prepared?
 
 public:
 
 	report_snapshot__impl_t(report_snapshot_ctx_t ctx, src_ticks_t const& ticks)
 		: report_snapshot_ctx_t(ctx)
 		, ticks_(ticks)
+		, snap_d_(ctx.globals->dictionary())
 		, prepared_(false)
 	{
 	}
@@ -288,6 +290,11 @@ private:
 	virtual dictionary_t const* dictionary() const override
 	{
 		return globals->dictionary();
+	}
+
+	virtual snapshot_dictionary_t const* snapshot_dictionary() const
+	{
+		return &snap_d_;
 	}
 
 	virtual void prepare(merge_flags_t flags) override
@@ -401,8 +408,7 @@ private:
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
 			// str_ref const word = dictionary()->get_word(k[i]);
-			// str_ref const word = snapshot_d.get_word(k[i]);
-			str_ref const word = dictionary()->get_word(k[i]); // FIXME
+			str_ref const word = snapshot_dictionary()->get_word(k[i]);
 			result.push_back(word);
 		}
 		return result;
