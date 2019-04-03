@@ -483,6 +483,11 @@ namespace { namespace aux {
 		{
 		}
 
+		~coordinator_impl_t()
+		{
+			this->shutdown();
+		}
+
 	private:
 
 		virtual void startup() override
@@ -498,6 +503,8 @@ namespace { namespace aux {
 			// shutdown all reports
 			for (auto& report_host : report_hosts_)
 				report_host.second->shutdown();
+
+			report_hosts_.clear();
 		}
 
 		virtual pinba_error_t add_report(report_ptr report) override

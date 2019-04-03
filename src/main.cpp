@@ -117,7 +117,7 @@ int main(int argc, char const *argv[])
 		};
 		pinba->add_report(create_report_by_request(pinba->globals(), conf));
 
-		threaded_print_report_snapshot(conf.name);
+		// threaded_print_report_snapshot(conf.name);
 	}
 
 	{
@@ -145,7 +145,7 @@ int main(int argc, char const *argv[])
 		};
 		pinba->add_report(create_report_by_timer(pinba->globals(), conf));
 
-		threaded_print_report_snapshot(conf.name);
+		// threaded_print_report_snapshot(conf.name);
 	}
 
 	getchar();
