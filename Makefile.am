@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = t1ha src include mysql_engine $(EXPERIMENT_DIR)
+SUBDIRS = third_party/t1ha src include mysql_engine $(EXPERIMENT_DIR)
 
 protodir = $(prefix)/proto
 proto_DATA = \

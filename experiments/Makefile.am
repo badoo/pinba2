@@ -4,6 +4,7 @@ AM_CXXFLAGS = \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/third_party \
 	#
 
 # disable optimization for experimental code
@@ -15,6 +16,7 @@ AM_CFLAGS = \
 	$(DEPS_CFLAGS) \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/third_party \
 	#
 
 AM_LDFLAGS = \

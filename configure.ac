@@ -68,7 +68,7 @@ if test "$?" = "0"; then
 	AC_DEFINE_UNQUOTED([VCS_WC_MODIFIED], "$VCS_WC_MODIFIED", [vcs wc modified])
 fi
 
-
+# command line options and stuff
 dir_resolve()
 {
 	pwd=`pwd`
@@ -267,12 +267,6 @@ AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library 
 	DEPS_CFLAGS="$DEPS_CFLAGS -pthread -I$with_nanomsg/include"
 	LDFLAGS="$LDFLAGS -lanl"
 	DEPS_LIBS="$DEPS_LIBS $with_nanomsg/lib/libnanomsg.a"
-])
-
-AC_ARG_WITH(sparsehash, [AS_HELP_STRING([--with-sparsehash], [path to sparsehash library])],
-[
-	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_sparsehash/include" # this one is for sparsehash
-	DEPS_CFLAGS="$DEPS_CFLAGS -I$with_sparsehash/include/google" # this one is for sparsehash-c11
 ])
 
 AC_ARG_WITH(meow, [AS_HELP_STRING([--with-meow], [path to meow library])],
