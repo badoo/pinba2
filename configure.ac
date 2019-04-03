@@ -35,7 +35,7 @@ common_flags=" -pthread"
 # common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers"
 common_flags="$common_flags -Wformat -Wformat-security -Werror"
 common_flags="$common_flags -fno-omit-frame-pointer"
-common_flags="$common_flags -fPIC -DPIC"
+common_flags="$common_flags -fPIC -DPIC -rdynamic"
 common_flags="$common_flags -D_GNU_SOURCE -D_POSIX_SOURCE"
 common_flags="$common_flags -maes -msse4 -msse4.2"
 
