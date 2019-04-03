@@ -1,20 +1,15 @@
 
 AM_CXXFLAGS = \
 	$(AX_CXXFLAGS) \
-	$(MYSQL_ENGINE_CFLAGS) \
-	-Wno-error -Wno-macro-redefined \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
+	$(MYSQL_ENGINE_CFLAGS) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 AM_CFLAGS = \
 	$(AX_CFLAGS) \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 AM_LDFLAGS = \
@@ -36,6 +31,5 @@ libpinba_engine2_la_LDFLAGS = \
 
 libpinba_engine2_la_LIBADD = \
 	../src/libpinba2.a \
-	../third_party/t1ha/libt1ha.a \
 	$(DEPS_LIBS) \
 	#

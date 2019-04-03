@@ -2,9 +2,7 @@
 AM_CXXFLAGS = \
 	$(AX_CXXFLAGS) \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 # disable optimization for experimental code
@@ -14,9 +12,7 @@ AM_CXXFLAGS+= -O0 -ggdb3
 AM_CFLAGS = \
 	$(AX_CFLAGS) \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 AM_LDFLAGS = \
@@ -74,5 +70,4 @@ exp_protobuf_nmpa_SOURCES = \
 
 exp_histogram_perf_SOURCES = \
 	exp_histogram_perf.cpp \
-	../hdr_histogram/hdr_histogram.c \
 	#

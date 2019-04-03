@@ -70,6 +70,11 @@ if test "$?" = "0"; then
 	AC_DEFINE_UNQUOTED([VCS_WC_MODIFIED], "$VCS_WC_MODIFIED", [vcs wc modified])
 fi
 
+# builtin dependencies
+DEPS_CFLAGS="$DEPS_CFLAGS -I\${top_srcdir}/third_party" # sparsehash + t1ha
+DEPS_CFLAGS="$DEPS_CFLAGS -I\${top_srcdir}/third_party/robin-map/include" # tsl/robin-map
+DEPS_LIBS="$DEPS_LIBS \${top_srcdir}/third_party/t1ha/libt1ha.a" # t1ha
+
 # command line options and stuff
 dir_resolve()
 {
@@ -233,6 +238,7 @@ AC_ARG_ENABLE(debug, [AS_HELP_STRING([--enable-debug], [enable debugging symbols
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DSAFE_MUTEX -DDBUG_ON -DEXTRA_DEBUG"
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DUNIV_MUST_NOT_INLINE -DFORCE_INIT_OF_VARS"
 	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -DPINBA_DEBUG -DPINBA_ENGINE_DEBUG_ON"
+	MYSQL_ENGINE_CFLAGS="$MYSQL_ENGINE_CFLAGS -Wno-error -Wno-macro-redefined"
 
 	DEBUG_FLAGS="-O0 -ggdb3"
 	AX_CFLAGS="$AX_CFLAGS $DEBUG_FLAGS"

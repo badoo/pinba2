@@ -2,17 +2,13 @@
 AM_CXXFLAGS = \
 	$(AX_CXXFLAGS) \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 AM_CFLAGS = \
 	$(AX_CFLAGS) \
 	$(DEPS_CFLAGS) \
-	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/third_party \
 	#
 
 AM_LDFLAGS = \
@@ -37,7 +33,6 @@ libpinba2_a_SOURCES = \
 	#
 
 libpinba2_a_LIBADD = \
-	../third_party/t1ha/libt1ha.a \
 	$(DEPS_LIBS) \
 	#
 
@@ -52,6 +47,5 @@ pinba2_SOURCES = \
 
 pinba2_LDADD = \
 	libpinba2.a \
-	../third_party/t1ha/libt1ha.a \
 	$(DEPS_LIBS) \
 	#
