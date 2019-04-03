@@ -16,6 +16,7 @@
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
+#include "pinba/snapshot_dictionary.h"
 #include "pinba/histogram.h"
 #include "pinba/report_key.h"
 

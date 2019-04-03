@@ -10,6 +10,7 @@
 #include "pinba/globals.h"
 #include "pinba/os_symbols.h"
 #include "pinba/dictionary.h"
+#include "pinba/repacker_dictionary.h"
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
 #include "pinba/packet.h"
