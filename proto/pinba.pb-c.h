@@ -26,9 +26,9 @@ typedef struct _Pinba__Request Pinba__Request;
 struct  _Pinba__Request
 {
   ProtobufCMessage base;
-  char *hostname;
-  char *server_name;
-  char *script_name;
+  ProtobufCBinaryData hostname;
+  ProtobufCBinaryData server_name;
+  ProtobufCBinaryData script_name;
   uint32_t request_count;
   uint32_t document_size;
   uint32_t memory_peak;
@@ -46,14 +46,15 @@ struct  _Pinba__Request
   size_t n_timer_tag_value;
   uint32_t *timer_tag_value;
   size_t n_dictionary;
-  char **dictionary;
+  ProtobufCBinaryData *dictionary;
   protobuf_c_boolean has_status;
   uint32_t status;
   protobuf_c_boolean has_memory_footprint;
   uint32_t memory_footprint;
   size_t n_requests;
   Pinba__Request **requests;
-  char *schema;
+  protobuf_c_boolean has_schema;
+  ProtobufCBinaryData schema;
   size_t n_tag_name;
   uint32_t *tag_name;
   size_t n_tag_value;
@@ -65,7 +66,7 @@ struct  _Pinba__Request
 };
 #define PINBA__REQUEST__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&pinba__request__descriptor) \
-    , NULL, NULL, NULL, 0, 0, 0, 0, 0, 0, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,0, 0,0, 0,NULL, NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
+    , {0,NULL}, {0,NULL}, {0,NULL}, 0, 0, 0, 0, 0, 0, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,NULL, 0,0, 0,0, 0,NULL, 0,{0,NULL}, 0,NULL, 0,NULL, 0,NULL, 0,NULL }
 
 
 /* Pinba__Request methods */

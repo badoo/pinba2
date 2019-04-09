@@ -272,10 +272,10 @@ static str_packet_t* pinba_request_to_str_packet(Pinba__Request const *r, D *d, 
 		return str_ref { dst, str.size() };
 	};
 
-	p->host         = copy_string_to_nmpa(nmpa, r->hostname);
-	p->server       = copy_string_to_nmpa(nmpa, r->server_name);
-	p->script       = copy_string_to_nmpa(nmpa, r->script_name);
-	p->schema       = copy_string_to_nmpa(nmpa, r->schema);
+	p->host         = copy_str_ref_to_nmpa(nmpa, {(char const*)r->hostname.data, r->hostname.len});
+	p->server       = copy_str_ref_to_nmpa(nmpa, {(char const*)r->server_name.data, r->server_name.len});
+	p->script       = copy_str_ref_to_nmpa(nmpa, {(char const*)r->script_name.data, r->script_name.len});
+	p->schema       = copy_str_ref_to_nmpa(nmpa, {(char const*)r->schema.data, r->schema.len});
 	p->status       = copy_str_ref_to_nmpa(nmpa, meow::format::type_tunnel<uint32_t>::call(r->status));
 	p->traffic      = r->document_size;
 	p->mem_used     = r->memory_footprint;
@@ -311,12 +311,15 @@ static str_packet_t* pinba_request_to_str_packet(Pinba__Request const *r, D *d, 
 			for (unsigned i = 0; i < r->n_timer_tag_name; i++)
 			{
 				// XXX: we transform tag names to ids without accounting for duplicates, might be able to fix
-				uint32_t const tag_name_id = d->get_or_add(r->dictionary[r->timer_tag_name[i]]);
+				auto const& tag_name_str = r->dictionary[r->timer_tag_name[i]];
+				uint32_t const tag_name_id = d->get_or_add({(char const*)tag_name_str.data, tag_name_str.len});
 
 				p->timer_bloom->add(tag_name_id);
 
 				timer_tag_name_ids[i] = tag_name_id;
-				timer_tag_values[i] = copy_string_to_nmpa(nmpa, r->dictionary[r->timer_tag_value[i]]);
+
+				auto const& tag_value_str = r->dictionary[r->timer_tag_value[i]];
+				timer_tag_values[i] = copy_str_ref_to_nmpa(nmpa, {(char const*)tag_value_str.data, tag_value_str.len});
 			}
 
 			// fixup base pointers
@@ -338,8 +341,11 @@ static str_packet_t* pinba_request_to_str_packet(Pinba__Request const *r, D *d, 
 		p->tag_values = (str_ref*)nmpa_alloc(nmpa, sizeof(str_ref) * r->n_tag_name);
 		for (unsigned i = 0; i < r->n_tag_name; i++)
 		{
-			p->tag_name_ids[i]  = d->get_or_add(r->dictionary[r->tag_name[i]]);
-			p->tag_values[i] = copy_string_to_nmpa(nmpa, r->dictionary[r->tag_value[i]]);
+			auto const& tag_name_str = r->dictionary[r->timer_tag_name[i]];
+			p->tag_name_ids[i]  = d->get_or_add({(char const*)tag_name_str.data, tag_name_str.len});
+
+			auto const& tag_value_str = r->dictionary[r->tag_value[i]];
+			p->tag_values[i] = copy_str_ref_to_nmpa(nmpa, {(char const*)tag_value_str.data, tag_value_str.len});
 		}
 	}
 

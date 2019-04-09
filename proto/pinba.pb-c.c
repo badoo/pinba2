@@ -48,11 +48,11 @@ size_t pinba__request__get_packed_size
   const size_t timer_ru_utime__tag_size = 2;
   const size_t timer_ru_stime__tag_size = 2;
   sz += hostname__tag_size;
-  sz += string_size(message->hostname);
+  sz += bytes_size(message->hostname);
   sz += server_name__tag_size;
-  sz += string_size(message->server_name);
+  sz += bytes_size(message->server_name);
   sz += script_name__tag_size;
-  sz += string_size(message->script_name);
+  sz += bytes_size(message->script_name);
   sz += request_count__tag_size;
   sz += uint32_size(message->request_count);
   sz += document_size__tag_size;
@@ -106,7 +106,7 @@ size_t pinba__request__get_packed_size
     sz += dictionary__tag_size * message->n_dictionary;
     rv = 0;
     for (i = 0; i < message->n_dictionary; i++) {
-      rv += string_size(message->dictionary[i]);
+      rv += bytes_size(message->dictionary[i]);
     }
     sz += rv;
   }
@@ -126,9 +126,9 @@ size_t pinba__request__get_packed_size
     }
     sz += rv;
   }
-  if (message->schema != NULL) {
+  if (message->has_schema) {
     sz += schema__tag_size;
-    sz += string_size(message->schema);
+    sz += bytes_size(message->schema);
   }
   if (message->n_tag_name > 0) {
     sz += tag_name__tag_size * message->n_tag_name;
@@ -173,11 +173,11 @@ size_t pinba__request__pack
   uint8_t *varint_length_p;
   size_t varint_length, length, reserved_length;
   *p++ = '\xa';
-  p += string_pack(message->hostname, p);
+  p += binary_data_pack(&message->hostname, p);
   *p++ = '\x12';
-  p += string_pack(message->server_name, p);
+  p += binary_data_pack(&message->server_name, p);
   *p++ = '\x1a';
-  p += string_pack(message->script_name, p);
+  p += binary_data_pack(&message->script_name, p);
   *p++ = '\x20';
   p += uint32_pack(message->request_count, p);
   *p++ = '\x28';
@@ -212,7 +212,7 @@ size_t pinba__request__pack
   }
   for (i = 0; i < message->n_dictionary; i++) {
     *p++ = '\x7a';
-    p += string_pack(message->dictionary[i], p);
+    p += binary_data_pack(&message->dictionary[i], p);
   }
   if (message->has_status) {
     *p++ = '\x80'; *p++ = '\x1';
@@ -236,9 +236,9 @@ size_t pinba__request__pack
     }
     uint32_pack(length, varint_length_p);
   }
-  if (message->schema != NULL) {
+  if (message->has_schema) {
     *p++ = '\x9a'; *p++ = '\x1';
-    p += string_pack(message->schema, p);
+    p += binary_data_pack(&message->schema, p);
   }
   for (i = 0; i < message->n_tag_name; i++) {
     *p++ = '\xa0'; *p++ = '\x1';
@@ -279,23 +279,20 @@ size_t pinba__request__pack_to_buffer
   ProtobufCBufferSimple simple_buffer;
   size_t len;
   scratch[0] = '\xa';
-  len = strlen(message->hostname);
-  rv = 1 + uint32_pack(len, scratch + 1);
+  rv = 1 + uint32_pack(message->hostname.len, scratch + 1);
   buffer->append(buffer, rv, scratch);
-  buffer->append(buffer, len, (const uint8_t *) message->hostname);
-  sz += rv + len;
+  buffer->append(buffer, message->hostname.len, (const uint8_t *) message->hostname.data);
+  sz += rv + message->hostname.len;
   scratch[0] = '\x12';
-  len = strlen(message->server_name);
-  rv = 1 + uint32_pack(len, scratch + 1);
+  rv = 1 + uint32_pack(message->server_name.len, scratch + 1);
   buffer->append(buffer, rv, scratch);
-  buffer->append(buffer, len, (const uint8_t *) message->server_name);
-  sz += rv + len;
+  buffer->append(buffer, message->server_name.len, (const uint8_t *) message->server_name.data);
+  sz += rv + message->server_name.len;
   scratch[0] = '\x1a';
-  len = strlen(message->script_name);
-  rv = 1 + uint32_pack(len, scratch + 1);
+  rv = 1 + uint32_pack(message->script_name.len, scratch + 1);
   buffer->append(buffer, rv, scratch);
-  buffer->append(buffer, len, (const uint8_t *) message->script_name);
-  sz += rv + len;
+  buffer->append(buffer, message->script_name.len, (const uint8_t *) message->script_name.data);
+  sz += rv + message->script_name.len;
   scratch[0] = '\x20';
   rv = 1 + uint32_pack(message->request_count, scratch + 1);
   buffer->append(buffer, rv, scratch); sz += rv;
@@ -341,11 +338,10 @@ size_t pinba__request__pack_to_buffer
   }
   for (i = 0; i < message->n_dictionary; i++) {
     scratch[0] = '\x7a';
-    len = strlen(message->dictionary[i]);
-    rv = 1 + uint32_pack(len, scratch + 1);
+    rv = 1 + uint32_pack(message->dictionary[i].len, scratch + 1);
     buffer->append(buffer, rv, scratch);
-    buffer->append(buffer, len, (const uint8_t *) message->dictionary[i]);
-    sz += rv + len;
+    buffer->append(buffer, message->dictionary[i].len, (const uint8_t *) message->dictionary[i].data);
+    sz += rv + message->dictionary[i].len;
   }
   if (message->has_status) {
     scratch[0] = '\x80';
@@ -370,14 +366,13 @@ size_t pinba__request__pack_to_buffer
     sz += rv + len;
     PROTOBUF_C_BUFFER_SIMPLE_CLEAR(&simple_buffer);
   }
-  if (message->schema != NULL) {
+  if (message->has_schema) {
     scratch[0] = '\x9a';
     scratch[1] = '\x1';
-    len = strlen(message->schema);
-    rv = 2 + uint32_pack(len, scratch + 2);
+    rv = 2 + uint32_pack(message->schema.len, scratch + 2);
     buffer->append(buffer, rv, scratch);
-    buffer->append(buffer, len, (const uint8_t *) message->schema);
-    sz += rv + len;
+    buffer->append(buffer, message->schema.len, (const uint8_t *) message->schema.data);
+    sz += rv + message->schema.len;
   }
   for (i = 0; i < message->n_tag_name; i++) {
     scratch[0] = '\xa0';
@@ -463,9 +458,9 @@ int pinba__request__unpack_merge
         buffer += 1;
         if ((buffer=read_uint32(&length, buffer, buffer_end)) == NULL) return PROTOBUF_C__WRONG_MESSAGE;
         if (buffer + length > buffer_end) return PROTOBUF_C__WRONG_MESSAGE;
-        if ((message->hostname = memory_allocate_copy(length+1,
+        if ((message->hostname.data = memory_allocate_copy(length,
             allocator, buffer, length)) == NULL) return PROTOBUF_C__NOT_ENOUGH_MEMORY;
-        message->hostname[length] = 0;
+        message->hostname.len = length;
         buffer += length;
         required_fields[0] |= (1UL << 0);
         continue;
@@ -473,9 +468,9 @@ int pinba__request__unpack_merge
         buffer += 1;
         if ((buffer=read_uint32(&length, buffer, buffer_end)) == NULL) return PROTOBUF_C__WRONG_MESSAGE;
         if (buffer + length > buffer_end) return PROTOBUF_C__WRONG_MESSAGE;
-        if ((message->server_name = memory_allocate_copy(length+1,
+        if ((message->server_name.data = memory_allocate_copy(length,
             allocator, buffer, length)) == NULL) return PROTOBUF_C__NOT_ENOUGH_MEMORY;
-        message->server_name[length] = 0;
+        message->server_name.len = length;
         buffer += length;
         required_fields[0] |= (1UL << 1);
         continue;
@@ -483,9 +478,9 @@ int pinba__request__unpack_merge
         buffer += 1;
         if ((buffer=read_uint32(&length, buffer, buffer_end)) == NULL) return PROTOBUF_C__WRONG_MESSAGE;
         if (buffer + length > buffer_end) return PROTOBUF_C__WRONG_MESSAGE;
-        if ((message->script_name = memory_allocate_copy(length+1,
+        if ((message->script_name.data = memory_allocate_copy(length,
             allocator, buffer, length)) == NULL) return PROTOBUF_C__NOT_ENOUGH_MEMORY;
-        message->script_name[length] = 0;
+        message->script_name.len = length;
         buffer += length;
         required_fields[0] |= (1UL << 2);
         continue;
@@ -496,10 +491,11 @@ int pinba__request__unpack_merge
             buffer += 2;
             if ((buffer=read_uint32(&length, buffer, buffer_end)) == NULL) return PROTOBUF_C__WRONG_MESSAGE;
             if (buffer + length > buffer_end) return PROTOBUF_C__WRONG_MESSAGE;
-            if ((message->schema = memory_allocate_copy(length+1,
+            if ((message->schema.data = memory_allocate_copy(length,
                 allocator, buffer, length)) == NULL) return PROTOBUF_C__NOT_ENOUGH_MEMORY;
-            message->schema[length] = 0;
+            message->schema.len = length;
             buffer += length;
+            message->has_schema = 1;
             continue;
           default:
           {
@@ -863,14 +859,14 @@ int pinba__request__unpack_merge
         continue;
       case 0x7a:
         buffer += 1;
-        if (0 > memory_vector_extend_by_one((void **) &message->dictionary, message->n_dictionary, sizeof(char*), allocator)) {
+        if (0 > memory_vector_extend_by_one((void **) &message->dictionary, message->n_dictionary, sizeof(ProtobufCBinaryData), allocator)) {
           return PROTOBUF_C__NOT_ENOUGH_MEMORY;
         }
         if ((buffer=read_uint32(&length, buffer, buffer_end)) == NULL) return PROTOBUF_C__WRONG_MESSAGE;
         if (buffer + length > buffer_end) return PROTOBUF_C__WRONG_MESSAGE;
-        if ((message->dictionary[message->n_dictionary] = memory_allocate_copy(length+1,
+        if ((message->dictionary[message->n_dictionary].data = memory_allocate_copy(length,
             allocator, buffer, length)) == NULL) return PROTOBUF_C__NOT_ENOUGH_MEMORY;
-        message->dictionary[message->n_dictionary][length] = 0;
+        message->dictionary[message->n_dictionary].len = length;
         buffer += length;
         message->n_dictionary++;
         continue;
@@ -910,23 +906,23 @@ void pinba__request__free_unpacked
   if (allocator == NULL)
     allocator = &protobuf_c_default_allocator;
   unsigned i;
-  memory_free(message->hostname, allocator);
-  memory_free(message->server_name, allocator);
-  memory_free(message->script_name, allocator);
+  memory_free(message->hostname.data, allocator);
+  memory_free(message->server_name.data, allocator);
+  memory_free(message->script_name.data, allocator);
   memory_free(message->timer_hit_count, allocator);
   memory_free(message->timer_value, allocator);
   memory_free(message->timer_tag_count, allocator);
   memory_free(message->timer_tag_name, allocator);
   memory_free(message->timer_tag_value, allocator);
   for (i = 0; i < message->n_dictionary; i++) {
-    memory_free(message->dictionary[i], allocator);
+    memory_free(message->dictionary[i].data, allocator);
   }
   memory_free(message->dictionary, allocator);
   for (i = 0; i < message->n_requests; i++) {
     if (message->requests[i] != NULL) pinba__request__free_unpacked(message->requests[i], allocator);
   }
   memory_free(message->requests, allocator);
-  memory_free(message->schema, allocator);
+  memory_free(message->schema.data, allocator);
   memory_free(message->tag_name, allocator);
   memory_free(message->tag_value, allocator);
   memory_free(message->timer_ru_utime, allocator);
@@ -945,9 +941,9 @@ protobuf_c_boolean pinba__request__check
   unsigned i;
   if (message == NULL || message->base.descriptor != &pinba__request__descriptor)
     return 0;
-  if (message->hostname == NULL) return 0;
-  if (message->server_name == NULL) return 0;
-  if (message->script_name == NULL) return 0;
+  if (message->hostname.len > 0 && message->hostname.data == NULL) return 0;
+  if (message->server_name.len > 0 && message->server_name.data == NULL) return 0;
+  if (message->script_name.len > 0 && message->script_name.data == NULL) return 0;
   if (message->n_timer_hit_count > 0 && message->timer_hit_count == NULL) return 0;
   if (message->n_timer_value > 0 && message->timer_value == NULL) return 0;
   if (message->n_timer_tag_count > 0 && message->timer_tag_count == NULL) return 0;
@@ -955,12 +951,14 @@ protobuf_c_boolean pinba__request__check
   if (message->n_timer_tag_value > 0 && message->timer_tag_value == NULL) return 0;
   if (message->n_dictionary > 0 && message->dictionary == NULL) return 0;
   for (i = 0; i < message->n_dictionary; i++) {
-    if (message->dictionary[i] == NULL) return 0;
+    ProtobufCBinaryData *bd = message->dictionary + i;
+    if (bd->len > 0 && bd->data == NULL) return 0;
   }
   if (message->n_requests > 0 && message->requests == NULL) return 0;
   for (i = 0; i < message->n_requests; i++) {
     if (!pinba__request__check(message->requests[i])) return 0;
   }
+  if (message->has_schema && message->schema.len > 0 && message->schema.data == NULL) return 0;
   if (message->n_tag_name > 0 && message->tag_name == NULL) return 0;
   if (message->n_tag_value > 0 && message->tag_value == NULL) return 0;
   if (message->n_timer_ru_utime > 0 && message->timer_ru_utime == NULL) return 0;
@@ -975,7 +973,7 @@ static const ProtobufCFieldDescriptor pinba__request__field_descriptors[23] =
     "hostname",
     1,
     PROTOBUF_C_LABEL_REQUIRED,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_BYTES,
     0,   /* quantifier_offset */
     offsetof(Pinba__Request, hostname),
     NULL,
@@ -987,7 +985,7 @@ static const ProtobufCFieldDescriptor pinba__request__field_descriptors[23] =
     "server_name",
     2,
     PROTOBUF_C_LABEL_REQUIRED,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_BYTES,
     0,   /* quantifier_offset */
     offsetof(Pinba__Request, server_name),
     NULL,
@@ -999,7 +997,7 @@ static const ProtobufCFieldDescriptor pinba__request__field_descriptors[23] =
     "script_name",
     3,
     PROTOBUF_C_LABEL_REQUIRED,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_BYTES,
     0,   /* quantifier_offset */
     offsetof(Pinba__Request, script_name),
     NULL,
@@ -1143,7 +1141,7 @@ static const ProtobufCFieldDescriptor pinba__request__field_descriptors[23] =
     "dictionary",
     15,
     PROTOBUF_C_LABEL_REPEATED,
-    PROTOBUF_C_TYPE_STRING,
+    PROTOBUF_C_TYPE_BYTES,
     offsetof(Pinba__Request, n_dictionary),
     offsetof(Pinba__Request, dictionary),
     NULL,
@@ -1191,8 +1189,8 @@ static const ProtobufCFieldDescriptor pinba__request__field_descriptors[23] =
     "schema",
     19,
     PROTOBUF_C_LABEL_OPTIONAL,
-    PROTOBUF_C_TYPE_STRING,
-    0,   /* quantifier_offset */
+    PROTOBUF_C_TYPE_BYTES,
+    offsetof(Pinba__Request, has_schema),
     offsetof(Pinba__Request, schema),
     NULL,
     NULL,

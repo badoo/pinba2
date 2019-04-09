@@ -161,7 +161,7 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 
 	for (unsigned i = 0; i < r->n_dictionary; i++)
 	{
-		td[i]        = d->get_or_add(r->dictionary[i]);
+		td[i]        = d->get_or_add({(char const*)r->dictionary[i].data, r->dictionary[i].len});
 		td_hashed[i] = pinba::hash_number(td[i]);
 		// ff::fmt(stdout, "{0}; dict xform {1} -> {2} {3}\n", __func__, r->dictionary[i], td[i], td_hashed[i]);
 	}
@@ -171,10 +171,10 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 	memset(bloom_added, 0, sizeof(bloom_added));
 
 
-	p->host_id      = d->get_or_add(r->hostname);
-	p->server_id    = d->get_or_add(r->server_name);
-	p->script_id    = d->get_or_add(r->script_name);
-	p->schema_id    = d->get_or_add(r->schema);
+	p->host_id      = d->get_or_add({(char const*)r->hostname.data, r->hostname.len});
+	p->server_id    = d->get_or_add({(char const*)r->server_name.data, r->server_name.len});
+	p->script_id    = d->get_or_add({(char const*)r->script_name.data, r->script_name.len});
+	p->schema_id    = d->get_or_add({(char const*)r->schema.data, r->schema.len});
 	p->status       = d->get_or_add(meow::format::type_tunnel<uint32_t>::call(r->status));
 	p->traffic      = r->document_size;
 	p->mem_used     = r->memory_footprint;

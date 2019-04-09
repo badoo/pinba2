@@ -769,14 +769,14 @@ struct ProtobufCServiceDescriptor {
 };
 
 static inline void *
-protobuf_c_system_alloc(void *allocator_data, size_t size)
+protobuf_c_system_alloc(void *allocator_data __attribute__ ((unused)), size_t size)
 {
 	return malloc(size);
 }
 
 
 static inline void
-protobuf_c_system_free(void *allocator_data, void *data)
+protobuf_c_system_free(void *allocator_data __attribute__ ((unused)), void *data)
 {
 	free(data);
 }
@@ -1546,6 +1546,9 @@ static inline int unknown_field(ProtobufCMessage *m, ProtobufCAllocator *allocat
   ProtobufCMessageUnknownField *unknown = m->unknown_fields + m->n_unknown_fields;
   m->n_unknown_fields++;
 
+  unknown->data = 0;
+  unknown->len = 0;
+
   unknown->tag = wire_type_and_tag >> 3;
   unknown->wire_type = (ProtobufCWireType) (wire_type_and_tag & 7);
 
@@ -1765,7 +1768,7 @@ sint64_size(int64_t v)
 static inline size_t
 string_size(const char *str)
 {
-  size_t len = strlen(str);
+  size_t len = str ? strlen(str) : 0;
   return uint32_size(len) + len;
 }
 
@@ -2041,6 +2044,11 @@ boolean_pack(protobuf_c_boolean value, uint8_t *out)
 static inline size_t
 string_pack(const char *str, uint8_t *out)
 {
+  if (str == NULL) {
+    out[0] = 0;
+    return 1;
+  }
+
   size_t len = strlen(str);
   size_t rv = uint32_pack(len, out);
   memcpy(out + rv, str, len);
