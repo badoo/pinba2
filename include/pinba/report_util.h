@@ -293,7 +293,7 @@ private:
 		return globals->dictionary();
 	}
 
-	virtual snapshot_dictionary_t const* snapshot_dictionary() const
+	virtual snapshot_dictionary_t const* snapshot_dictionary() const override
 	{
 		return &snap_d_;
 	}
