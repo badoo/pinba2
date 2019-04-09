@@ -71,7 +71,7 @@ static inline struct array_s *array_init0(struct array_s *a, size_t sz, unsigned
 		a->data = calloc(sz, initial_num);
 		*/
 
-		a->data = malloc(sz, initial_num);
+		a->data = malloc(sz * initial_num);
 
 		if (!a->data) {
 			free(allocated);
