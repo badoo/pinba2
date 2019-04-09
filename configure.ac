@@ -37,13 +37,17 @@ common_flags="$common_flags -Wformat -Wformat-security"
 common_flags="$common_flags -Werror"
 common_flags="$common_flags -Wno-unused -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers -Wno-parentheses"
 common_flags="$common_flags -fno-omit-frame-pointer"
-common_flags="$common_flags -fPIC -DPIC -rdynamic"
+common_flags="$common_flags -fPIC -DPIC"
 common_flags="$common_flags -D_GNU_SOURCE -D_POSIX_SOURCE"
 common_flags="$common_flags -maes -msse4 -msse4.2"
 
 AX_CFLAGS="-std=gnu11 $common_flags"
 AX_CXXFLAGS="-std=c++14 -fno-rtti $common_flags"
+
 AX_LDFLAGS="-flto -lrt -ldl"
+# instead of -rdynamic, works for both gcc and clang
+# https://stackoverflow.com/questions/21279036/what-is-clangs-equivalent-to-rdynamic-gcc-flag
+AX_LDFLAGS="$AX_LDFLAGS -Wl,-export_dynamic"
 
 dnl nonportable pthread expensions
 AC_CHECK_LIB([pthread], [pthread_setname_np], [
