@@ -7,7 +7,7 @@
 
 #include "pinba/globals.h"
 
-#include "hdr_histogram/hdr_histogram.h"
+// #include "hdr_histogram/hdr_histogram.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -735,6 +735,9 @@ int main(int argc, char const *argv[])
 		}
 	}
 #endif
+
+
+#if 0 // hdr_histogram opensource impl, removed from repo
 	{
 		using hdr_histogram_t = struct hdr_histogram;
 		hdr_histogram_t *h;
@@ -861,6 +864,7 @@ int main(int argc, char const *argv[])
 		// 	}
 		// }
 	}
+#endif
 
 	{
 		// using hv_t = hdr_histogram_t<int64_t>;

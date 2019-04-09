@@ -34,6 +34,7 @@ noinst_PROGRAMS = \
 	exp_nanomsg_poller \
 	exp_protobuf_nmpa \
 	exp_histogram_perf \
+	exp_dictionary_perf \
 	#
 
 exp_collector_SOURCES = \
@@ -70,4 +71,8 @@ exp_protobuf_nmpa_SOURCES = \
 
 exp_histogram_perf_SOURCES = \
 	exp_histogram_perf.cpp \
+	#
+
+exp_dictionary_perf_SOURCES = \
+	exp_dictionary_perf.cpp \
 	#
