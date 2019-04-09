@@ -65,7 +65,13 @@ static inline struct array_s *array_init0(struct array_s *a, size_t sz, unsigned
 	a->sz = sz;
 
 	if (initial_num) {
+		/*
+		don't calloc, there is no need to zerofill
+
 		a->data = calloc(sz, initial_num);
+		*/
+
+		a->data = malloc(sz, initial_num);
 
 		if (!a->data) {
 			free(allocated);
