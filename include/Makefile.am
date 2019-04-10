@@ -15,6 +15,7 @@ nobase_include_HEADERS = \
 	pinba/nmsg_socket.h \
 	pinba/nmsg_ticker.h \
 	pinba/packet.h \
+	pinba/packet_impl.h \
 	pinba/repacker.h \
 	pinba/repacker_dictionary.h \
 	pinba/snapshot_dictionary.h \

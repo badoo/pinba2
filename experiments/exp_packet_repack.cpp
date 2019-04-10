@@ -14,10 +14,14 @@
 #include <meow/format/format_to_string.hpp>
 #include <meow/unix/time.hpp>
 
+#include "pinba/globals.h"
 #include "pinba/dictionary.h"
 #include "pinba/collector.h"
 #include "pinba/packet.h"
+#include "pinba/packet_impl.h"
 #include "pinba/bloom.h"
+
+#include "proto/pinba.pb-c.h"
 
 #include "misc/nmpa.h"
 #include "misc/nmpa_pba.h"

@@ -2,6 +2,8 @@
 #include <vector>
 #include <string>
 
+#include <tsl/robin_map.h>
+
 #include <meow/format/format_and_namespace.hpp>
 #include <meow/stopwatch.hpp>
 

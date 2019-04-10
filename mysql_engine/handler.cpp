@@ -5,7 +5,6 @@
 
 #include "pinba/globals.h"
 #include "pinba/histogram.h"
-// #include "pinba/packet.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 #include "pinba/report_by_packet.h"

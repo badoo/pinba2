@@ -5,6 +5,7 @@
 #include <meow/convert/number_from_string.hpp>
 
 #include "pinba/globals.h"
+#include "pinba/dictionary.h"
 #include "pinba/report_by_request.h"
 #include "pinba/report_by_timer.h"
 #include "pinba/report_by_packet.h"

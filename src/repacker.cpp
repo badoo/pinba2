@@ -14,6 +14,7 @@
 #include "pinba/collector.h"
 #include "pinba/repacker.h"
 #include "pinba/packet.h"
+#include "pinba/packet_impl.h"
 
 #include "pinba/nmsg_socket.h"
 #include "pinba/nmsg_poller.h"
