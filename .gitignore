@@ -35,3 +35,4 @@ pinba_config.h.in~
 Makefile
 Makefile.in
 
+!third_party/t1ha/Makefile
