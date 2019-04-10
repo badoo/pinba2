@@ -408,8 +408,8 @@ private:
 		report_key_str_t result;
 		for (uint32_t i = 0; i < k.size(); ++i)
 		{
-			// str_ref const word = dictionary()->get_word(k[i]);
-			str_ref const word = snapshot_dictionary()->get_word(k[i]);
+			str_ref const word = dictionary()->get_word(k[i]);
+			// str_ref const word = snapshot_dictionary()->get_word(k[i]);
 			result.push_back(word);
 		}
 		return result;
