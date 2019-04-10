@@ -9,6 +9,7 @@
 #include <pthread.h>
 
 #include <sparsehash/dense_hash_map>
+#include <tsl/robin_map.h>
 
 #include "t1ha/t1ha.h"
 
@@ -133,68 +134,76 @@ struct dictionary_t : private boost::noncopyable
 	{
 		uint32_t    refcount;
 		uint32_t    id;
+		uint64_t    hash;
 		std::string str;
 
-		word_t(uint32_t i, str_ref s)
+		word_t(uint32_t i, str_ref s, uint64_t h)
 			: refcount(0)
 			, id(i)
+			, hash(h)
 			, str(s.str())
 		{
 		}
 
-		void set(uint32_t i, str_ref s)
+		word_t(word_t&& other) noexcept
 		{
-			id = i;
-			str = s.str();
+			(*this) = std::move(other); // call move operator=()
 		}
 
-		void clear()
+		word_t& operator=(word_t&& other) noexcept
+		{
+			refcount = other.refcount;
+			id       = other.id;
+			hash     = other.hash;
+			str      = std::move(other.str);
+
+			return *this;
+		}
+
+		void set(uint32_t i, str_ref s, uint64_t h)
+		{
+			id   = i;
+			hash = h;
+			str  = s.str();
+		}
+
+		void clear() noexcept
 		{
 			refcount = 0;
 			id       = 0;
+			hash     = 0;
 			str      = "";
 		}
 	};
-	static_assert((sizeof(word_t) == (2*sizeof(uint32_t) + sizeof(std::string))), "word_t should have no padding");
+	static_assert((sizeof(word_t) == (2*sizeof(uint32_t) + sizeof(uint64_t) + sizeof(std::string))), "word_t should have no padding");
 
-	// kind of a hack of accomodate storing special str_refs as deleted/empty keys
-	struct hash_str_ref_equal_t
-	{
-		bool operator()(str_ref l, str_ref r) const // TODO: make this one constexpr
-		{
-			if ((l.size() == r.size()) && (l.size() == 0))
-				return l.data() == r.data();
-			return l == r;
-		}
-	};
+	// str_ref key   - references words_t content
+	// word_t* value - references the same word as the key
+	// this hashtable should be ok with frequent deletes
+	// since it's important for some load profiles (aka highly unique 'encrypted' nginx urls)
+	// see benchmarks in experiments/exp_dictionary_perf.cpp
+	using hashtable_t = tsl::robin_map<
+							  str_ref
+							, word_t*
+							, dictionary_word_hasher_t
+							, std::equal_to<str_ref>
+							, std::allocator<std::pair<str_ref, word_t*>>
+							, /*StoreHash=*/ true>;
 
-	// word -> pointer to elt in `words` array
-	using hashtable_t = google::dense_hash_map<str_ref, word_t*, dictionary_word_hasher_t, hash_str_ref_equal_t>;
-
+	// word -> word_ptr
 	struct hash_t : public hashtable_t
 	{
-		hash_t()
-			: hashtable_t(64 * 1024)
-		{
-			this->set_empty_key(str_ref{});
-			this->set_deleted_key(str_ref{(char*)0x1, size_t{0}});
-		}
-	};
-
-	// unordered_map handles intense MUCH delete-s better than dense hash (but significantly slower on lookups)
-	struct hash_with_ok_erase_t : public std::unordered_map<str_ref, word_t*, dictionary_word_hasher_t>
-	{
-		hash_with_ok_erase_t()
-		{
-			// try speed up lookups by having a sparser map
-			this->max_load_factor(0.3);
-		}
 	};
 
 	// id -> word_t,
-	// deque is critical here, since `hash` stores pointers to elements,
+	// deque is critical here, since `hash` stores pointers to it's elements,
 	// appends must not invalidate them
 	struct words_t : public std::deque<word_t>
+	{
+	};
+
+	// just a list of free ids in words_t
+	struct freelist_t : public std::deque<uint32_t>
 	{
 	};
 
@@ -204,13 +213,12 @@ private:
 	{
 		mutable rw_mutex_t    mtx;
 
-		uint32_t              id;
-		hash_t                hash;
-		// hash_with_ok_erase_t  hash;
-		words_t               words;
-		std::deque<uint32_t>  freelist;
+		uint32_t    id;
+		hash_t      hash;       // TODO: shard this as well, to amortize the cost of rehash
+		words_t     words;
+		freelist_t  freelist;
 
-		uint64_t              mem_used_by_word_strings = 0;
+		uint64_t    mem_used_by_word_strings = 0;
 	};
 
 	mutable std::array<shard_t, shard_count> shards_;
@@ -296,7 +304,7 @@ public:
 
 		if (0 == --w->refcount)
 		{
-			size_t const n_erased = shard->hash.erase(str_ref { w->str });
+			size_t const n_erased = shard->hash.erase(str_ref { w->str }, w->hash);
 			assert((n_erased == 1) && "must have erased something here");
 
 			shard->mem_used_by_word_strings -= w->str.size();
@@ -312,7 +320,8 @@ public:
 		if (!word)
 			return {};
 
-		shard_t *shard = get_shard_for_word(word);
+		uint64_t const word_hash = hash_dictionary_word(word);
+		shard_t *shard = get_shard_for_word_hash(word_hash);
 
 		// MUST make work permanent here (aka increment refcount) -> no fastpath
 		// as word might've been non-permanent (word from traffic before report creation for example)
@@ -322,7 +331,7 @@ public:
 
 		scoped_write_lock_t lock_(shard->mtx);
 
-		word_t *w = this->get_or_add___wrlocked(shard, word);
+		word_t *w = this->get_or_add___wrlocked(shard, word, word_hash);
 		w->refcount += 2;
 
 		return w;
@@ -345,11 +354,12 @@ public:
 
 		// TODO: not sure how to build fastpath here, since we need to increment refcount on return
 
-		shard_t *shard = get_shard_for_word(word);
+		uint64_t const word_hash = hash_dictionary_word(word);
+		shard_t *shard = get_shard_for_word_hash(word_hash);
 
 		scoped_write_lock_t lock_(shard->mtx);
 
-		word_t *w = this->get_or_add___wrlocked(shard, word);
+		word_t *w = this->get_or_add___wrlocked(shard, word, word_hash);
 		w->refcount += 1;
 
 		return w;
@@ -357,24 +367,38 @@ public:
 
 private:
 
+	static uint64_t hash_dictionary_word(str_ref word)
+	{
+		return dictionary_word_hasher_t()(word);
+	}
+
 	shard_t* get_shard_for_word_id(uint32_t word_id) const
 	{
 		return &shards_[(word_id & shard_id_mask) >> (32 - shard_id_bits)];
 	}
 
-	shard_t* get_shard_for_word(str_ref word) const
+	// shard_t* get_shard_for_word(str_ref word) const
+	// {
+	// 	return get_shard_for_hash(hash_dictionary_word(word));
+	// }
+
+	shard_t* get_shard_for_word_hash(uint64_t word_hash) const
 	{
-		uint64_t const hash_value = dictionary_word_hasher_t()(word);
-		return &shards_[hash_value % shard_count];
+		// NOTE: do NOT take lower bits here
+		//  since hashtable_t will store lower 32 bits for rehash speedup
+		//  and we don't want all words in this shard to have same lower bits
+		// SO take higher order bits of our 64 bit hash for shard number
+		// TODO: when hashtable sharding is implemented - MUST edit this
+		return &shards_[word_hash >> (64 - shard_id_bits)];
 	}
 
 	// get or create a word, REFCOUNT IS NOT MODIFIED, i.e. even if just created -> refcount == 0
-	word_t* get_or_add___wrlocked(shard_t *shard, str_ref const word)
+	word_t* get_or_add___wrlocked(shard_t *shard, str_ref const word, uint64_t word_hash)
 	{
 		// re-check word existence, might've appeated while upgrading the lock
 		// can't just insert here, since the key is str_ref that should refer to word (created below)
 		//  and not the incoming str_ref (that might be transient and just become invalid after this func returns)
-		auto it = shard->hash.find(word);
+		auto it = shard->hash.find(word, word_hash);
 		if (shard->hash.end() != it)
 			return it->second;
 
@@ -396,7 +420,7 @@ private:
 				assert((w->id == 0) && "word must be empty, while present in freelist");
 				assert((w->str.empty()) && "word must be empty, while present in freelist");
 
-				w->set(word_id, word);
+				w->set(word_id, word, word_hash);
 				return w;
 			}
 			else
@@ -405,14 +429,14 @@ private:
 				assert(((shard->words.size() + 1) & word_id_mask) != 0);
 				uint32_t const word_id = static_cast<uint32_t>(shard->words.size() + 1) | (shard->id << (32 - shard_id_bits));
 
-				shard->words.emplace_back(word_id, word);
+				shard->words.emplace_back(word_id, word, word_hash);
 				return &shard->words.back();
 
 			}
 		}();
 
 		// XXX(antoxa): if this throws -> the word created above is basically 'leaked'
-		shard->hash.insert({ str_ref { w->str }, w });
+		shard->hash.emplace_hash(word_hash, str_ref { w->str }, w);
 
 		return w;
 	}
