@@ -1,9 +1,8 @@
 #ifndef PINBA__PACKET_IMPL_H_
 #define PINBA__PACKET_IMPL_H_
 
-#include <boost/preprocessor/stringize.hpp>
-#include <boost/preprocessor/arithmetic/add.hpp>
-#include <boost/preprocessor/repetition/repeat.hpp>
+#include <vector>
+#include <string>
 
 #include "pinba/globals.h"
 #include "pinba/packet.h"
@@ -30,35 +29,25 @@ inline meow::str_ref pb_string_as_str_ref(ProtobufCBinaryData const& pb_bin)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+inline std::vector<std::string> pinba_request_status_to_str_ref___generate(size_t sz)
+{
+	std::vector<std::string> result;
+	result.resize(sz);
+
+	for (size_t i = 0; i < result.size(); i++)
+	{
+		result[i] = ff::write_str(i);
+	}
+
+	return result;
+}
+
 inline meow::str_ref pinba_request_status_to_str_ref_tmp(uint32_t status, meow::format::type_tunnel<uint32_t>::buffer_t const& buf = {})
 {
 	// a table with pre-generated strings for all http statuses
-	static str_ref const table[] = {
+	static auto const table = pinba_request_status_to_str_ref___generate(1024);
 
-		#define ELT(z, N, base_N) \
-			meow::ref_lit(BOOST_PP_STRINGIZE(BOOST_PP_ADD(N, base_N))),
-		/**/
-
-		// need multiple macros to counter boost upper repetition limit (256)
-		// BOOST_PP_REPEAT(<number_of_iterations>, <macro>, <base_number_to_start_from (see ELT::base_N)>)
-
-		BOOST_PP_REPEAT(100, ELT,    0)
-		BOOST_PP_REPEAT(100, ELT,  101)
-		BOOST_PP_REPEAT(100, ELT,  201)
-		BOOST_PP_REPEAT(100, ELT,  301)
-		BOOST_PP_REPEAT(100, ELT,  401)
-		BOOST_PP_REPEAT(100, ELT,  501)
-		BOOST_PP_REPEAT(100, ELT,  601)
-		BOOST_PP_REPEAT(100, ELT,  701)
-		BOOST_PP_REPEAT(100, ELT,  801)
-		BOOST_PP_REPEAT(100, ELT,  901)
-		BOOST_PP_REPEAT(100, ELT, 1001)
-		BOOST_PP_REPEAT(100, ELT, 1101)
-
-		#undef ELT
-	};
-
-	if (status < uint32_t(sizeof(table) / sizeof(table[0])))
+	if (status < table.size())
 		return table[status];
 
 	return meow::format::type_tunnel<uint32_t>::call(status, buf);
