@@ -53,19 +53,28 @@ struct repacker_dictionary_t : private boost::noncopyable
 		{
 			inline uint64_t operator()(uint32_t const key) const
 			{
-				return t1ha0(&key, sizeof(key), key);
+				return key; // prime growth will nicely use of shard_id bits at the top
+				// return t1ha0(&key, sizeof(key), key);
 			}
 		};
 
+		// NOTE: we're indexing by word_id here for a TODO idea reason :)
+		//  when select is done, we could just merge all the wordslices
+		//  and get a dictionary cache for that specific select
 		struct hash_t : public tsl::robin_map<
 											  uint32_t
 											, word_ptr
-											, word_id_hasher_t // TODO: try identity hash function here, should be ok
+											, word_id_hasher_t
 											, std::equal_to<uint32_t>
 											, std::allocator<std::pair<uint32_t, word_ptr>>
-											, /*StoreHash=*/ true>
+											// don't need StoreHash, hash is cheap to compute,
+											// and it can't be used on rehash anyway with prime growth
+											, /*StoreHash=*/ false
+											// this is absolutely critical
+											, tsl::rh::prime_growth_policy>
 		{
 		};
+		static_assert(sizeof(hash_t::value_type) == 16, "4 bytes of padding is expected in hash_t");
 
 		hash_t ht;
 
