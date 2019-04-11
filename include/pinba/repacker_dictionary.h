@@ -2,7 +2,7 @@
 #define PINBA__REPACKER_DICTIONARY_H_
 
 #include <string>
-#include <vector>
+#include <deque>
 #include <unordered_map>
 
 #include <t1ha/t1ha.h>
@@ -23,7 +23,7 @@ struct repacker_dictionary_t : private boost::noncopyable
 	struct word_t : public boost::intrusive_ref_counter<word_t, boost::thread_unsafe_counter>
 	{
 		uint32_t const id;
-		// uint32_t const compiler_padding_here___;
+		// no compiler padding here, since our base class has single 'int' member
 		uint64_t const hash;
 		str_ref  const str;
 
@@ -95,8 +95,6 @@ struct repacker_dictionary_t : private boost::noncopyable
 	//  but references the (immutable) word string, stored in global dictionary
 	//
 	// this hashtable should support efficient deletion
-	// but dense_hash_map degrades ridiculously under high number of erases
-	// so standard chaining-based unoredered_map is used
 	struct word_to_id_hash_t : public tsl::robin_map<
 											  str_ref
 											, word_ptr
@@ -145,7 +143,7 @@ public:
 		}
 
 		// TODO(antoxa): actually implement and check performance benefit
-		// XXX(antoxa): ugly hack, to avoid extra hash lookup
+		// XXX(antoxa): ugly hack, to avoid extra hash lookup *on slowpath*
 		//  the point here, is that we can't insert with `word` as key,
 		//  since `word` might reference temporary memory but we do it anyway,
 		//  and later, if insert was actually successful - we're going to replace the key,
@@ -212,9 +210,9 @@ public:
 			return result;
 
 		// gather the list of words to erase from upstream dictionary
-		auto const words_to_erase = [&]() -> std::vector<word_ptr> // FIXME: replace with deque here ? insert performance is important
+		auto const words_to_erase = [&]() -> std::deque<word_ptr>
 		{
-			std::vector<word_ptr> words_to_erase;
+			std::deque<word_ptr> words_to_erase;
 
 			for (auto wordslice_it = erased_begin; wordslice_it != slices.end(); ++wordslice_it)
 			{
