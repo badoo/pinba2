@@ -42,6 +42,11 @@ struct repacker_dictionary_t : private boost::noncopyable
 	};
 	using word_ptr = boost::intrusive_ptr<word_t>;
 
+	// a list of words, referencing this dictionary, that can be given away
+	// to reports and/or selects to keep those words from being removed from the dictionary
+	// while report or select is still using them
+	//
+	// words are ogranized into slices, to allow for bulk removal in a time-series manner
 	struct wordslice_t : public meow::ref_counted_t
 	{
 		struct word_id_hasher_t
@@ -76,7 +81,11 @@ struct repacker_dictionary_t : private boost::noncopyable
 	};
 	using wordslice_ptr = boost::intrusive_ptr<wordslice_t>;
 
-	// hashtable should support efficient deletion
+	// a cache str_ref -> word_ptr
+	// word_ptr is a local object, does not reference global dictionary
+	//  but references the (immutable) word string, stored in global dictionary
+	//
+	// this hashtable should support efficient deletion
 	// but dense_hash_map degrades ridiculously under high number of erases
 	// so standard chaining-based unoredered_map is used
 	struct word_to_id_hash_t : public tsl::robin_map<
@@ -125,6 +134,14 @@ public:
 			this->add_to_current_wordslice(it->second.get());
 			return it->second->id;
 		}
+
+		// TODO(antoxa): actually implement and check performance benefit
+		// XXX(antoxa): ugly hack, to avoid extra hash lookup
+		//  the point here, is that we can't insert with `word` as key,
+		//  since `word` might reference temporary memory but we do it anyway,
+		//  and later, if insert was actually successful - we're going to replace the key,
+		//  so that it references the equivalent string from actual upstream dictionary word (with proper lifetime)
+		// auto inserted_pair = word_to_id.emplace_hash(word_hash, word, word_ptr{nullptr});
 
 		// cache miss - slowpath
 		word_ptr w = [&]() {
@@ -197,7 +214,9 @@ public:
 				result.reaped_slices      += 1;
 				result.reaped_words_local += ws->ht.size();
 
-				// reduce refcounts to all words in this slice
+				// check refcounts to all words in this slice
+				// and maybe delete from local dictionary if only this wordslice and local dictionary reference the word
+				// this class is single-threaded, so noone is modifying anything while we're on it
 				for(auto ht_it = ws->ht.begin(); ht_it != ws->ht.end(); ++ht_it)
 				{
 					// this class is single-threaded, so noone is modifying refcount while we're on it
@@ -206,7 +225,7 @@ public:
 
 					// LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
 
-					if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `w` reference the word
+					if (w->use_count() == 2) // can erase, since ONLY `this->word_to_id` and `w` reference the word
 					{
 						result.reaped_words_global += 1;
 
@@ -216,9 +235,10 @@ public:
 						size_t const erased_count = word_to_id.erase(w->str, w->hash);
 						assert(erased_count == 1);
 
-						// try moving, to avoid jerking refcount back-n-forth
+						// save the word for later erase_ref from upstream dictionary
+						// interusive_ptr doesn't support moves and `w` is a 'const&' anyway
 						assert(w->use_count() == 1);
-						words_to_erase.emplace_back(std::move(w));
+						words_to_erase.emplace_back(w);
 					}
 					else
 					{
@@ -267,15 +287,6 @@ private:
 		// if inserted: we're good, word is now referenced by wordslice
 		// if not:      also good, the word was already there and referenced
 		(void)inserted_pair;
-
-		return;
-
-
-		// word_ptr& ts_word = curr_slice->ht[w->id];
-		// if (!ts_word)
-		// {
-		// 	ts_word.reset(w); // increments refcount here
-		// }
 	}
 };
 
