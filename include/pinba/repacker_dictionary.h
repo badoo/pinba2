@@ -152,7 +152,7 @@ public:
 
 		// cache miss - slowpath
 		word_ptr w = [&]() {
-			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word);
+			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word, word_hash);
 			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str }, word_hash);
 		}();
 

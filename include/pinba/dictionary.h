@@ -351,9 +351,17 @@ public:
 		if (!word)
 			return {};
 
+		return this->get_or_add___ref(word, hash_dictionary_word(word));
+	}
+
+	// same as above, but with precalculated word_hash
+	word_t const* get_or_add___ref(str_ref const word, uint64_t word_hash)
+	{
+		if (!word)
+			return {};
+
 		// TODO: not sure how to build fastpath here, since we need to increment refcount on return
 
-		uint64_t const word_hash = hash_dictionary_word(word);
 		shard_t *shard = get_shard_for_word_hash(word_hash);
 
 		scoped_write_lock_t lock_(shard->mtx);
@@ -375,11 +383,6 @@ private:
 	{
 		return &shards_[(word_id & shard_id_mask) >> (32 - shard_id_bits)];
 	}
-
-	// shard_t* get_shard_for_word(str_ref word) const
-	// {
-	// 	return get_shard_for_hash(hash_dictionary_word(word));
-	// }
 
 	shard_t* get_shard_for_word_hash(uint64_t word_hash) const
 	{
@@ -430,7 +433,6 @@ private:
 
 				shard->words.emplace_back(word_id, word, word_hash);
 				return &shard->words.back();
-
 			}
 		}();
 
