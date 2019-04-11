@@ -8,7 +8,6 @@
 
 #include <pthread.h>
 
-#include <sparsehash/dense_hash_map>
 #include <tsl/robin_map.h>
 
 #include "t1ha/t1ha.h"

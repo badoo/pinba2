@@ -5,9 +5,10 @@
 #include <vector>
 #include <unordered_map>
 
-#include <meow/intrusive_ptr.hpp>
+#include <t1ha/t1ha.h>
+#include <tsl/robin_map.h>
 
-#include "t1ha/t1ha.h"
+#include <meow/intrusive_ptr.hpp>
 
 #include "pinba/globals.h"
 #include "pinba/dictionary.h"
@@ -18,13 +19,17 @@
 
 struct repacker_dictionary_t : private boost::noncopyable
 {
-	struct word_t : public boost::intrusive_ref_counter<word_t> // TODO: can use non-atomic counter here?
+	// this class is single threaded, so can use non-atomic counter here
+	struct word_t : public boost::intrusive_ref_counter<word_t, boost::thread_unsafe_counter>
 	{
 		uint32_t const id;
+		// uint32_t const compiler_padding_here___;
+		uint64_t const hash;
 		str_ref  const str;
 
-		word_t(uint32_t i, str_ref s)
+		word_t(uint32_t i, str_ref s, uint64_t h)
 			: id(i)
+			, hash(h)
 			, str(s)
 		{
 			PINBA_STATS_(objects).n_repacker_dict_words++;
@@ -47,16 +52,14 @@ struct repacker_dictionary_t : private boost::noncopyable
 			}
 		};
 
-		using hashtable_t = google::dense_hash_map<uint32_t, word_ptr, word_id_hasher_t>;
-
-		struct hash_t : public hashtable_t
+		struct hash_t : public tsl::robin_map<
+											  uint32_t
+											, word_ptr
+											, word_id_hasher_t // TODO: try identity hash function here, should be ok
+											, std::equal_to<uint32_t>
+											, std::allocator<std::pair<uint32_t, word_ptr>>
+											, /*StoreHash=*/ true>
 		{
-			hash_t()
-				// setting large-ish default size eats way too much memory (megabytes per slice)
-				// : hashtable_t(64 * 1024) // XXX: reasonable default for a timed slice, i guess?
-			{
-				this->set_empty_key(PINBA_INTERNAL___UINT32_MAX);
-			}
 		};
 
 		hash_t ht;
@@ -76,18 +79,14 @@ struct repacker_dictionary_t : private boost::noncopyable
 	// hashtable should support efficient deletion
 	// but dense_hash_map degrades ridiculously under high number of erases
 	// so standard chaining-based unoredered_map is used
-	struct word_to_id_hash_t : public std::unordered_map<str_ref, word_ptr, dictionary_word_hasher_t>
+	struct word_to_id_hash_t : public tsl::robin_map<
+											  str_ref
+											, word_ptr
+											, dictionary_word_hasher_t
+											, std::equal_to<str_ref>
+											, std::allocator<std::pair<str_ref, word_ptr>>
+											, /*StoreHash=*/ true>
 	{
-		word_to_id_hash_t()
-		{
-			// at large map sizes (millions) and large string churn rates (mostly unique strings)
-			// lookups become pretty slow (well, chaining)
-			// so try and counter this with larger bucket counts
-			//
-			// gcc8 default is 1.0, which kinda feels too high
-			// clang7 default is 1.0 (libc++)
-			this->max_load_factor(0.3);
-		}
 	};
 
 public: // FIXME
@@ -117,8 +116,10 @@ public:
 		if (!word)
 			return 0;
 
+		uint64_t const word_hash = dictionary_word_hasher_t()(word);
+
 		// fastpath - local lookup
-		auto const it = word_to_id.find(word);
+		auto const it = word_to_id.find(word, word_hash);
 		if (word_to_id.end() != it)
 		{
 			this->add_to_current_wordslice(it->second.get());
@@ -128,10 +129,10 @@ public:
 		// cache miss - slowpath
 		word_ptr w = [&]() {
 			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word);
-			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str });
+			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str }, word_hash);
 		}();
 
-		word_to_id.insert({ str_ref { w->str }, w});
+		word_to_id.emplace_hash(w->hash, w->str, w);
 		this->add_to_current_wordslice(w.get());
 
 		return w->id;
@@ -185,34 +186,34 @@ public:
 			return result;
 
 		// gather the list of words to erase from upstream dictionary
-		auto const words_to_erase = [&]() -> std::vector<word_ptr>
+		auto const words_to_erase = [&]() -> std::vector<word_ptr> // FIXME: replace with deque here ? insert performance is important
 		{
 			std::vector<word_ptr> words_to_erase;
 
-			for (auto it = erased_begin; it != slices.end(); ++it)
+			for (auto wordslice_it = erased_begin; wordslice_it != slices.end(); ++wordslice_it)
 			{
-				wordslice_ptr& ws = *it;
+				wordslice_ptr& ws = *wordslice_it;
 
 				result.reaped_slices      += 1;
 				result.reaped_words_local += ws->ht.size();
 
 				// reduce refcounts to all words in this slice
-				for (auto& ws_pair : ws->ht)
+				for(auto ht_it = ws->ht.begin(); ht_it != ws->ht.end(); ++ht_it)
 				{
 					// this class is single-threaded, so noone is modifying refcount while we're on it
-					word_ptr& w = ws_pair.second;
-					assert(w->use_count() >= 2); // at least `this->word_to_id` and `ws_pair.second` must reference the word
+					word_ptr& w = ht_it.value();
+					assert(w->use_count() >= 2); // at least `this->word_to_id` and `w` must reference the word
 
 					// LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
 
-					if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `ws_pair.second` reference the word
+					if (w->use_count() == 2)     // can erase, since ONLY `this->word_to_id` and `w` reference the word
 					{
 						result.reaped_words_global += 1;
 
 						// LOG_DEBUG(PINBA_LOOGGER_, "reap_unused_wordslices; erase global '{0}' {1} {2}", w->str, w->id, w->use_count());
 
 						// erase from local hash
-						size_t const erased_count = word_to_id.erase(w->str);
+						size_t const erased_count = word_to_id.erase(w->str, w->hash);
 						assert(erased_count == 1);
 
 						// try moving, to avoid jerking refcount back-n-forth
@@ -258,11 +259,23 @@ private:
 		if (!curr_slice)
 			curr_slice = meow::make_intrusive<wordslice_t>();
 
-		word_ptr& ts_word = curr_slice->ht[w->id];
-		if (!ts_word)
-		{
-			ts_word.reset(w); // increments refcount here
-		}
+		// put the word into wordslice
+		// NOTE: can't use w->hash here, since it's hashed w->str and not w->id
+		auto inserted_pair = curr_slice->ht.emplace(w->id, w);
+
+		// regardless of insert success, it's fine
+		// if inserted: we're good, word is now referenced by wordslice
+		// if not:      also good, the word was already there and referenced
+		(void)inserted_pair;
+
+		return;
+
+
+		// word_ptr& ts_word = curr_slice->ht[w->id];
+		// if (!ts_word)
+		// {
+		// 	ts_word.reset(w); // increments refcount here
+		// }
 	}
 };
 
