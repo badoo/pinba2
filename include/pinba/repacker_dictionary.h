@@ -134,6 +134,45 @@ public:
 
 		uint64_t const word_hash = dictionary_word_hasher_t()(word);
 
+		// NOTE(antoxa): a hack, to avoid extra hash lookup *on slowpath*
+		//  (and use emplace with precomputed hash, that operator[] does not support)
+		//  the point here, is that we can't insert with `word` as key,
+		//  since `word` might reference temporary memory but we do it anyway,
+		//  and later, if insert was actually successful - we're going to replace the key,
+		//  so that it references the equivalent string from actual upstream dictionary word (with proper lifetime)
+		auto inserted_pair = word_to_id.emplace_hash(word_hash, word, word_ptr{nullptr});
+		auto& it = inserted_pair.first;
+
+		// fastpath: no insert, word is already there
+		if (!inserted_pair.second)
+		{
+			this->add_to_current_wordslice(it->second.get());
+			return it->second->id;
+		}
+
+		// slowpath
+		// 0. this is going to be global-dictionary write-locked for the most part
+		// 1. maybe (highly-likely) insert the word to global dictionary
+		// 2. insert the newly-acquired word locally (this is where we'd save from having 'it' already computed)
+
+		word_ptr w = [&]() {
+			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word, word_hash);
+			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str }, word_hash);
+		}();
+
+		// fixup the key to point to long-living (in the global-dictionary) word str now
+		str_ref& key_ref = const_cast<str_ref&>(it->first);
+		key_ref = w->str;
+
+		// commit local value
+		it.value() = w;
+
+		// remember to add to wordslice for lifetime tracking
+		this->add_to_current_wordslice(w.get());
+
+		return w->id;
+
+#if 0
 		// fastpath - local lookup
 		auto const it = word_to_id.find(word, word_hash);
 		if (word_to_id.end() != it)
@@ -141,14 +180,6 @@ public:
 			this->add_to_current_wordslice(it->second.get());
 			return it->second->id;
 		}
-
-		// TODO(antoxa): actually implement and check performance benefit
-		// XXX(antoxa): ugly hack, to avoid extra hash lookup *on slowpath*
-		//  the point here, is that we can't insert with `word` as key,
-		//  since `word` might reference temporary memory but we do it anyway,
-		//  and later, if insert was actually successful - we're going to replace the key,
-		//  so that it references the equivalent string from actual upstream dictionary word (with proper lifetime)
-		// auto inserted_pair = word_to_id.emplace_hash(word_hash, word, word_ptr{nullptr});
 
 		// cache miss - slowpath
 		word_ptr w = [&]() {
@@ -160,6 +191,7 @@ public:
 		this->add_to_current_wordslice(w.get());
 
 		return w->id;
+#endif
 	}
 
 	wordslice_ptr current_wordslice()
