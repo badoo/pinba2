@@ -468,6 +468,8 @@ private:
 			return it->second;
 
 		// slower path, need to actually fix newly inserted word
+		shard->mem_used_by_word_strings += word.size();
+
 		word_t *w = [&]()
 		{
 			if (!shard->freelist.empty())
