@@ -29,7 +29,7 @@ int main(int argc, char const *argv[])
 		.udp_batch_messages       = 256,
 		.udp_batch_timeout        = 10 * d_millisecond,
 
-		.repacker_threads         = 4,
+		.repacker_threads         = 12,
 		.repacker_input_buffer    = 16 * 1024,
 		.repacker_batch_messages  = 1024,
 		.repacker_batch_timeout   = 100 * d_millisecond,
