@@ -4,7 +4,6 @@
 #include <array>
 #include <string>
 #include <deque>
-#include <unordered_map>
 
 #include <pthread.h>
 
@@ -131,7 +130,11 @@ struct dictionary_t : private boost::noncopyable
 
 	struct word_t : private boost::noncopyable
 	{
-		uint32_t    refcount;
+		union {
+			uint32_t  refcount;
+			uint32_t  next_freelist_offset;
+		};
+
 		uint32_t    id;
 		uint64_t    hash;
 		std::string str;
@@ -146,59 +149,6 @@ struct dictionary_t : private boost::noncopyable
 
 		word_t(word_t&& other) = default;
 		word_t& operator=(word_t&& other) = default;
-
-		// word_t(uint32_t i, str_ref s, uint64_t h)
-		// 	: refcount(0)
-		// 	, id(i)
-		// 	, hash(h)
-		// 	, str(s.str())
-		// {
-		// }
-
-		// word_t(uint32_t i, std::string&& s, uint64_t h)
-		// 	: refcount(0)
-		// 	, id(i)
-		// 	, hash(h)
-		// 	, str(std::move(s))
-		// {
-		// }
-
-		// word_t(word_t&& other) noexcept
-		// {
-		// 	(*this) = std::move(other); // call move operator=()
-		// }
-
-		// word_t& operator=(word_t&& other) noexcept
-		// {
-		// 	refcount = other.refcount;
-		// 	id       = other.id;
-		// 	hash     = other.hash;
-		// 	str      = std::move(other.str);
-
-		// 	return *this;
-		// }
-
-		// void set(uint32_t i, str_ref s, uint64_t h)
-		// {
-		// 	id   = i;
-		// 	hash = h;
-		// 	str  = s.str();
-		// }
-
-		void set(uint32_t i, std::string&& s, uint64_t h)
-		{
-			id   = i;
-			hash = h;
-			str  = std::move(s);
-		}
-
-		void clear() noexcept
-		{
-			refcount = 0;
-			id       = 0;
-			hash     = 0;
-			str      = std::string{};
-		}
 	};
 	static_assert((sizeof(word_t) == (2*sizeof(uint32_t) + sizeof(uint64_t) + sizeof(std::string))), "word_t should have no padding");
 
@@ -227,11 +177,6 @@ struct dictionary_t : private boost::noncopyable
 	{
 	};
 
-	// just a list of free ids in words_t
-	struct freelist_t : public std::deque<uint32_t>
-	{
-	};
-
 private:
 
 	struct shard_t
@@ -239,9 +184,9 @@ private:
 		mutable rw_mutex_t    mtx;
 
 		uint32_t    id;
-		hash_t      hash;      // TODO: shard this as well, to amortize the cost of rehash
+		uint32_t    freelist_head; // (offset+1) of the first elt in freelist, aka 0 -> unset, 1 -> offset == 0
+		hash_t      hash;          // TODO: shard this as well, to amortize the cost of rehash
 		words_t     words;
-		freelist_t  freelist;  // TODO: inline freelist into stored words (ids of next free one). saves allocs under write lock.
 
 		uint64_t    mem_used_by_word_strings = 0;
 	};
@@ -253,7 +198,12 @@ public:
 	dictionary_t()
 	{
 		for (uint32_t i = 0; i < shard_count; ++i)
-			shards_[i].id = i;
+		{
+			shard_t *shard = &shards_[i];
+
+			shard->id            = i;
+			shard->freelist_head = 0;
+		}
 	}
 
 	uint32_t size() const
@@ -278,7 +228,6 @@ public:
 
 			result.hash_bytes     += shard.hash.bucket_count() * sizeof(*shard.hash.begin());
 			result.wordlist_bytes += shard.words.size() * sizeof(*shard.words.begin());
-			result.freelist_bytes += shard.freelist.size() * sizeof(*shard.freelist.begin());
 			result.strings_bytes  += shard.mem_used_by_word_strings;
 		}
 
@@ -339,12 +288,10 @@ public:
 
 				shard->mem_used_by_word_strings -= w->str.size();
 
-				// can't avoid potential allocation under lock here
-				// should be pretty rare, as deque allocates in chunks
-				shard->freelist.push_back(word_id);
+				// clear the word, and put it to shard's freelist
+				w->next_freelist_offset = shard->freelist_head;
+				shard->freelist_head    = word_offset + 1;
 
-				// w->clear();
-				w->refcount = 0;
 				w->id       = 0;
 				w->hash     = 0;
 				w->str.swap(to_release_tmp);
@@ -472,19 +419,18 @@ private:
 
 		word_t *w = [&]()
 		{
-			if (!shard->freelist.empty())
+			if (shard->freelist_head != 0)
 			{
-				uint32_t const word_id = shard->freelist.back();
-				shard->freelist.pop_back();
+				uint32_t const word_offset = shard->freelist_head - 1;
+				uint32_t const word_id = shard->freelist_head | (shard->id << (32 - shard_id_bits));
 
-				// remember to subtract 1 from word_id, mon
-				uint32_t const word_offset = (word_id & word_id_mask) - 1;
 				word_t *w = &shard->words[word_offset];
 
-				assert((w->id == 0) && "word must be empty, while present in freelist");
-				assert((w->str.empty()) && "word must be empty, while present in freelist");
+				shard->freelist_head = w->next_freelist_offset; // remove from freelist
+				w->next_freelist_offset = 0;                    // remove freelist marker
 
-				w->set(word_id, std::move(word), word_hash);
+				w->id = word_id;
+
 				return w;
 			}
 			else
@@ -493,13 +439,20 @@ private:
 				assert(((shard->words.size() + 1) & word_id_mask) != 0);
 				uint32_t const word_id = static_cast<uint32_t>(shard->words.size() + 1) | (shard->id << (32 - shard_id_bits));
 
+				// XXX(antoxa): if this throws, we're screwed - hash value (the inconsistent one at that :) )  is not removed
 				shard->words.emplace_back();
 				word_t *w = &shard->words.back();
 
-				w->set(word_id, std::move(word), word_hash);
+				w->next_freelist_offset = 0; // never in freelist
+				w->id = word_id;
+
 				return w;
 			}
 		}();
+
+		// finish initializing word
+		w->hash = word_hash;
+		w->str  = std::move(word);
 
 		// fixup the key to point to long-living data now
 		// this is not always required, but needed to for small string optimization for example
@@ -510,52 +463,6 @@ private:
 		it.value() = w;
 
 		return w;
-
-#if 0
-		// re-check word existence, might've appeated while upgrading the lock
-		// can't just insert here, since the key is str_ref that should refer to word (created below)
-		//  and not the incoming str_ref (that might be transient and just become invalid after this func returns)
-		auto it = shard->hash.find(word, word_hash);
-		if (shard->hash.end() != it)
-			return it->second;
-
-		// need to insert, going to be really slow, mon
-
-		shard->mem_used_by_word_strings += word.size();
-
-		word_t *w = [&]()
-		{
-			if (!shard->freelist.empty())
-			{
-				uint32_t const word_id = shard->freelist.back();
-				shard->freelist.pop_back();
-
-				// remember to subtract 1 from word_id, mon
-				uint32_t const word_offset = (word_id & word_id_mask) - 1;
-				word_t *w = &shard->words[word_offset];
-
-				assert((w->id == 0) && "word must be empty, while present in freelist");
-				assert((w->str.empty()) && "word must be empty, while present in freelist");
-
-				w->set(word_id, word, word_hash);
-				return w;
-			}
-			else
-			{
-				// word_id starts with 1, since 0 is reserved for empty
-				assert(((shard->words.size() + 1) & word_id_mask) != 0);
-				uint32_t const word_id = static_cast<uint32_t>(shard->words.size() + 1) | (shard->id << (32 - shard_id_bits));
-
-				shard->words.emplace_back(word_id, word, word_hash);
-				return &shard->words.back();
-			}
-		}();
-
-		// XXX(antoxa): if this throws -> the word created above is basically 'leaked'
-		shard->hash.emplace_hash(word_hash, str_ref { w->str }, w);
-
-		return w;
-#endif
 	}
 };
 
