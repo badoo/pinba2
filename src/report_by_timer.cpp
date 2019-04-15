@@ -140,24 +140,6 @@ namespace { namespace aux {
 
 	public: // shared structures for aggregator/history
 
-		// uint32_t with UINT_MAX as default value, since we use default-constructed values in raw_hash_
-		struct item_offset_t
-		{
-			uint32_t offset;
-
-			static constexpr uint32_t const invalid_offset = UINT_MAX;
-
-			item_offset_t()
-				: offset(invalid_offset)
-			{
-			}
-
-			bool      is_valid() const   { return offset != invalid_offset; }
-			uint32_t  get() const        { return offset; }
-			void      set(uint32_t off)  { offset = off; }
-		};
-		static_assert(sizeof(item_offset_t) == sizeof(uint32_t), "no padding expected");
-
 		// single row of current tick aggregation
 		struct tick_item_t
 		{
@@ -596,7 +578,10 @@ namespace { namespace aux {
 
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
 			{
-				std::vector<history_row_t> rows;
+				// precalculated mem usage, to avoid expensive computation in get_estimates()
+				uint64_t                   mem_used = 0;
+
+				std::vector<history_row_t> rows    = {};
 			};
 
 		public:
@@ -638,7 +623,11 @@ namespace { namespace aux {
 					dst_row.key  = src_key;
 					dst_row.data = src_item.data;
 					dst_row.hv   = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
+
+					h_tick->mem_used += dst_row.hv.values.capacity() * sizeof(*dst_row.hv.values.begin());
 				}
+
+				h_tick->mem_used += h_tick->rows.capacity() * sizeof(*h_tick->rows.begin());
 
 				ring_.append(std::move(h_tick));
 			}
@@ -679,15 +668,8 @@ namespace { namespace aux {
 				{
 					auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 
-					// tick
 					result.mem_used += sizeof(tick);
-
-					// rows
-					result.mem_used += tick.rows.size() * sizeof(*tick.rows.begin());
-
-					// hvs
-					for (history_row_t const& h_row : tick.rows)
-						result.mem_used += h_row.hv.values.capacity() * sizeof(*h_row.hv.values.begin());
+					result.mem_used += tick.mem_used;
 				}
 
 				return result;

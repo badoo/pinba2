@@ -254,6 +254,9 @@ namespace { namespace aux {
 
 			struct history_tick_t : public report_tick_t // inheric to get compatibility with history ring for free
 			{
+				// precalculated mem usage, to avoid expensive computation in get_estimates()
+				uint64_t                       mem_used = 0;
+
 				std::deque<tick_item_t>        items; // should be the same as aggregator tick items, to move data
 				std::vector<flat_histogram_t>  hvs;   // keep this as vector, as we can preallocate (and need to copy anyway)
 			};
@@ -285,15 +288,19 @@ namespace { namespace aux {
 
 				// can MOVE items, since the format is intentionally the same
 				h_tick->items = std::move(agg_tick->items);
+				h_tick->mem_used += h_tick->items.size() * sizeof(*h_tick->items.begin());
 
 				// migrate histograms, converting them from hashtable to flat
 				if (rinfo_.hv_enabled)
 				{
 					h_tick->hvs.reserve(agg_tick->hvs.size()); // we know the size in advance, mon
+					h_tick->mem_used += h_tick->hvs.capacity() * sizeof(*h_tick->hvs.begin());
 
 					for (auto const& src_hv : agg_tick->hvs)
 					{
 						h_tick->hvs.emplace_back(std::move(histogram___convert_hdr_to_flat(src_hv, hv_conf_)));
+
+						h_tick->mem_used += h_tick->hvs.back().values.capacity() * sizeof(*h_tick->hvs.back().values.begin());
 					}
 
 					// sanity
@@ -341,14 +348,7 @@ namespace { namespace aux {
 
 					// tick
 					result.mem_used += sizeof(tick);
-
-					// items
-					result.mem_used += tick.items.size() * sizeof(*tick.items.begin());
-
-					// hvs
-					result.mem_used += tick.hvs.capacity() * sizeof(*tick.hvs.begin());
-					for (flat_histogram_t const& hv : tick.hvs)
-						result.mem_used += hv.values.capacity() * sizeof(*hv.values.begin());
+					result.mem_used += tick.mem_used;
 				}
 
 				return result;
