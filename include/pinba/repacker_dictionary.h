@@ -319,13 +319,17 @@ private:
 			curr_slice = meow::make_intrusive<wordslice_t>();
 
 		// put the word into wordslice
+		// try and avoid constructing word_ptr here (as it incurs a cache miss to increment word refcount)
 		// NOTE: can't use w->hash here, since it's hashed w->str and not w->id
-		auto inserted_pair = curr_slice->ht.emplace(w->id, w);
+		auto inserted_pair = curr_slice->ht.emplace(w->id, word_ptr{nullptr});
+		auto& it = inserted_pair.first;
 
-		// regardless of insert success, it's fine
-		// if inserted: we're good, word is now referenced by wordslice
-		// if not:      also good, the word was already there and referenced
-		(void)inserted_pair;
+		// fastpath: word is already there
+		if (!inserted_pair.second)
+			return;
+
+		// ok, word wasn't there, put it in, incrementing refcount
+		it.value() = w;
 	}
 };
 
