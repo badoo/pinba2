@@ -9,6 +9,7 @@
 #include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
 
 #include <sparsehash/dense_hash_map>
+#include <tsl/robin_map.h>
 
 #include "misc/nmpa.h"
 
@@ -188,6 +189,18 @@ namespace { namespace aux {
 
 		// map: key -> pointer to item allocated in nmpa
 		struct agg_hashtable_t
+			: public tsl::robin_map<
+							  key_t
+							, tick_item_t*
+							, report_key_impl___hasher_t
+							, report_key_impl___equal_t
+							, std::allocator<std::pair<key_t, tick_item_t*>>
+							, /*StoreHash=*/ true>
+		{
+		};
+
+#if 0
+		struct agg_hashtable_t
 			: public google::dense_hash_map<key_t, tick_item_t*, report_key_impl___hasher_t, report_key_impl___equal_t>
 		{
 			agg_hashtable_t()
@@ -195,6 +208,7 @@ namespace { namespace aux {
 				this->set_empty_key(report_key_impl___make_empty<NKeys>());
 			}
 		};
+#endif
 
 		struct tick_t : public report_tick_t
 		{
