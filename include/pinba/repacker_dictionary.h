@@ -90,6 +90,13 @@ struct repacker_dictionary_t : private boost::noncopyable
 	};
 	using wordslice_ptr = boost::intrusive_ptr<wordslice_t>;
 
+	struct wordinfo_t
+	{
+		uint32_t  id;
+		// uint32_t padding__;
+		word_ptr  ptr;
+	};
+
 	// a cache str_ref -> word_ptr
 	// word_ptr is a local object, does not reference global dictionary
 	//  but references the (immutable) word string, stored in global dictionary
@@ -97,10 +104,10 @@ struct repacker_dictionary_t : private boost::noncopyable
 	// this hashtable should support efficient deletion
 	struct word_to_id_hash_t : public tsl::robin_map<
 											  str_ref
-											, word_ptr
+											, wordinfo_t
 											, dictionary_word_hasher_t
 											, std::equal_to<str_ref>
-											, std::allocator<std::pair<str_ref, word_ptr>>
+											, std::allocator<std::pair<str_ref, wordinfo_t>>
 											, /*StoreHash=*/ true>
 	{
 	};
@@ -140,14 +147,14 @@ public:
 		//  since `word` might reference temporary memory but we do it anyway,
 		//  and later, if insert was actually successful - we're going to replace the key,
 		//  so that it references the equivalent string from actual upstream dictionary word (with proper lifetime)
-		auto inserted_pair = word_to_id.emplace_hash(word_hash, word, word_ptr{nullptr});
+		auto inserted_pair = word_to_id.emplace_hash(word_hash, word, wordinfo_t{});
 		auto& it = inserted_pair.first;
 
 		// fastpath: no insert, word is already there
 		if (!inserted_pair.second)
 		{
-			this->add_to_current_wordslice(it->second.get());
-			return it->second->id;
+			this->add_to_current_wordslice(it->second);
+			return it->second.id;
 		}
 
 		// slowpath
@@ -165,33 +172,11 @@ public:
 		key_ref = w->str;
 
 		// commit local value
-		it.value() = w;
+		it.value() = wordinfo_t { w->id, w };
 
 		// remember to add to wordslice for lifetime tracking
-		this->add_to_current_wordslice(w.get());
-
-		return w->id;
-
-#if 0
-		// fastpath - local lookup
-		auto const it = word_to_id.find(word, word_hash);
-		if (word_to_id.end() != it)
-		{
-			this->add_to_current_wordslice(it->second.get());
-			return it->second->id;
-		}
-
-		// cache miss - slowpath
-		word_ptr w = [&]() {
-			dictionary_t::word_t const *dict_word = d->get_or_add___ref(word, word_hash);
-			return meow::make_intrusive<word_t>(dict_word->id, str_ref { dict_word->str }, word_hash);
-		}();
-
-		word_to_id.emplace_hash(w->hash, w->str, w);
-		this->add_to_current_wordslice(w.get());
-
-		return w->id;
-#endif
+		this->add_to_current_wordslice(it->second);
+		return it->second.id;
 	}
 
 	wordslice_ptr current_wordslice()
@@ -313,7 +298,7 @@ public:
 
 private:
 
-	void add_to_current_wordslice(word_t *w)
+	void add_to_current_wordslice(wordinfo_t const& wi)
 	{
 		if (!curr_slice)
 			curr_slice = meow::make_intrusive<wordslice_t>();
@@ -321,7 +306,7 @@ private:
 		// put the word into wordslice
 		// try and avoid constructing word_ptr here (as it incurs a cache miss to increment word refcount)
 		// NOTE: can't use w->hash here, since it's hashed w->str and not w->id
-		auto inserted_pair = curr_slice->ht.emplace(w->id, word_ptr{nullptr});
+		auto inserted_pair = curr_slice->ht.emplace(wi.id, word_ptr{nullptr});
 		auto& it = inserted_pair.first;
 
 		// fastpath: word is already there
@@ -329,7 +314,7 @@ private:
 			return;
 
 		// ok, word wasn't there, put it in, incrementing refcount
-		it.value() = w;
+		it.value() = wi.ptr;
 	}
 };
 
