@@ -6,21 +6,18 @@
 #include <vector>
 #include <utility>
 
+#include <t1ha/t1ha.h>
 #include <sparsehash/dense_hash_map>
-#include <sparsehash/sparse_hash_map>
 
 #include <meow/stopwatch.hpp>
-#include <meow/hash/hash.hpp>
-#include <meow/hash/hash_impl.hpp>
 #include <meow/format/format_to_string.hpp>
 
+#include "misc/nmpa.h"
+
 #include "pinba/globals.h"
-#include "pinba/dictionary.h"
 #include "pinba/snapshot_dictionary.h"
 #include "pinba/histogram.h"
 #include "pinba/report_key.h"
-
-#include "t1ha/t1ha.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -29,23 +26,6 @@ using report_key_impl_t = std::array<uint32_t, N>;
 
 struct report_key_impl___hasher_t
 {
-	// TODO(antoxa):
-	//    std::hash seems to be ~20% faster on uint32_t/uint64_t keys that t1ha
-	//    need better benchmarks here
-	//    (but also see key__equal_t below)
-
-	// inline size_t operator()(report_key_impl_t<1> const& key) const
-	// {
-	// 	static std::hash<uint32_t> hasher;
-	// 	return hasher(*reinterpret_cast<uint32_t const*>(key.data()));
-	// }
-
-	// inline size_t operator()(report_key_impl_t<2> const& key) const
-	// {
-	// 	static std::hash<uint64_t> hasher;
-	// 	return hasher(*reinterpret_cast<uint64_t const*>(key.data()));
-	// }
-
 	template<size_t N>
 	inline size_t operator()(report_key_impl_t<N> const& key) const
 	{
@@ -55,23 +35,6 @@ struct report_key_impl___hasher_t
 
 struct report_key_impl___equal_t
 {
-	// XXX(antoxa):  leaving it here, but do NOT uncomment code below as it causes ~10x slowdown on hash lookups/merges
-	// TODO(antoxa): need another experiment, when report_key_impl_t<1> IS uint32_t and report_key_impl_t<2> IS uint64_t
-
-	// inline bool operator()(report_key_impl_t<1> const& l, report_key_impl_t<1> const& r) const
-	// {
-	// 	auto const lv = *reinterpret_cast<uint32_t const*>(l.data());
-	// 	auto const rv = *reinterpret_cast<uint32_t const*>(r.data());
-	// 	return lv == rv;
-	// }
-
-	// inline bool operator()(report_key_impl_t<2> const& l, report_key_impl_t<2> const& r) const
-	// {
-	// 	auto const lv = *reinterpret_cast<uint64_t const*>(l.data());
-	// 	auto const rv = *reinterpret_cast<uint64_t const*>(r.data());
-	// 	return lv == rv;
-	// }
-
 	template<size_t N>
 	inline bool operator()(report_key_impl_t<N> const& l, report_key_impl_t<N> const& r) const
 	{
@@ -107,9 +70,6 @@ struct report_key__hasher_t
 	template<size_t N>
 	inline size_t operator()(report_key_base_t<N> const& key) const
 	{
-		// TODO: try a "better" hash function here, like https://github.com/leo-yuriev/t1ha
-		// return meow::hash_blob(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type));
-		// return t1ha1_le(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), 0);
 		return t1ha0(key.data(), key.size() * sizeof(typename report_key_base_t<N>::value_type), 0);
 	}
 };
