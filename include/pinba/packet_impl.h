@@ -101,20 +101,56 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
-	uint32_t td[r->n_dictionary];        // local word_offset -> global dictinary word_id
-	uint64_t td_hashed[r->n_dictionary]; // global dictionary word_id -> number hashed
-
-	for (unsigned i = 0; i < r->n_dictionary; i++)
+	struct name_id_t
 	{
-		td[i]        = d->get_or_add(pb_string_as_str_ref(r->dictionary[i]));
-		td_hashed[i] = pinba::hash_number(td[i]);
-		// ff::fmt(stdout, "{0}; dict xform {1} -> {2} {3}\n", __func__, r->dictionary[i], td[i], td_hashed[i]);
-	}
+		// TODO: maybe redo with bit flags, and not status numbers (but probably doesn't matter)
+		enum : uint8_t { not_checked = 0, not_found = 1, ok = 2 };
 
-	// have we added this local word_offset to bloom?
-	uint8_t bloom_added[r->n_dictionary];
-	memset(bloom_added, 0, sizeof(bloom_added));
+		uint8_t  status;
+		uint8_t  bloom_added;
+		uint32_t word_id;
+		uint64_t bloom_hashed;
+	};
+	name_id_t names_translated[r->n_dictionary];
+	memset(names_translated, 0, sizeof(names_translated)); // FIXME: can zerofill status only
 
+	auto const get_name_id_by_dict_offset = [&](uint32_t dict_offset) -> name_id_t&
+	{
+		name_id_t& nid = names_translated[dict_offset];
+		if (nid.status == name_id_t::not_checked)
+		{
+			uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
+			nid.status       += (word_id != 0) + 1;
+			nid.word_id      = word_id;
+
+			// TODO: maybe just calculate bloom immediately
+			//  but will need to distinguish timer tag names from request tag names
+			nid.bloom_hashed = pinba::hash_number(word_id);
+		}
+		return nid;
+	};
+
+	struct value_id_t
+	{
+		enum : uint8_t { not_checked = 0, ok = 1 };
+
+		uint8_t  status;
+		uint32_t word_id;
+	};
+	value_id_t values_translated[r->n_dictionary];
+	memset(values_translated, 0, sizeof(values_translated));
+
+	auto const get_value_id_by_dict_offset = [&](uint32_t dict_offset) -> value_id_t const&
+	{
+		value_id_t& vid = values_translated[dict_offset];
+		if (vid.status == value_id_t::not_checked)
+		{
+			uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
+			vid.status  = value_id_t::ok;
+			vid.word_id = word_id;
+		}
+		return vid;
+	};
 
 	p->host_id      = d->get_or_add(pb_string_as_str_ref(r->hostname));
 	p->server_id    = d->get_or_add(pb_string_as_str_ref(r->server_name));
@@ -157,26 +193,31 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + i];
 				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + i];
 
-				// translate through td
-				uint32_t const tag_name_id  = td[tag_name_off];
-				uint32_t const tag_value_id = td[tag_value_off];
+				// find name, it must be present
+				// if not present - just skip the tag completely, and don't check or add the value
+				name_id_t& nid = get_name_id_by_dict_offset(tag_name_off);
+				if (nid.status != name_id_t::ok)
+					continue;
+
+				// translate value, it's going to be added if not already present
+				value_id_t const& vid = get_value_id_by_dict_offset(tag_value_off);
 
 				// copy to final destination
-				t->tag_name_ids[i]  = tag_name_id;
-				t->tag_value_ids[i] = tag_value_id;
+				t->tag_name_ids[i]  = nid.word_id;
+				t->tag_value_ids[i] = vid.word_id;
 
 				// packet and timer level blooms
 				{
 					// ff::fmt(stdout, "bloom add: [{0}] {1} -> {2}\n", d->get_word(tag_name_id), tag_name_id, td_hashed[tag_name_off]);
 
 					// always add tag name to timer bloom for current timer
-					t->bloom.add_hashed(td_hashed[tag_name_off]);
+					t->bloom.add_hashed(nid.bloom_hashed);
 
 					// maybe also add to packet-level bloom, if we haven't already
-					if (0 == bloom_added[tag_name_off])
+					if (0 == nid.bloom_added)
 					{
-						bloom_added[tag_name_off] = 1;
-						p->timer_bloom.add_hashed(td_hashed[tag_name_off]);
+						nid.bloom_added = 1;
+						p->timer_bloom.add_hashed(nid.bloom_hashed);
 					}
 				}
 			}
@@ -196,8 +237,14 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 		p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
 		for (unsigned i = 0; i < r->n_tag_name; i++)
 		{
-			p->tag_name_ids[i]  = td[r->tag_name[i]];
-			p->tag_value_ids[i] = td[r->tag_value[i]];
+			name_id_t const& nid  = get_name_id_by_dict_offset(r->tag_name[i]);
+			if (nid.status != name_id_t::ok)
+				continue;
+
+			value_id_t const& vid = get_value_id_by_dict_offset(r->tag_value[i]);
+
+			p->tag_name_ids[i]  = nid.word_id;
+			p->tag_value_ids[i] = vid.word_id;
 		}
 	}
 
