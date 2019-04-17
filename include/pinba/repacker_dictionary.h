@@ -26,13 +26,11 @@ struct repacker_dictionary_t : private boost::noncopyable
 		// no compiler padding here, since our base class has single 'int' member
 		uint64_t const hash;
 		str_ref  const str;
-		uint64_t       in_wordslice; // XXX: expensive!
 
 		word_t(uint32_t i, str_ref s, uint64_t h)
 			: id(i)
 			, hash(h)
 			, str(s)
-			, in_wordslice(0)
 		{
 			PINBA_STATS_(objects).n_repacker_dict_words++;
 		}
@@ -79,7 +77,6 @@ struct repacker_dictionary_t : private boost::noncopyable
 		static_assert(sizeof(hash_t::value_type) == 16, "4 bytes of padding is expected in hash_t");
 
 		hash_t ht;
-		std::deque<word_ptr> words;
 
 		wordslice_t()
 		{
@@ -107,10 +104,10 @@ struct repacker_dictionary_t : private boost::noncopyable
 	// this hashtable should support efficient deletion
 	struct word_to_id_hash_t : public tsl::robin_map<
 											  str_ref
-											, word_ptr
+											, wordinfo_t
 											, dictionary_word_hasher_t
 											, std::equal_to<str_ref>
-											, std::allocator<std::pair<str_ref, word_ptr>>
+											, std::allocator<std::pair<str_ref, wordinfo_t>>
 											, /*StoreHash=*/ true>
 	{
 	};
@@ -161,14 +158,14 @@ public:
 		//  since `word` might reference temporary memory but we do it anyway,
 		//  and later, if insert was actually successful - we're going to replace the key,
 		//  so that it references the equivalent string from actual upstream dictionary word (with proper lifetime)
-		auto inserted_pair = word_to_id.emplace_hash(word_hash, word, word_ptr{nullptr});
+		auto inserted_pair = word_to_id.emplace_hash(word_hash, word, wordinfo_t{});
 		auto& it = inserted_pair.first;
 
 		// fastpath: no insert, word is already there
 		if (!inserted_pair.second)
 		{
-			this->add_to_current_wordslice(it.value());
-			return it->second->id;
+			this->add_to_current_wordslice(it->second);
+			return it->second.id;
 		}
 
 		// slowpath
@@ -186,12 +183,11 @@ public:
 		key_ref = w->str;
 
 		// commit local value
-		// it.value() = wordinfo_t { w->id, w };
-		it.value() = w;
+		it.value() = wordinfo_t { w->id, w };
 
 		// remember to add to wordslice for lifetime tracking
-		this->add_to_current_wordslice(it.value());
-		return it->second->id;
+		this->add_to_current_wordslice(it->second);
+		return it->second.id;
 	}
 
 	wordslice_ptr current_wordslice()
@@ -208,11 +204,6 @@ public:
 		{
 			curr_slice = meow::make_intrusive<wordslice_t>();
 			return;
-		}
-
-		for (auto& w : curr_slice->words)
-		{
-			w->in_wordslice = 0;
 		}
 
 		if (!curr_slice->ht.empty())
@@ -261,11 +252,10 @@ public:
 				// check refcounts to all words in this slice
 				// and maybe delete from local dictionary if only this wordslice and local dictionary reference the word
 				// this class is single-threaded, so noone is modifying anything while we're on it
-				// for(auto ht_it = ws->ht.begin(); ht_it != ws->ht.end(); ++ht_it)
-				for(auto& w : ws->words)
+				for(auto ht_it = ws->ht.begin(); ht_it != ws->ht.end(); ++ht_it)
 				{
 					// this class is single-threaded, so noone is modifying refcount while we're on it
-					// word_ptr& w = ht_it.value();
+					word_ptr& w = ht_it.value();
 					assert(w->use_count() >= 2); // at least `this->word_to_id` and `w` must reference the word
 
 					// LOG_DEBUG(PINBA_LOOGGER_, "{0}; '{1}' {2} {3}", __func__, w->str, w->id, w->use_count());
@@ -319,17 +309,8 @@ public:
 
 private:
 
-	// void add_to_current_wordslice(wordinfo_t const& wi)
-	void add_to_current_wordslice(word_ptr& wp)
+	void add_to_current_wordslice(wordinfo_t const& wi)
 	{
-		if (wp->in_wordslice)
-			return;
-
-		wp->in_wordslice = 1;
-		curr_slice->words.emplace_back(wp);
-
-#if 0
-
 		// put the word into wordslice
 		// try and avoid constructing word_ptr here (as it incurs a cache miss to increment word refcount)
 		// NOTE: can't use w->hash here, since it's hashed w->str and not w->id
@@ -342,7 +323,6 @@ private:
 
 		// ok, word wasn't there, put it in, incrementing refcount
 		it.value() = wi.ptr;
-#endif
 	}
 };
 
