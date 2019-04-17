@@ -173,23 +173,25 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 
 		unsigned current_tag_offset = 0;
 
-		for (unsigned i = 0; i < r->n_timer_value; i++)
+		for (unsigned timer_i = 0; timer_i < r->n_timer_value; timer_i++)
 		{
-			packed_timer_t *t = &p->timers[i];
-			t->tag_count     = r->timer_tag_count[i];
-			t->hit_count     = r->timer_hit_count[i];
-			t->value         = duration_from_float(r->timer_value[i]);
-			t->ru_utime      = (i < r->n_timer_ru_utime) ? duration_from_float(r->timer_ru_utime[i]) : duration_t{0};
-			t->ru_stime      = (i < r->n_timer_ru_stime) ? duration_from_float(r->timer_ru_stime[i]) : duration_t{0};
+			packed_timer_t *t = &p->timers[timer_i];
+			t->tag_count     = 0; // see it's incremented when scanning tags (as we can skip)
+			t->hit_count     = r->timer_hit_count[timer_i];
+			t->value         = duration_from_float(r->timer_value[timer_i]);
+			t->ru_utime      = (timer_i < r->n_timer_ru_utime) ? duration_from_float(r->timer_ru_utime[timer_i]) : duration_t{0};
+			t->ru_stime      = (timer_i < r->n_timer_ru_stime) ? duration_from_float(r->timer_ru_stime[timer_i]) : duration_t{0};
 
 			t->tag_name_ids  = timer_tag_name_ids + current_tag_offset;
 			t->tag_value_ids = timer_tag_value_ids + current_tag_offset;
 
-			for (size_t i = 0; i < t->tag_count; i++)
+			uint32_t const src_tag_count = r->timer_tag_count[timer_i];
+
+			for (size_t tag_i = 0; tag_i < src_tag_count; tag_i++)
 			{
 				// offsets in r->dictionary and td
-				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + i];
-				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + i];
+				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + tag_i];
+				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + tag_i];
 
 				// find name, it must be present
 				// if not present - just skip the tag completely, and don't check or add the value
@@ -201,8 +203,9 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 				value_id_t const& vid = get_value_id_by_dict_offset(tag_value_off);
 
 				// copy to final destination
-				t->tag_name_ids[i]  = nid.word_id;
-				t->tag_value_ids[i] = vid.word_id;
+				t->tag_name_ids[t->tag_count]  = nid.word_id;
+				t->tag_value_ids[t->tag_count] = vid.word_id;
+				t->tag_count++;
 
 				// packet and timer level blooms
 				{
@@ -223,26 +226,29 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 			// ff::fmt(stdout, "timer_bloom[{0}]: {1}\n", i, t->bloom.to_string());
 
 			// advance base offset in original request
-			current_tag_offset += t->tag_count;
+			current_tag_offset += src_tag_count;
 		}
 	}
 
 	// request tags
-	p->tag_count = r->n_tag_name;
-	if (p->tag_count > 0)
+	if (r->n_tag_name > 0)
 	{
+		p->tag_count     = 0; // see it's incremented below (as we can skip tags)
 		p->tag_name_ids  = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
 		p->tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_tag_name);
-		for (unsigned i = 0; i < r->n_tag_name; i++)
+
+		for (unsigned tag_i = 0; tag_i < r->n_tag_name; tag_i++)
 		{
-			name_id_t const& nid  = get_name_id_by_dict_offset(r->tag_name[i]);
+			name_id_t const& nid  = get_name_id_by_dict_offset(r->tag_name[tag_i]);
 			if (nid.status != name_id_t::ok)
 				continue;
 
-			value_id_t const& vid = get_value_id_by_dict_offset(r->tag_value[i]);
+			value_id_t const& vid = get_value_id_by_dict_offset(r->tag_value[tag_i]);
 
-			p->tag_name_ids[i]  = nid.word_id;
-			p->tag_value_ids[i] = vid.word_id;
+			// copy to dest
+			p->tag_name_ids[p->tag_count]  = nid.word_id;
+			p->tag_value_ids[p->tag_count] = vid.word_id;
+			p->tag_count++;
 		}
 	}
 
