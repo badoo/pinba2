@@ -12,19 +12,28 @@
 #include "t1ha/t1ha.h"
 
 #include "pinba/globals.h"
+#include "pinba/hash.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct rw_mutex_t : private boost::noncopyable
 {
-	rw_mutex_t()
+	rw_mutex_t(bool writer_priority = false)
 	{
-		pthread_rwlock_init(&mtx_, NULL);
+		pthread_rwlockattr_init(&attr_);
+
+		if (writer_priority)
+		{
+			pthread_rwlockattr_setkind_np(&attr_, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
+		}
+
+		pthread_rwlock_init(&mtx_, &attr_);
 	}
 
 	~rw_mutex_t()
 	{
 		pthread_rwlock_destroy(&mtx_);
+		pthread_rwlockattr_destroy(&attr_);
 	}
 
 	void rd_lock()
@@ -43,7 +52,8 @@ struct rw_mutex_t : private boost::noncopyable
 	}
 
 private:
-	pthread_rwlock_t mtx_;
+	pthread_rwlock_t     mtx_;
+	pthread_rwlockattr_t attr_;
 };
 
 struct scoped_read_lock_t : private boost::noncopyable
@@ -123,6 +133,57 @@ struct dictionary_t : private boost::noncopyable
 	static_assert(sizeof(word_id_t) == sizeof(uint32_t), "no padding expected");
 */
 
+	struct nameword_t
+	{
+		uint32_t id       = 0;
+		uint64_t id_hash  = 0;
+		uint64_t str_hash = 0;
+	};
+	static_assert(std::is_nothrow_move_constructible<nameword_t>::value);
+
+	struct name_words_t : private boost::noncopyable
+	{
+		struct equal_t
+		{
+			using is_transparent = void;
+
+			inline bool operator()(std::string const& l, str_ref const& r) const
+			{
+				return str_ref {l} == r;
+			}
+
+			inline bool operator()(str_ref const& l, std::string const& r) const
+			{
+				return l == str_ref{r};
+			}
+
+			inline bool operator()(std::string const& l, std::string const& r) const
+			{
+				return l == r;
+			}
+		};
+
+		using hashtable_t = tsl::robin_map<
+								  std::string
+								, nameword_t
+								, dictionary_word_hasher_t
+								, equal_t
+								, std::allocator<std::pair<std::string, nameword_t>>
+								, /*StoreHash=*/ true>;
+
+		mutable rw_mutex_t   mtx;
+		hashtable_t          hash;
+		uint64_t             mem_used_by_word_strings;
+
+		name_words_t()
+			: mtx(true) // writer priority
+			, hash(1024) // pre-size moderately
+			, mem_used_by_word_strings(0)
+		{
+		}
+	};
+
+
 	static constexpr uint32_t const shard_count   = 32;
 	static constexpr uint32_t const shard_id_bits = 5;          // number of bits in mask below
 	static constexpr uint32_t const shard_id_mask = 0xF8000000; // shard_id = top bits
@@ -183,15 +244,17 @@ private:
 	{
 		mutable rw_mutex_t    mtx;
 
-		uint32_t    id;
-		uint32_t    freelist_head; // (offset+1) of the first elt in freelist, aka 0 -> unset, 1 -> offset == 0
-		hash_t      hash;          // TODO: shard this as well, to amortize the cost of rehash
-		words_t     words;
+		uint32_t      id;
+		uint32_t      freelist_head; // (offset+1) of the first elt in freelist, aka 0 -> unset, 1 -> offset == 0
+		hash_t        hash;          // TODO: shard this as well, to amortize the cost of rehash
+		words_t       words;
 
-		uint64_t    mem_used_by_word_strings = 0;
+		uint64_t      mem_used_by_word_strings = 0;
 	};
 
 	mutable std::array<shard_t, shard_count> shards_;
+
+	name_words_t  name_words;
 
 public:
 
@@ -215,6 +278,12 @@ public:
 			scoped_read_lock_t lock_(shard.mtx);
 			result += shard.words.size();
 		}
+
+		{
+			scoped_read_lock_t lock_(name_words.mtx);
+			result += name_words.hash.size();
+		}
+
 		return result;
 	}
 
@@ -231,7 +300,48 @@ public:
 			result.strings_bytes  += shard.mem_used_by_word_strings;
 		}
 
+		{
+			scoped_read_lock_t lock_(name_words.mtx);
+			result.hash_bytes    += name_words.hash.bucket_count() * sizeof(*name_words.hash.begin());
+			result.strings_bytes += name_words.mem_used_by_word_strings;
+		}
+
 		return result;
+	}
+
+public:
+
+	nameword_t get_nameword(str_ref word) const
+	{
+		uint64_t const word_hash = hash_dictionary_word(word);
+
+		scoped_read_lock_t lock_(name_words.mtx);
+
+		auto const it = name_words.hash.find(word, word_hash);
+		if (it == name_words.hash.end())
+			return {};
+
+		return it->second;
+	}
+
+	nameword_t add_nameword(str_ref word)
+	{
+		uint64_t const word_hash = hash_dictionary_word(word);
+
+		scoped_write_lock_t lock_(name_words.mtx);
+
+		uint32_t const word_id = name_words.hash.size() + 1;
+
+		nameword_t nw = {
+			.id       = word_id,
+			.id_hash  = pinba::hash_number(word_id),
+			.str_hash = word_hash,
+		};
+
+		auto const inserted_pair = name_words.hash.emplace_hash(word_hash, word.str(), nw);
+		auto const& it = inserted_pair.first;
+
+		return it->second;
 	}
 
 public:

@@ -418,7 +418,7 @@ namespace { namespace aux {
 		if (key_name[0] == '+') // request_tag
 		{
 			auto const tag_name = meow::sub_str_ref(key_name, 1, key_name.size());
-			auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+			auto const tag_id = P_G_->dictionary()->add_nameword(tag_name).id;
 
 			*out_kd = key_descriptor_init___request_tag(tag_name, tag_id);
 			return {};
@@ -431,7 +431,7 @@ namespace { namespace aux {
 									: key_name;
 
 			// XXX: try to avoid modifying global state here
-			auto const tag_id = P_G_->dictionary()->get_or_add(tag_name);
+			auto const tag_id = P_G_->dictionary()->add_nameword(tag_name).id;
 
 			*out_kd = key_descriptor_init___timer_tag(tag_name, tag_id);
 			return {};

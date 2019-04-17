@@ -119,13 +119,11 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 		name_id_t& nid = names_translated[dict_offset];
 		if (nid.status == name_id_t::not_checked)
 		{
-			uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
-			nid.status       += (word_id != 0) + 1;
-			nid.word_id      = word_id;
-
-			// TODO: maybe just calculate bloom immediately
-			//  but will need to distinguish timer tag names from request tag names
-			nid.bloom_hashed = pinba::hash_number(word_id);
+			// uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
+			dictionary_t::nameword_t const nw = d->get_nameword(pb_string_as_str_ref(r->dictionary[dict_offset]));
+			nid.status       += (nw.id != 0) + 1;
+			nid.word_id      = nw.id;
+			nid.bloom_hashed = nw.id_hash;
 		}
 		return nid;
 	};
@@ -156,7 +154,7 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 	p->server_id    = d->get_or_add(pb_string_as_str_ref(r->server_name));
 	p->script_id    = d->get_or_add(pb_string_as_str_ref(r->script_name));
 	p->schema_id    = d->get_or_add(pb_string_as_str_ref(r->schema));
-	p->status       = d->get_or_add(pinba_request_status_to_str_ref_tmp(r->status));
+	p->status       = d->get_or_add(pinba_request_status_to_str_ref_tmp(r->status)); // TODO: can avoid get_or_add for small values (cache in perm dict)
 	p->traffic      = r->document_size;
 	p->mem_used     = r->memory_footprint;
 	p->request_time = duration_from_float(r->request_time);
