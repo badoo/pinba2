@@ -126,6 +126,7 @@ public:
 	repacker_dictionary_t(dictionary_t *dict)
 		: d(dict)
 	{
+		this->start_new_wordslice();
 	}
 
 	// // FIXME: test only
@@ -300,9 +301,6 @@ private:
 
 	void add_to_current_wordslice(wordinfo_t const& wi)
 	{
-		if (!curr_slice)
-			curr_slice = meow::make_intrusive<wordslice_t>();
-
 		// put the word into wordslice
 		// try and avoid constructing word_ptr here (as it incurs a cache miss to increment word refcount)
 		// NOTE: can't use w->hash here, since it's hashed w->str and not w->id
