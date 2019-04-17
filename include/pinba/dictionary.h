@@ -341,6 +341,9 @@ public:
 		auto const inserted_pair = name_words.hash.emplace_hash(word_hash, word.str(), nw);
 		auto const& it = inserted_pair.first;
 
+		if (inserted_pair.second) // inserted
+			name_words.mem_used_by_word_strings += word.size();
+
 		return it->second;
 	}
 
