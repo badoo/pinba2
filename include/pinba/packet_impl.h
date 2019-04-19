@@ -117,6 +117,10 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 	auto const get_name_id_by_dict_offset = [&](uint32_t dict_offset) -> name_id_t&
 	{
 		name_id_t& nid = names_translated[dict_offset];
+
+		// ff::fmt(stderr, "name_get: {0}:{1} [b] {{ {2}, {3} }"
+		// 	, dict_offset, pb_string_as_str_ref(r->dictionary[dict_offset]), nid.status, nid.word_id);
+
 		if (nid.status == name_id_t::not_checked)
 		{
 			// uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
@@ -125,6 +129,9 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 			nid.word_id      = nw.id;
 			nid.bloom_hashed = nw.id_hash;
 		}
+
+		// ff::fmt(stderr, " -> {{ {0}, {1}, {2} }\n", nid.status, nid.word_id, nid.bloom_hashed);
+
 		return nid;
 	};
 
@@ -141,12 +148,19 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 	auto const get_value_id_by_dict_offset = [&](uint32_t dict_offset) -> value_id_t const&
 	{
 		value_id_t& vid = values_translated[dict_offset];
+
+		// ff::fmt(stderr, "value_get: {0}:{1} [b] {{ {2}, {3} }"
+		// 	, dict_offset, pb_string_as_str_ref(r->dictionary[dict_offset]), vid.status, vid.word_id);
+
 		if (vid.status == value_id_t::not_checked)
 		{
 			uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
 			vid.status  = value_id_t::ok;
 			vid.word_id = word_id;
 		}
+
+		// ff::fmt(stderr, " -> {{ {0}, {1} }\n", vid.status, vid.word_id);
+
 		return vid;
 	};
 
@@ -171,7 +185,8 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 		uint32_t *timer_tag_name_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_name);
 		uint32_t *timer_tag_value_ids = (uint32_t*)nmpa_alloc(nmpa, sizeof(uint32_t) * r->n_timer_tag_value);
 
-		unsigned current_tag_offset = 0;
+		unsigned src_tag_offset = 0;
+		unsigned dst_tag_offset = 0;
 
 		for (unsigned timer_i = 0; timer_i < r->n_timer_value; timer_i++)
 		{
@@ -182,16 +197,16 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 			t->ru_utime      = (timer_i < r->n_timer_ru_utime) ? duration_from_float(r->timer_ru_utime[timer_i]) : duration_t{0};
 			t->ru_stime      = (timer_i < r->n_timer_ru_stime) ? duration_from_float(r->timer_ru_stime[timer_i]) : duration_t{0};
 
-			t->tag_name_ids  = timer_tag_name_ids + current_tag_offset;
-			t->tag_value_ids = timer_tag_value_ids + current_tag_offset;
+			t->tag_name_ids  = timer_tag_name_ids + dst_tag_offset;
+			t->tag_value_ids = timer_tag_value_ids + dst_tag_offset;
 
 			uint32_t const src_tag_count = r->timer_tag_count[timer_i];
 
-			for (size_t tag_i = 0; tag_i < src_tag_count; tag_i++)
+			for (unsigned tag_i = 0; tag_i < src_tag_count; tag_i++)
 			{
 				// offsets in r->dictionary and td
-				uint32_t const tag_name_off  = r->timer_tag_name[current_tag_offset + tag_i];
-				uint32_t const tag_value_off = r->timer_tag_value[current_tag_offset + tag_i];
+				uint32_t const tag_name_off  = r->timer_tag_name[src_tag_offset + tag_i];
+				uint32_t const tag_value_off = r->timer_tag_value[src_tag_offset + tag_i];
 
 				// find name, it must be present
 				// if not present - just skip the tag completely, and don't check or add the value
@@ -226,7 +241,8 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 			// ff::fmt(stdout, "timer_bloom[{0}]: {1}\n", i, t->bloom.to_string());
 
 			// advance base offset in original request
-			current_tag_offset += src_tag_count;
+			src_tag_offset += src_tag_count;
+			dst_tag_offset += t->tag_count;
 		}
 	}
 
