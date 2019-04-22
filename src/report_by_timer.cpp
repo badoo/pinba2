@@ -221,7 +221,6 @@ namespace { namespace aux {
 			{
 				uint64_t const key_hash = report_key_impl___hasher_t()(k);
 
-				// tick_item_t *& item_ptr = tick_->ht[k];
 				auto inserted_pair = tick_->ht.emplace_hash(key_hash, k, nullptr);
 				tick_item_t *& item_ptr = inserted_pair.first.value();
 
