@@ -564,6 +564,7 @@ namespace { namespace aux {
 					.globals        = globals_,
 					.stats          = stats_,
 					.rinfo          = rinfo_,
+					.estimates      = this->get_estimates(),
 					.hv_conf        = hv_conf_,
 				};
 

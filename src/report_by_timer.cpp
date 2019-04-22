@@ -8,7 +8,6 @@
 
 #include <meow/utility/offsetof.hpp> // MEOW_SELF_FROM_MEMBER
 
-#include <sparsehash/dense_hash_map>
 #include <tsl/robin_map.h>
 
 #include "misc/nmpa.h"
@@ -145,11 +144,14 @@ namespace { namespace aux {
 		{
 			uint64_t         last_unique;
 
+			uint64_t         key_hash;
+
 			data_t           data;
 			hdr_histogram_t  hv;
 
-			tick_item_t(struct nmpa_s *nmpa, histogram_conf_t const& hv_conf)
+			tick_item_t(uint64_t kh, struct nmpa_s *nmpa, histogram_conf_t const& hv_conf)
 				: last_unique(0)
+				, key_hash(kh)
 				, data()
 				, hv(nmpa, hv_conf)
 			{
@@ -180,17 +182,6 @@ namespace { namespace aux {
 							, /*StoreHash=*/ true>
 		{
 		};
-
-#if 0
-		struct agg_hashtable_t
-			: public google::dense_hash_map<key_t, tick_item_t*, report_key_impl___hasher_t, report_key_impl___equal_t>
-		{
-			agg_hashtable_t()
-			{
-				this->set_empty_key(report_key_impl___make_empty<NKeys>());
-			}
-		};
-#endif
 
 		struct tick_t : public report_tick_t
 		{
@@ -228,10 +219,14 @@ namespace { namespace aux {
 		{
 			tick_item_t& raw_item_reference(key_t const& k)
 			{
-				tick_item_t *& item_ptr = tick_->ht[k];
+				uint64_t const key_hash = report_key_impl___hasher_t()(k);
+
+				// tick_item_t *& item_ptr = tick_->ht[k];
+				auto inserted_pair = tick_->ht.emplace_hash(key_hash, k, nullptr);
+				tick_item_t *& item_ptr = inserted_pair.first.value();
 
 				// mapping exists, item exists, just return
-				if (item_ptr != nullptr)
+				if (!inserted_pair.second)
 					return *item_ptr;
 
 				// slowpath - create item and maybe hvs
@@ -240,7 +235,7 @@ namespace { namespace aux {
 				if (new_item == nullptr)
 					throw std::bad_alloc();
 
-				new (new_item) tick_item_t(&tick_->hv_nmpa, hv_conf_);
+				new (new_item) tick_item_t(key_hash, &tick_->hv_nmpa, hv_conf_);
 
 				item_ptr = new_item;
 				return *item_ptr;
@@ -571,6 +566,7 @@ namespace { namespace aux {
 
 			struct history_row_t
 			{
+				uint64_t          key_hash;
 				key_t             key;
 				data_t            data;
 				flat_histogram_t  hv;
@@ -620,9 +616,10 @@ namespace { namespace aux {
 					tick_item_t const& src_item = *ht_pair.second;
 					history_row_t    & dst_row  = h_tick->rows.back();
 
-					dst_row.key  = src_key;
-					dst_row.data = src_item.data;
-					dst_row.hv   = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
+					dst_row.key_hash = src_item.key_hash;
+					dst_row.key      = src_key;
+					dst_row.data     = src_item.data;
+					dst_row.hv       = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
 
 					h_tick->mem_used += dst_row.hv.values.capacity() * sizeof(*dst_row.hv.values.begin());
 				}
@@ -695,12 +692,14 @@ namespace { namespace aux {
 				};
 
 				struct hashtable_t
-					: public google::dense_hash_map<key_t, row_t, report_key_impl___hasher_t, report_key_impl___equal_t>
+					: public tsl::robin_map<
+									  key_t
+									, row_t
+									, report_key_impl___hasher_t
+									, report_key_impl___equal_t
+									, std::allocator<std::pair<key_t, row_t>>
+									, /*StoreHash=*/ true>
 				{
-					hashtable_t()
-					{
-						this->set_empty_key(report_key_impl___make_empty<NKeys>());
-					}
 				};
 
 			public:
@@ -712,12 +711,12 @@ namespace { namespace aux {
 
 				static void* value_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
-					return &it->second.data;
+					return (void*)&it->second.data;
 				}
 
 				static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
-					row_t *row = &it->second;
+					row_t *row = const_cast<row_t*>(&it->second); // will mutate the row, potentially
 
 					if (row->saved_hv.empty()) // already merged
 						return &row->merged_hv;
@@ -819,6 +818,15 @@ namespace { namespace aux {
 				{
 					bool const need_histograms = (snapshot_ctx->rinfo.hv_enabled && (flags & report_snapshot_t::merge_flags::with_histograms));
 
+					// if we have result count estimate - try reserve the space in resulting hashtable
+					// this might get ugly, if we under-guess just slightly
+					// and face a giant rehash at the end of the merge
+					// but should save us some significant time on initial few rehashes
+					if (snapshot_ctx->estimates.row_count > 0)
+					{
+						to.reserve(snapshot_ctx->estimates.row_count);
+					}
+
 					uint64_t n_ticks = 0;
 					uint64_t key_lookups = 0;
 					uint64_t hv_appends = 0;
@@ -835,7 +843,9 @@ namespace { namespace aux {
 						for (size_t i = 0; i < tick.rows.size(); i++)
 						{
 							history_row_t const& src = tick.rows[i];
-							row_t              & dst = to[src.key];
+
+							auto inserted_pair = to.emplace_hash(src.key_hash, src.key, row_t{});
+							row_t              & dst = inserted_pair.first.value();
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.hit_count  += src.data.hit_count;
@@ -883,6 +893,7 @@ namespace { namespace aux {
 					.globals        = globals_,
 					.stats          = stats_,
 					.rinfo          = rinfo_,
+					.estimates      = this->get_estimates(),
 					.hv_conf        = hv_conf_,
 					.nmpa           = {} // don't need this at the moment
 				};

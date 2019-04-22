@@ -183,6 +183,7 @@ struct report_snapshot_ctx_t
 	pinba_globals_t     *globals;        // globals for logging / dictionary
 	report_stats_t      *stats;          // stats that we might want to update
 	report_info_t       rinfo;           // report info, immutable copy taken in ctor
+	report_estimates_t  estimates;       // estimates of row count, etc. immutable copy taken in ctor
 	histogram_conf_t    hv_conf;         // histogram conf, immutable copy taken in ctor
 	nmpa_autofree_t     nmpa;            // snapshot-local nmpa, initialize with nmpa_create() or nmpa_init() or {}
 	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks, keep it last member to simplify calling code
