@@ -1,7 +1,9 @@
 #include "pinba_config.h"
 
 #include <thread>
-#include <vector>
+// #include <vector>
+
+#include <tsl/robin_set.h>
 
 #include <meow/defer.hpp>
 #include <meow/stopwatch.hpp>
@@ -198,7 +200,25 @@ namespace { namespace aux {
 
 	struct repacker_state_impl_t : public repacker_state_t
 	{
-		std::vector<repacker_dslice_ptr> dict_slices;
+		// std::vector<repacker_dslice_ptr> dict_slices;
+
+		struct hash_function_t
+		{
+			inline size_t operator()(repacker_dslice_ptr const& p) const
+			{
+				return (size_t)p.get();
+			}
+		};
+
+		using hashtable_t = tsl::robin_set<
+								  repacker_dslice_ptr
+								, hash_function_t
+								, std::equal_to<repacker_dslice_ptr>
+								, std::allocator<repacker_dslice_ptr>
+								, /*StoreHash=*/false
+								, tsl::rh::prime_growth_policy>;
+
+		hashtable_t ht;
 
 	public:
 
@@ -208,13 +228,15 @@ namespace { namespace aux {
 
 		repacker_state_impl_t(repacker_dslice_ptr ds)
 		{
-			dict_slices.emplace_back(std::move(ds));
+			// dict_slices.emplace_back(std::move(ds));
+			ht.emplace(std::move(ds));
 		}
 
 		virtual repacker_state_ptr clone() override
 		{
 			auto result = std::make_shared<repacker_state_impl_t>();
-			result->dict_slices = dict_slices;
+			result->ht = ht;
+			// result->dict_slices = dict_slices;
 			return result;
 		}
 
@@ -222,14 +244,16 @@ namespace { namespace aux {
 		{
 			auto& other = static_cast<repacker_state_impl_t&>(other_ref);
 
-			for (auto& other_ds : other.dict_slices)
-			{
-				auto const it = std::find(dict_slices.begin(), dict_slices.end(), other_ds);
-				if (it == dict_slices.end())
-				{
-					dict_slices.emplace_back(other_ds);
-				}
-			}
+			ht.insert(other.ht.begin(), other.ht.end());
+
+			// for (auto& other_ds : other.dict_slices)
+			// {
+			// 	auto const it = std::find(dict_slices.begin(), dict_slices.end(), other_ds);
+			// 	if (it == dict_slices.end())
+			// 	{
+			// 		dict_slices.emplace_back(other_ds);
+			// 	}
+			// }
 		}
 	};
 
