@@ -34,14 +34,6 @@ namespace { namespace aux {
 			uint64_t key_hash;
 			key_t    key;
 			data_t   data;
-
-			tick_item_t() = default;
-
-		private: // not movable or copyable
-			tick_item_t(tick_item_t const&)            = delete;
-			tick_item_t(tick_item_t&&)                 = delete;
-			tick_item_t& operator=(tick_item_t const&) = delete;
-			tick_item_t& operator=(tick_item_t&&)      = delete;
 		};
 
 		struct tick_t : public report_tick_t
@@ -104,8 +96,8 @@ namespace { namespace aux {
 				tick_->items.emplace_back();
 
 				tick_item_t& item = tick_->items.back();
-				item.key_hash = key_hash;
 				item.key      = k;
+				item.key_hash = key_hash;
 
 				if (conf_.hv_bucket_count > 0)
 					tick_->hvs.emplace_back(&tick_->hv_nmpa, hv_conf_);
@@ -182,7 +174,8 @@ namespace { namespace aux {
 
 				// hvs
 				result.mem_used += tick_->hvs.size() * sizeof(*tick_->hvs.begin());
-				result.mem_used += nmpa_mem_used(&tick_->hv_nmpa);
+				for (hdr_histogram_t const& hv : tick_->hvs)
+					result.mem_used += hv.get_allocated_size();
 
 				return result;
 			}
@@ -274,8 +267,8 @@ namespace { namespace aux {
 			virtual void merge_tick(report_tick_ptr tick_base) override
 			{
 				// re-process tick data, for more compact storage
-				auto *agg_tick = static_cast<tick_t*>(tick_base.get());   // src (non-const to move below)
-				auto  h_tick   = meow::make_intrusive<history_tick_t>();  // dst
+				auto const *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src
+				auto          h_tick = meow::make_intrusive<history_tick_t>();      // dst
 
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
@@ -522,7 +515,7 @@ namespace { namespace aux {
 							tick_item_t const& src = tick.items[i];
 
 							auto inserted_pair = to.emplace_hash(src.key_hash, src.key, row_t{});
-							row_t& dst         = inserted_pair.first.value();
+							row_t            & dst = inserted_pair.first.value();
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.time_total += src.data.time_total;
@@ -544,6 +537,8 @@ namespace { namespace aux {
 						}
 
 						key_lookups += tick.items.size();
+
+						// repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
 						if (need_histograms)
 							hv_appends  += tick.hvs.size();
