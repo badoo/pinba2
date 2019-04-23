@@ -186,7 +186,12 @@ struct report_snapshot_ctx_t
 	report_estimates_t  estimates;       // estimates of row count, etc. immutable copy taken in ctor
 	histogram_conf_t    hv_conf;         // histogram conf, immutable copy taken in ctor
 	nmpa_autofree_t     nmpa;            // snapshot-local nmpa, initialize with nmpa_create() or nmpa_init() or {}
-	repacker_state_ptr  repacker_state;  // extra state we should carry along with ticks, keep it last member to simplify calling code
+
+	// extra state we should carry along with ticks
+	// there is no need to merge anything really, just take them along for the lifetime of the snapshot
+	// report usually should not care about these when creating snapshot
+	using repacker_state_v_t = std::vector<repacker_state_ptr>;
+	repacker_state_v_t  repacker_state_v;
 
 	// report_snapshot_ctx_t(pinba_globals_t *g, report_stats_t *st, report_info_t const& ri, histogram_conf_t const& hvcf, struct nmpa_s n)
 	// 	: globals(g)
@@ -272,6 +277,17 @@ private:
 			this->stats->last_snapshot_src_rows = raw_stats.row_count;
 		}
 
+		// accumulate repacker state
+		this->repacker_state_v.reserve(ticks_.size());
+		for (auto& tick : ticks_)
+		{
+			if (!tick)
+				continue;
+
+			this->repacker_state_v.push_back(tick->repacker_state);
+		}
+
+		// merge, measure the time
 		meow::stopwatch_t sw;
 
 		Traits::merge_ticks_into_data(this, ticks_, data_, flags);

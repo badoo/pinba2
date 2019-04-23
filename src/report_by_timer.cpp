@@ -866,7 +866,7 @@ namespace { namespace aux {
 
 						key_lookups += tick.rows.size();
 
-						repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
+						// repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
 						if (need_histograms)
 							hv_appends  += tick.rows.size();
