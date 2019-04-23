@@ -179,6 +179,7 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 	p->timer_count = r->n_timer_value;
 	if (p->timer_count > 0)
 	{
+		p->timers_blooms = (timer_bloom_t*)nmpa_alloc(nmpa, sizeof(timer_bloom_t) * r->n_timer_value);
 		p->timers = (packed_timer_t*)nmpa_alloc(nmpa, sizeof(packed_timer_t) * r->n_timer_value);
 
 		// contiguous storage for all timer tag names/values
@@ -227,13 +228,13 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 					// ff::fmt(stdout, "bloom add: [{0}] {1} -> {2}\n", d->get_word(tag_name_id), tag_name_id, td_hashed[tag_name_off]);
 
 					// always add tag name to timer bloom for current timer
-					t->bloom.add_hashed(nid.bloom_hashed);
+					p->timers_blooms[timer_i].add_hashed(nid.bloom_hashed);
 
 					// maybe also add to packet-level bloom, if we haven't already
 					if (0 == nid.bloom_added)
 					{
 						nid.bloom_added = 1;
-						p->timer_bloom.add_hashed(nid.bloom_hashed);
+						p->bloom.add_hashed(nid.bloom_hashed);
 					}
 				}
 			}
@@ -297,7 +298,7 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 		d->get_word(packet->status), packet->status,
 		packet->mem_used, packet->traffic);
 
-	ff::fmt(sink, "bloom: {0}\n", packet->timer_bloom.to_string());
+	ff::fmt(sink, "bloom: {0}\n", packet->bloom.to_string());
 
 	for (unsigned i = 0; i < packet->tag_count; i++)
 	{
@@ -311,10 +312,11 @@ inline SinkT& debug_dump_packet(SinkT& sink, packet_t *packet, dictionary_t *d, 
 
 	for (unsigned i = 0; i < packet->timer_count; i++)
 	{
-		auto const& t = packet->timers[i];
+		auto const& tbloom = packet->timers_blooms[i];
+		auto const& t      = packet->timers[i];
 
 		ff::fmt(sink, "  timer[{0}]: {{ h: {1}, v: {2}, ru_u: {3}, ru_s: {4} }\n", i, t.hit_count, t.value, t.ru_utime, t.ru_stime);
-		ff::fmt(sink, "    bloom: {0}\n", t.bloom.to_string());
+		ff::fmt(sink, "    bloom: {0}\n", tbloom.to_string());
 
 		for (unsigned j = 0; j < t.tag_count; j++)
 		{

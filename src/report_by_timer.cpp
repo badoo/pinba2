@@ -340,7 +340,7 @@ namespace { namespace aux {
 			{
 				// packet-level bloom check
 				// FIXME: this probably immediately causes L1/L2 miss, since bloom is at the end of packet struct ?
-				if (!packet->timer_bloom.contains(this->packet_bloom_))
+				if (!packet->bloom.contains(this->packet_bloom_))
 				{
 					// LOG_DEBUG(globals_->logger(), "packet: {0} !< {1}", packet->timer_bloom->to_string(), packet_bloom_.to_string());
 					stats_->packets_dropped_by_bloom++;
@@ -484,11 +484,12 @@ namespace { namespace aux {
 
 					for (uint16_t i = 0; i < packet->timer_count; ++i)
 					{
+						timer_bloom_t const *tbloom = &packet->timers_blooms[i];
 						packed_timer_t const *timer = &packet->timers[i];
 
 						timers_scanned++;
 
-						if (!timer->bloom.contains(this->timer_bloom_))
+						if (!tbloom->contains(this->timer_bloom_))
 						{
 							// LOG_DEBUG(globals_->logger(), "timer[{0}]: bloom {1} !< {2}", i, timer->bloom.to_string(), timer_bloom_.to_string());
 							timers_skipped_by_bloom++;

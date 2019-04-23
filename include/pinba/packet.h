@@ -68,15 +68,15 @@ struct packed_timer_t
 	duration_t      ru_stime;
 	uint32_t        *tag_name_ids;
 	uint32_t        *tag_value_ids;  // TODO: remove this ptr, address via tag_name_ids
-	timer_bloom_t   bloom;           // 64bit
+	// timer_bloom_t   bloom;           // 64bit
 }; // __attribute__((packed)); // needed only with sizeof() == 28 below
 
 // check the size, had to add __attribute__((packed)) to definition, since the compiler likes
 // to have struct sizes % 8 == 0, to have them nicely aligned in arrays
 // but we don't need that, since 1st member is uint32 and is aligned properly in arrays as well
 // static_assert(sizeof(packed_timer_t) == 28, "make sure packed_timer_t has no padding inside");
-// static_assert(sizeof(packed_timer_t) == 48, "make sure packed_timer_t has no padding inside");
-static_assert(sizeof(packed_timer_t) == 56, "make sure packed_timer_t has no padding inside");
+static_assert(sizeof(packed_timer_t) == 48, "make sure packed_timer_t has no padding inside");
+// static_assert(sizeof(packed_timer_t) == 56, "make sure packed_timer_t has no padding inside");
 static_assert(std::is_standard_layout<packed_timer_t>::value == true, "packed_timer_t must have standard layout");
 
 struct packet_t
@@ -95,13 +95,15 @@ struct packet_t
 	duration_t        ru_stime;        // use microseconds_t here?
 	uint32_t          *tag_name_ids;   // request tag names  (sequential in memory = scan speed)
 	uint32_t          *tag_value_ids;  // request tag values (sequential in memory = scan speed) TODO: remove this ptr, address via tag_name_ids
+	timer_bloom_t     *timers_blooms;  // blooms for all timers, sequential for check speed
 	packed_timer_t    *timers;
-	timertag_bloom_t  timer_bloom;     // poor man's bloom filter over timer[].tag_name_ids
+	timertag_bloom_t  bloom;     // poor man's bloom filter over timer[].tag_name_ids
 };
 
 // packet_t has been carefully crafted to avoid padding inside and eat as little memory as possible
 // make sure we haven't made a mistake anywhere
-static_assert(sizeof(packet_t) == 96, "make sure packet_t has no padding inside");
+// static_assert(sizeof(packet_t) == 96, "make sure packet_t has no padding inside");
+static_assert(sizeof(packet_t) == 104, "make sure packet_t has no padding inside");
 static_assert(std::is_standard_layout<packet_t>::value == true, "packet_t must be a standard layout type");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
