@@ -164,6 +164,7 @@ namespace { namespace aux {
 				// therefore this->hv dtor is never called either (memory is freed by tick->hv_nmpa)
 			}
 
+		private: // not movable or copyable
 			tick_item_t(tick_item_t const&) = delete;
 			tick_item_t& operator=(tick_item_t const&) = delete;
 
@@ -599,14 +600,15 @@ namespace { namespace aux {
 			virtual void merge_tick(report_tick_ptr tick_base) override
 			{
 				// re-process tick data, for more compact storage
-				auto const *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src
-				auto          h_tick = meow::make_intrusive<history_tick_t>();      // dst
+				auto *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src (non-const to move from, see below)
+				auto    h_tick = meow::make_intrusive<history_tick_t>();      // dst
 
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
 
 				// reserve, we know the size
 				h_tick->rows.reserve(agg_tick->ht.size());
+				h_tick->mem_used += h_tick->rows.capacity() * sizeof(*h_tick->rows.begin());
 
 				for (auto const& ht_pair : agg_tick->ht)
 				{
@@ -619,12 +621,11 @@ namespace { namespace aux {
 					dst_row.key_hash = src_item.key_hash;
 					dst_row.key      = src_key;
 					dst_row.data     = src_item.data;
-					dst_row.hv       = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
 
+					// FIXME: only convert if histograms are enabled!
+					dst_row.hv       = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
 					h_tick->mem_used += dst_row.hv.values.capacity() * sizeof(*dst_row.hv.values.begin());
 				}
-
-				h_tick->mem_used += h_tick->rows.capacity() * sizeof(*h_tick->rows.begin());
 
 				ring_.append(std::move(h_tick));
 			}
@@ -845,7 +846,7 @@ namespace { namespace aux {
 							history_row_t const& src = tick.rows[i];
 
 							auto inserted_pair = to.emplace_hash(src.key_hash, src.key, row_t{});
-							row_t              & dst = inserted_pair.first.value();
+							row_t&         dst = inserted_pair.first.value();
 
 							dst.data.req_count  += src.data.req_count;
 							dst.data.hit_count  += src.data.hit_count;
@@ -866,8 +867,6 @@ namespace { namespace aux {
 						}
 
 						key_lookups += tick.rows.size();
-
-						// repacker_state___merge_to_from(snapshot_ctx->repacker_state, tick.repacker_state);
 
 						if (need_histograms)
 							hv_appends  += tick.rows.size();
