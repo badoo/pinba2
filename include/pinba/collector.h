@@ -12,6 +12,17 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define PINBA_NET_DATAGRAM_FLAG___COMPRESSED_LZ4 (1 << 0)
+
+struct net_datagram_t // network datagram
+{
+	uint8_t   version;
+	uint32_t  flags;
+	str_ref   data; // without header, if any
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 // these are sent over PUSH/PULL channel
 struct raw_request_t
 	: public nmsg_message_ex_t<raw_request_t>

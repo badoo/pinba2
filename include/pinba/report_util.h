@@ -7,7 +7,6 @@
 #include <utility>
 
 #include <t1ha/t1ha.h>
-#include <sparsehash/dense_hash_map>
 
 #include <meow/stopwatch.hpp>
 #include <meow/format/format_to_string.hpp>

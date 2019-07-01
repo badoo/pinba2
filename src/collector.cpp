@@ -29,6 +29,10 @@
 #include "misc/nmpa.h"
 #include "misc/nmpa_pba.h"
 
+#ifdef PINBA_HAVE_LZ4
+#include <lz4.h>
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace ff = meow::format;
@@ -101,6 +105,67 @@ namespace { namespace aux {
 			reset();
 		}
 	};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+	net_datagram_t parse_network_datagram(str_ref bytes)
+	{
+		net_datagram_t dgram = {};
+
+		// v0 - is just raw protobuf
+		// v1 - adds 4 byte header
+		//      header format <version:4><flags:12><original_data_len:16>
+		//
+		// in v0 - high 4 bits are most probably 0, use that to distinguish between them
+
+		assert(bytes.size() > 0 && "impossible to have empty datagram");
+		uint8_t const v = (bytes[0] >> 4);
+
+		// guessed v1 and sufficient length
+		if ((v == 1) && (bytes.size() >= 4))
+		{
+			uint16_t const data_len = uint16_t(bytes[2]) | bytes[3];
+
+			return net_datagram_t {
+				.version = 1,
+				.flags   = uint32_t(bytes[0] & 0x0f) | bytes[1],
+				.data    = str_ref { bytes.begin() + 4, bytes.end() },
+			};
+		}
+
+		// otherwise, let's try with v0 format
+		return net_datagram_t {
+			.version = 0,
+			.flags   = 0,
+			.data    = bytes,
+		};
+	}
+
+	// decompress_network_datagram, decompresses `dgram->data` into `dst_buf`
+	//  returns
+	//    - true on success and modifies `dgram->data` to point to the relevant part of `dst_buf`
+	//    - false on failure
+	bool decompress_network_datagram(net_datagram_t *dgram, char *dst_buf, int dst_capacity)
+	{
+		assert(dgram != nullptr);
+
+#if PINBA_HAVE_LZ4
+		int const decompressed_size = LZ4_decompress_safe(dgram->data.data(), dst_buf, dgram->data.c_length(), dst_capacity);
+
+		// error, no details from lz4
+		// can be either
+		// - malformed input (treat zero size input is malformed as well)
+		// - insufficient buffer space
+		if (decompressed_size <= 0)
+			return false;
+
+		dgram->data = str_ref { dst_buf, size_t(decompressed_size) };
+		return true;
+#else
+		// not implemented, or not enabled - failure
+		return false;
+#endif
+	}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -293,6 +358,8 @@ namespace { namespace aux {
 			{
 				poller.read_plain_fd(*fd, [&](timeval_t now)
 				{
+					char decompress_buf[read_buffer_size]; // re-used buffer for decompression
+
 					// try receiving as much as possible without blocking
 					while (true)
 					{
@@ -302,7 +369,25 @@ namespace { namespace aux {
 						if (n > 0)
 						{
 							++stats_->udp.recv_packets;
+							stats_->udp.recv_bytes += uint64_t(n);
 
+							// parse incoming bytes, and maybe decompress them
+							net_datagram_t dgram = parse_network_datagram(str_ref{ buf, size_t(n) });
+							if (dgram.version == 1)
+							{
+								if ((dgram.flags & PINBA_NET_DATAGRAM_FLAG___COMPRESSED_LZ4) != 0)
+								{
+									bool const ok = decompress_network_datagram(&dgram, decompress_buf, sizeof(decompress_buf));
+									if (!ok)
+									{
+										// TODO: ++stats_->udp.packet_decompress_err;
+										++stats_->udp.packet_decode_err;
+										continue;
+									}
+								}
+							}
+
+							// unpack protobuf and push packet into batch
 							if (!req)
 							{
 								constexpr size_t nmpa_block_size = 16 * 1024;
@@ -310,9 +395,7 @@ namespace { namespace aux {
 								request_unpack_pba.allocator_data = &req->nmpa;
 							}
 
-							stats_->udp.recv_bytes += uint64_t(n);
-
-							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, n, (uint8_t*)buf);
+							Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.data.c_length(), (uint8_t*)dgram.data.data());
 							if (request == NULL) {
 								++stats_->udp.packet_decode_err;
 								continue;
@@ -449,6 +532,8 @@ namespace { namespace aux {
 			{
 				poller.read_plain_fd(*fd, [&](timeval_t now)
 				{
+					char decompress_buf[max_message_size]; // re-used buffer for decompression
+
 					// recv as much as possible without blocking
 					// but see comments in EAGAIN handling on sleep() and saving syscalls
 					while (true)
@@ -462,6 +547,28 @@ namespace { namespace aux {
 
 							for (int i = 0; i < n; i++)
 							{
+								str_ref const network_bytes = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
+
+								stats_->udp.recv_bytes += network_bytes.size();
+
+								net_datagram_t dgram = parse_network_datagram(network_bytes);
+
+								// maybe decompress, use thread-local tmp buffer as destination
+								if (dgram.version == 1)
+								{
+									if ((dgram.flags & PINBA_NET_DATAGRAM_FLAG___COMPRESSED_LZ4) != 0)
+									{
+										bool const ok = decompress_network_datagram(&dgram, decompress_buf, sizeof(decompress_buf));
+										if (!ok)
+										{
+											// TODO: ++stats_->udp.packet_decompress_err;
+											++stats_->udp.packet_decode_err;
+											continue;
+										}
+									}
+								}
+
+								// unpack protobuf into current batch's nmpa and push parsed request
 								if (!req)
 								{
 									constexpr size_t nmpa_block_size = 16 * 1024;
@@ -469,11 +576,7 @@ namespace { namespace aux {
 									request_unpack_pba.allocator_data = &req->nmpa;
 								}
 
-								str_ref const dgram = { (char*)iov[i].iov_base, (size_t)hdr[i].msg_len };
-
-								stats_->udp.recv_bytes += dgram.size();
-
-								Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.c_length(), (uint8_t*)dgram.data());
+								Pinba__Request *request = pinba__request__unpack(&request_unpack_pba, dgram.data.c_length(), (uint8_t*)dgram.data.data());
 								if (request == NULL) {
 									++stats_->udp.packet_decode_err;
 									continue;
