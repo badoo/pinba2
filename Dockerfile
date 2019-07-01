@@ -44,6 +44,7 @@ RUN git clone --branch master --single-branch --depth 1 https://github.com/anton
 # https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#using-pipes
 # TODO: Set SHELL instead
 RUN set -o pipefail && curl -L https://github.com/nanomsg/nanomsg/archive/1.1.5.tar.gz | tar xvz -C /tmp && mv -v /tmp/nanomsg-1.1.5 /_src/nanomsg
+RUN set -o pipefail && curl -L https://github.com/lz4/lz4/archive/v1.9.1.tar.gz | tar xvz -C /tmp && mv -v /tmp/lz4-1.9.1 /_src/lz4
 COPY . /_src/pinba2
 RUN /_src/pinba2/docker/build-from-source.sh
 

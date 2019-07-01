@@ -14,6 +14,11 @@ cmake \
 make -j4
 make install
 
+# build lz4 with PIC static lib
+cd /_src/lz4
+make CFLAGS="-fPIC -DPIC"
+make install PREFIX=/_install/lz4
+
 # pinba
 cd /_src/pinba2
 ./buildconf.sh
@@ -22,6 +27,7 @@ cd /_src/pinba2
 	--with-boost=/usr \
 	--with-meow=/_src/meow \
 	--with-nanomsg=/_install/nanomsg \
+	--with-lz4=/_install/lz4 \
 	--enable-libmysqlservices
 make -j4
 
