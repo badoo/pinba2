@@ -40,6 +40,7 @@ if [ $1 = "mysqld" ]; then
 	mysql --protocol=socket -uroot <<-EOSQL
 			SET @@SESSION.SQL_LOG_BIN=0;
 			DELETE from mysql.user;
+			FLUSH PRIVILEGES;
 			CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
 			GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;
 			FLUSH PRIVILEGES ;
@@ -47,9 +48,10 @@ if [ $1 = "mysqld" ]; then
 
 	# install plugin and create default db
 	# TODO: Use --init-file https://mariadb.com/kb/en/library/server-system-variables/#init_file
+	mysql --protocol=socket -uroot -e 'SHOW PLUGINS' | grep pinba \
+		|| mysql --protocol=socket -uroot -e "INSTALL PLUGIN pinba SONAME 'libpinba_engine2.so'"
 	mysql --protocol=socket -uroot <<-EOSQL
-		INSTALL PLUGIN pinba SONAME 'libpinba_engine2.so';
-		CREATE DATABASE pinba;
+		CREATE DATABASE IF NOT EXISTS pinba;
 	EOSQL
 
 	# TODO: create default tables from scripts/default_tables.sql
