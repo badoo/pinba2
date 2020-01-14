@@ -182,8 +182,10 @@ public:
 	dictionary_memory_t memory_used() const
 	{
 		return dictionary_memory_t {
-			.hash_bytes    = hash.bucket_count() * sizeof(*hash.begin()),
-			.strings_bytes = mem_used_by_word_strings,
+			.hash_bytes     = hash.bucket_count() * sizeof(*hash.begin()),
+			.wordlist_bytes = 0,
+			.freelist_bytes = 0,
+			.strings_bytes  = mem_used_by_word_strings,
 		};
 	}
 
