@@ -97,7 +97,7 @@ inline void for_each_timer(Pinba__Request const *r, Function const& cb)
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class D>
-inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct nmpa_s *nmpa)
+inline packet_t* pinba_request_to_packet(Pinba__Request const *r, nameword_dictionary_t *nw_d, D *d, struct nmpa_s *nmpa)
 {
 	auto *p = (packet_t*)nmpa_calloc(nmpa, sizeof(packet_t)); // NOTE: no ctor is called here!
 
@@ -124,10 +124,15 @@ inline packet_t* pinba_request_to_packet(Pinba__Request const *r, D *d, struct n
 		if (nid.status == name_id_t::not_checked)
 		{
 			// uint32_t const word_id = d->get_or_add(pb_string_as_str_ref(r->dictionary[dict_offset]));
-			dictionary_t::nameword_t const nw = d->get_nameword(pb_string_as_str_ref(r->dictionary[dict_offset]));
-			nid.status       += (nw.id != 0) + 1;
-			nid.word_id      = nw.id;
-			nid.bloom_hashed = nw.id_hash;
+			// dictionary_t::nameword_t const nw = d->get_nameword(pb_string_as_str_ref(r->dictionary[dict_offset]));
+			nameword_dictionary_t::nameword_t const *nw = nw_d->get(pb_string_as_str_ref(r->dictionary[dict_offset]));
+
+			nid.status += (nw != nullptr) + 1;
+			if (nid.status == name_id_t::ok)
+			{
+				nid.word_id      = nw->id;
+				nid.bloom_hashed = nw->id_hash;
+			}
 		}
 
 		// ff::fmt(stderr, " -> {{ {0}, {1}, {2} }\n", nid.status, nid.word_id, nid.bloom_hashed);

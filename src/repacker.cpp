@@ -347,6 +347,10 @@ namespace { namespace aux {
 			// thread-local cache for global shared dictionary
 			repacker_dictionary_t r_dictionary { globals_->dictionary() };
 
+			// thread-local pointer to the global nameword dictionary
+			// periodically reloaded in RCU style
+			nameword_dictionary_ptr nw_dictionary { globals_->dictionary()->load_nameword_dict() };
+
 			// batch state
 			auto const create_batch = [&]()
 			{
@@ -395,6 +399,12 @@ namespace { namespace aux {
 				std::lock_guard<std::mutex> lk_(stats_->mtx);
 				stats_->repacker_threads[thread_id].ru_utime = timeval_from_os_timeval(ru.ru_utime);
 				stats_->repacker_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
+			});
+
+			poller.ticker(1 * d_second, [&](timeval_t now)
+			{
+				nw_dictionary = globals_->dictionary()->load_nameword_dict();
+				// LOG_DEBUG(globals_->logger(), "{0}; reloaded nw_dictionary: {1}", thr_name, nw_dictionary.get());
 			});
 
 			// reap old dictionary wordslices periodically
@@ -451,7 +461,7 @@ namespace { namespace aux {
 							continue;
 						}
 
-						packet_t *packet = pinba_request_to_packet(pb_req, &r_dictionary, &batch->nmpa);
+						packet_t *packet = pinba_request_to_packet(pb_req, nw_dictionary.get(), &r_dictionary, &batch->nmpa);
 
 						if (globals_->options()->packet_debug)
 						{
