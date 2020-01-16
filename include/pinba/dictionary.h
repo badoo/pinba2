@@ -11,6 +11,8 @@
 
 #include "t1ha/t1ha.h"
 
+#include <meow/intrusive_ptr.hpp>
+
 #include "pinba/globals.h"
 #include "pinba/hash.h"
 
@@ -104,6 +106,11 @@ struct dictionary_word_hasher_t
 	}
 };
 
+inline uint64_t hash_dictionary_word(str_ref word)
+{
+	return dictionary_word_hasher_t()(word);
+}
+
 struct dictionary_memory_t
 {
 	uint64_t hash_bytes;
@@ -111,6 +118,116 @@ struct dictionary_memory_t
 	uint64_t freelist_bytes;
 	uint64_t strings_bytes;
 };
+
+
+struct nameword_dictionary_t : public meow::ref_counted_t
+{
+	struct nameword_t
+	{
+		uint32_t id       = 0;
+		uint64_t id_hash  = 0;
+		uint64_t str_hash = 0;
+	};
+	static_assert(std::is_nothrow_move_constructible<nameword_t>::value);
+
+	struct nameword_equal_t
+	{
+		using is_transparent = void;
+
+		inline bool operator()(std::string const& l, str_ref const& r) const
+		{
+			return str_ref {l} == r;
+		}
+
+		inline bool operator()(str_ref const& l, std::string const& r) const
+		{
+			return l == str_ref{r};
+		}
+
+		inline bool operator()(std::string const& l, std::string const& r) const
+		{
+			return l == r;
+		}
+	};
+
+	using hashtable_t = tsl::robin_map<
+							  std::string
+							, nameword_t
+							, dictionary_word_hasher_t
+							, nameword_equal_t
+							, std::allocator<std::pair<std::string, nameword_t>>
+							, /*StoreHash=*/ true>;
+
+	hashtable_t          hash;
+	uint64_t             mem_used_by_word_strings;
+
+public:
+
+	nameword_dictionary_t()
+		: mem_used_by_word_strings(0)
+	{
+	}
+
+	void clone_from(nameword_dictionary_t const& other)
+	{
+		hash = other.hash;
+		mem_used_by_word_strings = other.mem_used_by_word_strings;
+	}
+
+	size_t size() const
+	{
+		return hash.size();
+	}
+
+	dictionary_memory_t memory_used() const
+	{
+		return dictionary_memory_t {
+			.hash_bytes     = hash.bucket_count() * sizeof(*hash.begin()),
+			.wordlist_bytes = 0,
+			.freelist_bytes = 0,
+			.strings_bytes  = mem_used_by_word_strings,
+		};
+	}
+
+	// get a word without synchronisation
+	// note that this function returns a pointer,
+	// so you must retain a reference to this dictionary for the desired lifetime of the word
+	nameword_t const* get(str_ref word) const
+	{
+		uint64_t const word_hash = hash_dictionary_word(word);
+
+		auto const it = hash.find(word, word_hash);
+		if (it == hash.end())
+			return {};
+
+		return &it->second;
+	}
+
+	// inserts a word into the dictionary,
+	// WARNING: can't be called concurrently with get() on the same instance, call clone() first
+	// WARNING: returns a pointer like get, be careful with lifetime
+	nameword_t const* insert_with_external_locking(str_ref word)
+	{
+		uint64_t const word_hash = hash_dictionary_word(word);
+
+		uint32_t const word_id = hash.size() + 1;
+
+		nameword_t nw = {
+			.id       = word_id,
+			.id_hash  = pinba::hash_number(word_id),
+			.str_hash = word_hash,
+		};
+
+		auto const inserted_pair = hash.emplace_hash(word_hash, word.str(), nw);
+		auto const& it = inserted_pair.first;
+
+		if (inserted_pair.second) // inserted
+			mem_used_by_word_strings += word.size();
+
+		return &it->second;
+	}
+};
+using nameword_dictionary_ptr = boost::intrusive_ptr<nameword_dictionary_t>;
 
 struct dictionary_t : private boost::noncopyable
 {
@@ -132,57 +249,6 @@ struct dictionary_t : private boost::noncopyable
 	};
 	static_assert(sizeof(word_id_t) == sizeof(uint32_t), "no padding expected");
 */
-
-	struct nameword_t
-	{
-		uint32_t id       = 0;
-		uint64_t id_hash  = 0;
-		uint64_t str_hash = 0;
-	};
-	static_assert(std::is_nothrow_move_constructible<nameword_t>::value);
-
-	struct name_words_t : private boost::noncopyable
-	{
-		struct equal_t
-		{
-			using is_transparent = void;
-
-			inline bool operator()(std::string const& l, str_ref const& r) const
-			{
-				return str_ref {l} == r;
-			}
-
-			inline bool operator()(str_ref const& l, std::string const& r) const
-			{
-				return l == str_ref{r};
-			}
-
-			inline bool operator()(std::string const& l, std::string const& r) const
-			{
-				return l == r;
-			}
-		};
-
-		using hashtable_t = tsl::robin_map<
-								  std::string
-								, nameword_t
-								, dictionary_word_hasher_t
-								, equal_t
-								, std::allocator<std::pair<std::string, nameword_t>>
-								, /*StoreHash=*/ true>;
-
-		mutable rw_mutex_t   mtx;
-		hashtable_t          hash;
-		uint64_t             mem_used_by_word_strings;
-
-		name_words_t()
-			: mtx(true) // writer priority
-			, hash(1024) // pre-size moderately
-			, mem_used_by_word_strings(0)
-		{
-		}
-	};
-
 
 	static constexpr uint32_t const shard_count   = 32;
 	static constexpr uint32_t const shard_id_bits = 5;          // number of bits in mask below
@@ -254,8 +320,6 @@ private:
 
 	mutable std::array<shard_t, shard_count> shards_;
 
-	name_words_t  name_words;
-
 public:
 
 	dictionary_t()
@@ -280,8 +344,8 @@ public:
 		}
 
 		{
-			scoped_read_lock_t lock_(name_words.mtx);
-			result += name_words.hash.size();
+			auto const nwd_sz = load_nameword_dict()->size();
+			result += nwd_sz;
 		}
 
 		return result;
@@ -301,50 +365,54 @@ public:
 		}
 
 		{
-			scoped_read_lock_t lock_(name_words.mtx);
-			result.hash_bytes    += name_words.hash.bucket_count() * sizeof(*name_words.hash.begin());
-			result.strings_bytes += name_words.mem_used_by_word_strings;
+			auto const nwd_mu = load_nameword_dict()->memory_used();
+			result.hash_bytes += nwd_mu.hash_bytes;
+			result.strings_bytes += nwd_mu.strings_bytes;
 		}
 
 		return result;
 	}
 
-public:
+private:
 
-	nameword_t get_nameword(str_ref word) const
+	mutable nameword_dictionary_ptr  nameword_dictionary_;
+	mutable std::mutex               nameword_update_mtx_;
+	mutable std::mutex               nameword_load_and_store_mtx_;
+
+	void store_nameword_dict(nameword_dictionary_ptr nwd)
 	{
-		uint64_t const word_hash = hash_dictionary_word(word);
-
-		scoped_read_lock_t lock_(name_words.mtx);
-
-		auto const it = name_words.hash.find(word, word_hash);
-		if (it == name_words.hash.end())
-			return {};
-
-		return it->second;
+		std::lock_guard<std::mutex> lock_(nameword_load_and_store_mtx_); // sync with load_nameword_dict()
+		nameword_dictionary_ = nwd;
 	}
 
-	nameword_t add_nameword(str_ref word)
+public:
+
+	nameword_dictionary_t::nameword_t add_nameword(str_ref word)
 	{
-		uint64_t const word_hash = hash_dictionary_word(word);
+		std::lock_guard<std::mutex> lock_(nameword_update_mtx_); // sync with other writers
 
-		scoped_write_lock_t lock_(name_words.mtx);
+		auto const existing_nwd = this->load_nameword_dict();
 
-		uint32_t const word_id = name_words.hash.size() + 1;
+		auto nwd = meow::make_intrusive<nameword_dictionary_t>();
+		nwd->clone_from(*existing_nwd);
 
-		nameword_t nw = {
-			.id       = word_id,
-			.id_hash  = pinba::hash_number(word_id),
-			.str_hash = word_hash,
-		};
+		nameword_dictionary_t::nameword_t const *nw = nwd->insert_with_external_locking(word);
 
-		auto const inserted_pair = name_words.hash.emplace_hash(word_hash, word.str(), nw);
-		auto const& it = inserted_pair.first;
+		this->store_nameword_dict(nwd);
 
-		if (inserted_pair.second) // inserted
-			name_words.mem_used_by_word_strings += word.size();
+		return *nw;
+	}
 
-		return it->second;
+	nameword_dictionary_ptr load_nameword_dict() const
+	{
+		std::lock_guard<std::mutex> lock_(nameword_load_and_store_mtx_); // sync with store_nameword_dict()
+
+		// FIXME: move this to ctor
+		//  this assignment should be fin in a 'read-type' function, due to full mutex here
+		if (!nameword_dictionary_)
+			nameword_dictionary_ = meow::make_intrusive<nameword_dictionary_t>();
+
+		return nameword_dictionary_;
 	}
 
 public:
@@ -484,11 +552,6 @@ public:
 	}
 
 private:
-
-	static uint64_t hash_dictionary_word(str_ref word)
-	{
-		return dictionary_word_hasher_t()(word);
-	}
 
 	shard_t* get_shard_for_word_id(uint32_t word_id) const
 	{

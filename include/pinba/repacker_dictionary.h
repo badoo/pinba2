@@ -111,16 +111,6 @@ public:
 	// 	return d->get_word(word_id);
 	// }
 
-	dictionary_t::nameword_t get_nameword(str_ref word) const
-	{
-		return d->get_nameword(word);
-	}
-
-	dictionary_t::nameword_t add_nameword(str_ref word)
-	{
-		return d->add_nameword(word);
-	}
-
 	uint32_t get_or_add(str_ref const word)
 	{
 		if (!word)
