@@ -401,6 +401,8 @@ namespace { namespace aux {
 				stats_->repacker_threads[thread_id].ru_stime = timeval_from_os_timeval(ru.ru_stime);
 			});
 
+			// periodically re-load nameword dictionary, to see what's updated
+			// this is basically a poor man's RCU scheme (dict is fully copied + appended to on insert)
 			poller.ticker(1 * d_second, [&](timeval_t now)
 			{
 				nw_dictionary = globals_->dictionary()->load_nameword_dict();

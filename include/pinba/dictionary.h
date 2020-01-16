@@ -370,52 +370,8 @@ public:
 			result.strings_bytes += nwd_mu.strings_bytes;
 		}
 
-		// {
-		// 	scoped_read_lock_t lock_(name_words.mtx);
-		// 	result.hash_bytes    += name_words.hash.bucket_count() * sizeof(*name_words.hash.begin());
-		// 	result.strings_bytes += name_words.mem_used_by_word_strings;
-		// }
-
 		return result;
 	}
-
-// public:
-
-	// nameword_t get_nameword(str_ref word) const
-	// {
-	// 	uint64_t const word_hash = hash_dictionary_word(word);
-
-	// 	scoped_read_lock_t lock_(name_words.mtx);
-
-	// 	auto const it = name_words.hash.find(word, word_hash);
-	// 	if (it == name_words.hash.end())
-	// 		return {};
-
-	// 	return it->second;
-	// }
-
-	// nameword_t add_nameword(str_ref word)
-	// {
-	// 	uint64_t const word_hash = hash_dictionary_word(word);
-
-	// 	scoped_write_lock_t lock_(name_words.mtx);
-
-	// 	uint32_t const word_id = name_words.hash.size() + 1;
-
-	// 	nameword_t nw = {
-	// 		.id       = word_id,
-	// 		.id_hash  = pinba::hash_number(word_id),
-	// 		.str_hash = word_hash,
-	// 	};
-
-	// 	auto const inserted_pair = name_words.hash.emplace_hash(word_hash, word.str(), nw);
-	// 	auto const& it = inserted_pair.first;
-
-	// 	if (inserted_pair.second) // inserted
-	// 		name_words.mem_used_by_word_strings += word.size();
-
-	// 	return it->second;
-	// }
 
 private:
 
