@@ -60,16 +60,23 @@ STANDARD_PREFIXES="/usr /usr/local /opt /local"
 # autorevision part
 AUTOREVISION="$srcdir/autorevision.sh"
 
+VCS_DATE=""
+VCS_BRANCH=""
+VCS_FULL_HASH=""
+VCS_SHORT_HASH=""
+VCS_WC_MODIFIED=""
+
 v=$($AUTOREVISION -t sh)
 if test "$?" = "0"; then
 	eval "$v"
-
-	AC_DEFINE_UNQUOTED([VCS_DATE], "$VCS_DATE", [vcs date])
-	AC_DEFINE_UNQUOTED([VCS_BRANCH], "$VCS_BRANCH", [vcs branch])
-	AC_DEFINE_UNQUOTED([VCS_FULL_HASH], "$VCS_FULL_HASH", [vcs full hash])
-	AC_DEFINE_UNQUOTED([VCS_SHORT_HASH], "$VCS_SHORT_HASH", [vcs short hash])
-	AC_DEFINE_UNQUOTED([VCS_WC_MODIFIED], "$VCS_WC_MODIFIED", [vcs wc modified])
 fi
+
+AC_DEFINE_UNQUOTED([VCS_DATE], "$VCS_DATE", [vcs date])
+AC_DEFINE_UNQUOTED([VCS_BRANCH], "$VCS_BRANCH", [vcs branch])
+AC_DEFINE_UNQUOTED([VCS_FULL_HASH], "$VCS_FULL_HASH", [vcs full hash])
+AC_DEFINE_UNQUOTED([VCS_SHORT_HASH], "$VCS_SHORT_HASH", [vcs short hash])
+AC_DEFINE_UNQUOTED([VCS_WC_MODIFIED], "$VCS_WC_MODIFIED", [vcs wc modified])
+
 
 # builtin dependencies
 DEPS_CFLAGS="$DEPS_CFLAGS -I\${top_srcdir}/third_party" # sparsehash + t1ha
