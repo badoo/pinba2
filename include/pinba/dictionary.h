@@ -5,12 +5,14 @@
 #include <string>
 #include <deque>
 
+#include <sys/mman.h>
 #include <pthread.h>
 
 #include <tsl/robin_map.h>
 
 #include "t1ha/t1ha.h"
 
+#include <meow/api_call_error.hpp>
 #include <meow/intrusive_ptr.hpp>
 
 #include "pinba/globals.h"
@@ -95,6 +97,13 @@ struct scoped_write_lock_t : private boost::noncopyable
 		mtx_->unlock();
 	}
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// struct mmapped_memory_traits
+// {
+
+// };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -277,6 +286,10 @@ struct dictionary_t : private boost::noncopyable
 		word_t(word_t&& other) = default;
 		word_t& operator=(word_t&& other) = default;
 	};
+	// TODO: currently, it's 2x4 + 8 + 8 = 24bytes
+	//       since most latest x86 cpus have 64 byte cache lines,
+	//       i'd wager to make these objects 32 bytes to fit exactly two into cacheline
+	//       and limit destructive interference when updating/reading nearby words
 	static_assert((sizeof(word_t) == (2*sizeof(uint32_t) + sizeof(uint64_t) + sizeof(std::string))), "word_t should have no padding");
 
 	// str_ref key   - references words_t content
@@ -300,8 +313,113 @@ struct dictionary_t : private boost::noncopyable
 	// id -> word_t,
 	// deque is critical here, since `hash` stores pointers to it's elements,
 	// appends must not invalidate them
-	struct words_t : public std::deque<word_t>
+	// struct words_t : public std::deque<word_t>
+
+	// FIXME: rework this, abstraction is leaky anyway
+	//       this object needs to know about freelist to be more efficient (madvise dontneed)
+	//
+	// id -> word_t
+	// elements must never move in memory, since `hash` stores pointers to it's elements,
+	// mmap some memory and just roll our own vector here
+	// offset reads can go through completely lockless this way
+	// writes require external exclusive locking at all times
+	struct words_t : private boost::noncopyable
 	{
+		// mmap just enough for all words in this shard
+		// static constexpr size_t const initial_mmap_size = (word_id_mask + 1) * sizeof(word_t);
+		static constexpr size_t const initial_mmap_size = 4ULL * 1024 * 1024 * 1024; // 4GB
+
+		words_t()
+		{
+			// TODO: try hugepages, 2MB probably
+			void *ptr = [&]()
+			{
+				void     *ptr    = NULL;
+				size_t    size   = initial_mmap_size;
+				int const prot   = PROT_READ | PROT_WRITE;
+				int const flags  = MAP_PRIVATE | MAP_ANONYMOUS;
+				int const fd     = -1;
+				int const offset = 0;
+
+				#ifndef MAP_HUGE_2MB
+				#define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
+				#endif
+
+				// try 2MB hugepages first
+				ptr = ::mmap(NULL, size, prot, flags | MAP_HUGETLB | MAP_HUGE_2MB, fd, offset);
+				if (MAP_FAILED != ptr)
+					return ptr;
+
+				#undef MAP_HUGE_2MB
+
+				// regular pages otherwise
+				ptr = ::mmap(NULL, size, prot, flags, fd, offset);
+				if (MAP_FAILED != ptr)
+					return ptr;
+
+				throw meow::api_call_error("dictionary shard mmap of %zu bytes failed", initial_mmap_size);
+			}();
+
+			mmap_ptr_ = static_cast<word_t*>(ptr);
+			mmap_sz_  = initial_mmap_size;
+		}
+
+		~words_t()
+		{
+			int const _ = ::munmap(mmap_ptr_, mmap_sz_);
+			(void)_;
+		}
+
+		size_t size() const
+		{
+			return curr_sz_;
+		}
+
+		word_t* begin() const
+		{
+			return mmap_ptr_;
+		}
+
+		word_t* end() const
+		{
+			return mmap_ptr_ + curr_sz_;
+		}
+
+		void emplace_back()
+		{
+			new (mmap_ptr_ + curr_sz_) word_t();
+			curr_sz_ += 1;
+		}
+
+		word_t& back()
+		{
+			return mmap_ptr_[curr_sz_ - 1];
+		}
+
+		word_t& operator[](size_t offset)
+		{
+			assert((offset < curr_sz_) && "word_t::operator[]: offset is larger than current size");
+			return mmap_ptr_[offset];
+		}
+
+		word_t const& operator[](size_t offset) const
+		{
+			assert((offset < curr_sz_) && "word_t::operator[]: offset is larger than current size");
+			return mmap_ptr_[offset];
+		}
+
+		// this one only reads things that are 100% constant in time after initialization finished
+		word_t const* lockless_access(size_t offset) const
+		{
+			return mmap_ptr_ + offset;
+		}
+
+	private:
+		uint32_t curr_sz_    = 0; // number of elements in the array
+		// uint32_t max_offset_ = 0; // offset of last 'existing' element, needs freelist integration to work
+
+		word_t  *mmap_ptr_ = nullptr;
+		size_t   mmap_sz_  = 0;       // bytes
 	};
 
 private:
@@ -427,11 +545,16 @@ public:
 		uint32_t const word_offset = (word_id & word_id_mask) - 1;
 
 		// can use only READ lock, here, since word refcount is not incremented
-		scoped_read_lock_t lock_(shard->mtx);
+		// scoped_read_lock_t lock_(shard->mtx);
 
-		assert((word_offset < shard->words.size()) && "word_offset >= wordlist.size(), bad word_id reference");
+		// assert((word_offset < shard->words.size()) && "word_offset >= wordlist.size(), bad word_id reference");
 
-		word_t const *w = &shard->words[word_offset];
+		// XXX(antoxa):
+		//   no read lock required anymore, since words_t uses mmap-based implementation
+		//   but can't read size anymore, so proceed with a good prayer
+
+		// word_t const *w = &shard->words[word_offset];
+		word_t const *w = shard->words.lockless_access(word_offset);
 		assert((w && !w->str.empty()) && "got empty word ptr from wordlist, dangling word_id reference");
 
 		return str_ref { w->str }; // TODO: optimize pointer deref here (string::size(), etc.)
