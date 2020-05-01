@@ -391,7 +391,7 @@ namespace { namespace aux {
 					return (void*)&it->second.data;
 				}
 
-				static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
+				static void* hv_at_position(report_snapshot_ctx_t *snapshot_ctx, hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
 					row_t *row = const_cast<row_t*>(&it->second);
 

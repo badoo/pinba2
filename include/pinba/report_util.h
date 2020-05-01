@@ -166,7 +166,7 @@ struct report_snapshot_traits___example
 	// get iterator keys/values/histograms at iterator
 	static report_key_t key_at_position(hashtable_t const&, iterator_t const&);
 	static void*        value_at_position(hashtable_t const&, iterator_t const&);
-	static histogram_t* hv_at_position(hashtable_t const&, iterator_t const&);
+	static histogram_t* hv_at_position(report_snapshot_ctx_t*, hashtable_t const&, iterator_t const&);
 };
 */
 
@@ -418,7 +418,7 @@ private:
 			return nullptr;
 
 		auto const& it = iterator_from_position(pos);
-		return Traits::hv_at_position(data_, it);
+		return Traits::hv_at_position(this, data_, it);
 	}
 };
 

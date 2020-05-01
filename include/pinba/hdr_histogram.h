@@ -125,13 +125,40 @@ inline meow::error_t hdr_histogram_configure___sig_figures(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+template<class CounterT>
+struct hdr_snapshot___impl_t
+{
+	struct count_t
+	{
+		uint32_t index;
+		CounterT count;
+	};
+
+	std::vector<count_t>  counts       = {};
+	uint64_t              total_count  = 0;
+	CounterT              negative_inf = 0;
+	CounterT              positive_inf = 0;
+
+	hdr_snapshot___impl_t() = default;
+
+	// move only
+	hdr_snapshot___impl_t(hdr_snapshot___impl_t&& other) = default;
+	hdr_snapshot___impl_t& operator=(hdr_snapshot___impl_t&& other) = default;
+};
+static_assert(std::is_integral<uint32_t>::value, "hdr_snapshot_t; CounterT must be integral type");
+static_assert(!std::is_copy_constructible<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
+static_assert(std::is_nothrow_move_constructible<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
+static_assert(std::is_nothrow_move_assignable<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
+
+////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class CounterT>
 struct hdr_histogram___impl_t : private boost::noncopyable
 {
-	using self_t    = hdr_histogram___impl_t;
-	using counter_t = CounterT;
-	using config_t  = hdr_histogram_conf_t;
+	using self_t     = hdr_histogram___impl_t;
+	using counter_t  = CounterT;
+	using config_t   = hdr_histogram_conf_t;
+	using snapshot_t = hdr_snapshot___impl_t<CounterT>;
 
 	static_assert(std::is_integral<counter_t>::value, "T must be an integral type");
 
@@ -306,6 +333,75 @@ public:
 		this->negative_inf_ += other.negative_inf_;
 		this->positive_inf_ += other.positive_inf_;
 		this->total_count_ += other.total_count_;
+	}
+
+	snapshot_t save_snapshot(config_t const& conf) const
+	{
+		snapshot_t result;
+
+		result.counts.resize(this->counts_nonzero());
+		result.total_count  = this->total_count();
+		result.negative_inf = this->negative_inf();
+		result.positive_inf = this->positive_inf();
+
+		uint32_t write_position = 0;
+
+		for (uint32_t i = 0; i < this->counts_len(); ++i)
+		{
+			uint32_t const cnt = this->count_at_index(i);
+			if (cnt == 0)
+				continue;
+
+			auto& snap_elt = result.counts[write_position];
+
+			snap_elt.index = i;
+			snap_elt.count = cnt;
+
+			write_position++;
+		}
+
+		assert(write_position == result.counts.size());
+
+		// for (auto const& elt : result.counts)
+		// {
+		// 	ff::fmt(stderr, "{0} -> {1}\n", elt.index, elt.count);
+		// }
+
+		return result;
+	}
+
+	void merge_snapshot(config_t const& conf, snapshot_t const& snapshot)
+	{
+		// FIXME: turn this into a function, copy-pasted from merge_other_with_same_conf()
+		if (this->counts_len_ < counts_maxlen_)
+		{
+			counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
+			if (tmp == nullptr)
+				throw std::bad_alloc();
+
+			std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
+			this->counts_len_ = counts_maxlen_;
+			this->counts_ = tmp;
+		}
+
+		this->total_count_  += snapshot.total_count;
+		this->negative_inf_ += snapshot.negative_inf;
+		this->positive_inf_ += snapshot.positive_inf;
+
+		for (auto const& src : snapshot.counts)
+		{
+			counter_t      & dst_counter = this->counts_[src.index];
+			counter_t const& src_counter = src.count;
+
+			// ff::fmt(stderr, "merging; at: {0}, src: {1} + dst: {2} = ", src.index, src_counter, dst_counter);
+
+			if (dst_counter == 0)
+				this->counts_nonzero_ += 1;
+
+			dst_counter += src_counter;
+
+			// ff::fmt(stderr, "{0}\n", dst_counter);
+		}
 	}
 
 public:

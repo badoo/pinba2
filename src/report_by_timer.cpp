@@ -570,7 +570,14 @@ namespace { namespace aux {
 				uint64_t          key_hash;
 				key_t             key;
 				data_t            data;
-				flat_histogram_t  hv;
+				// flat_histogram_t  hv;
+				hdr_snapshot_t    hv;
+
+				history_row_t() = default;
+
+				// move only
+				history_row_t(history_row_t&&) = default;
+				history_row_t& operator=(history_row_t&&) = default;
 			};
 
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
@@ -623,8 +630,8 @@ namespace { namespace aux {
 					dst_row.data     = src_item.data;
 
 					// FIXME: only convert if histograms are enabled!
-					dst_row.hv       = std::move(histogram___convert_hdr_to_flat(src_item.hv, hv_conf_));
-					h_tick->mem_used += dst_row.hv.values.capacity() * sizeof(*dst_row.hv.values.begin());
+					dst_row.hv       = std::move(src_item.hv.save_snapshot(hv_conf_.hdr));
+					h_tick->mem_used += dst_row.hv.counts.capacity() * sizeof(*dst_row.hv.counts.begin());
 				}
 
 				ring_.append(std::move(h_tick));
@@ -688,8 +695,8 @@ namespace { namespace aux {
 					// please note that we're also saving pointers to flat_histogram_t::values
 					// and will restore full structs on merge
 					// this a 'limitation' of multi_merge() function
-					std::vector<histogram_values_t const*>  saved_hv;
-					flat_histogram_t                        merged_hv;
+					std::vector<hdr_snapshot_t const*>  saved_hv;
+					flat_histogram_t                    merged_hv;
 				};
 
 				struct hashtable_t
@@ -715,13 +722,14 @@ namespace { namespace aux {
 					return (void*)&it->second.data;
 				}
 
-				static void* hv_at_position(hashtable_t const&, typename hashtable_t::iterator const& it)
+				static void* hv_at_position(report_snapshot_ctx_t *snapshot_ctx, hashtable_t const&, typename hashtable_t::iterator const& it)
 				{
 					row_t *row = const_cast<row_t*>(&it->second); // will mutate the row, potentially
 
 					if (row->saved_hv.empty()) // already merged
 						return &row->merged_hv;
 
+				#if 0
 					struct merger_t
 					{
 						flat_histogram_t *to;
@@ -776,8 +784,17 @@ namespace { namespace aux {
 						row->merged_hv.negative_inf += src->negative_inf;
 						row->merged_hv.positive_inf += src->positive_inf;
 					}
+				#endif
 
-					// clear source
+					hdr_histogram_t tmp_hv { &snapshot_ctx->nmpa, snapshot_ctx->hv_conf };
+
+					for (auto const *src_hv : row->saved_hv)
+					{
+						tmp_hv.merge_snapshot(snapshot_ctx->hv_conf.hdr, *src_hv);
+					}
+
+					// commit
+					row->merged_hv = histogram___convert_hdr_to_flat(tmp_hv, snapshot_ctx->hv_conf);
 					row->saved_hv.clear();
 
 					return &row->merged_hv;
@@ -856,13 +873,11 @@ namespace { namespace aux {
 
 							if (need_histograms)
 							{
-								flat_histogram_t const& src_hv = src.hv;
-
 								// try preallocate
 								if (dst.saved_hv.empty())
 									dst.saved_hv.reserve(ticks.size());
 
-								dst.saved_hv.push_back(&src_hv.values);
+								dst.saved_hv.push_back(&src.hv);
 							}
 						}
 
@@ -894,7 +909,7 @@ namespace { namespace aux {
 					.rinfo          = rinfo_,
 					.estimates      = this->get_estimates(),
 					.hv_conf        = hv_conf_,
-					.nmpa           = {} // don't need this at the moment
+					.nmpa           = nmpa_autofree_t{ 64 * 1024 },
 				};
 
 				using snapshot_t = report_snapshot__impl_t<snapshot_traits>;

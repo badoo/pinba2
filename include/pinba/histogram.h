@@ -132,6 +132,8 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // hdr histogram - used for current timeslice histograms aggregation
 
+using hdr_snapshot_t = hdr_snapshot___impl_t<uint32_t>;
+
 struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 {
 	using base_t = hdr_histogram___impl_t<uint32_t>;

@@ -182,7 +182,11 @@ namespace { namespace aux {
 
 				static report_key_t key_at_position(hashtable_t const&, hashtable_t::iterator const& it)    { return {}; }
 				static void*        value_at_position(hashtable_t const&, hashtable_t::iterator const& it)  { return (void*)it; }
-				static void*        hv_at_position(hashtable_t const&, hashtable_t::iterator const& it)     { return it->hv.get(); }
+
+				static void* hv_at_position(report_snapshot_ctx_t *snapshot_ctx, hashtable_t const&, hashtable_t::iterator const& it)
+				{
+					return it->hv.get();
+				}
 
 				static void calculate_raw_stats(report_snapshot_ctx_t *snapshot_ctx, src_ticks_t const& ticks, report_raw_stats_t *stats)
 				{
