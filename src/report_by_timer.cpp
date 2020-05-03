@@ -703,7 +703,9 @@ namespace { namespace aux {
 					// please note that we're also saving pointers to flat_histogram_t::values
 					// and will restore full structs on merge
 					// this a 'limitation' of multi_merge() function
-					std::vector<hdr_snapshot___nmpa_t const*>  saved_hv;
+					// std::vector<hdr_snapshot___nmpa_t const*>  saved_hv;
+					uint32_t                                         saved_hvs_len;
+					std::unique_ptr<hdr_snapshot___nmpa_t const*[]>  saved_hvs;
 					flat_histogram_t                           merged_hv;
 				};
 
@@ -734,7 +736,7 @@ namespace { namespace aux {
 				{
 					row_t *row = const_cast<row_t*>(&it->second); // will mutate the row, potentially
 
-					if (row->saved_hv.empty()) // already merged
+					if (!row->saved_hvs) // already merged
 						return &row->merged_hv;
 
 					#define HDR_HISTOGRAM__ALLOC_SNAPSHOT_MERGER(type, name, conf) \
@@ -749,9 +751,10 @@ namespace { namespace aux {
 					/**/
 					HDR_HISTOGRAM__ALLOC_SNAPSHOT_MERGER(hdr_snapshot___merged_t, tmp_merged, snapshot_ctx->hv_conf.hdr);
 
-					for (auto const *src_hv : row->saved_hv)
+					// for (auto const *src_hv : row->saved_hv)
+					for (uint32_t i = 0; i < row->saved_hvs_len; ++i)
 					{
-						hdr_histogram___merge_snapshot_from_to(snapshot_ctx->hv_conf.hdr, *src_hv, *tmp_merged);
+						hdr_histogram___merge_snapshot_from_to(snapshot_ctx->hv_conf.hdr, *row->saved_hvs[i], *tmp_merged);
 					}
 
 					// hdr_snapshot___merged_t *tmp_merged = hdr_histogram___allocate_snapshot_merger(&snapshot_ctx->nmpa, snapshot_ctx->hv_conf.hdr);
@@ -765,7 +768,9 @@ namespace { namespace aux {
 
 					// commit
 					row->merged_hv = std::move(histogram___convert_hdr_to_flat(*tmp_merged, snapshot_ctx->hv_conf));
-					row->saved_hv.clear();
+					// row->saved_hv.clear();
+					row->saved_hvs.reset();
+					row->saved_hvs_len = 0;
 
 					return &row->merged_hv;
 				}
@@ -843,11 +848,13 @@ namespace { namespace aux {
 
 							if (need_histograms)
 							{
-								// try preallocate
-								if (dst.saved_hv.empty())
-									dst.saved_hv.reserve(ticks.size());
+								if (inserted_pair.second) // just inserted empty elt
+								{
+									dst.saved_hvs_len = 0;
+									dst.saved_hvs.reset(new hdr_snapshot___nmpa_t const* [dst.saved_hvs_len]);
+								}
 
-								dst.saved_hv.push_back(src.hv);
+								dst.saved_hvs[dst.saved_hvs_len++] = src.hv;
 							}
 						}
 
