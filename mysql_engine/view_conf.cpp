@@ -60,8 +60,19 @@ namespace { namespace aux {
 			if (!meow::number_from_string(&time_window, time_window_s))
 				return ff::fmt_err("bad seconds_spec: '{0}', expected integer number of seconds", time_window_s);
 
+			uint32_t tick_width_sec = 1; // the default
+			if (time_window_v.size() > 1)
+			{
+				if (!meow::number_from_string(&tick_width_sec, time_window_v[1]))
+					return ff::fmt_err("bad tick_width_spec: '{0}', expected integer number of seconds", time_window_v[1]);
+
+				// check we can fit whole number of ticks into the time_window
+				if (time_window != ((time_window / tick_width_sec) * tick_width_sec))
+					return ff::fmt_err("can't fit a whole number of tick_width-s ({0}) into time_window ({1})", tick_width_sec, time_window);
+			}
+
 			vcf->time_window = time_window * d_second;
-			vcf->tick_count  = time_window; // i.e. ticks are always 1 second wide
+			vcf->tick_count  = time_window / tick_width_sec;
 		}
 
 		return {};
