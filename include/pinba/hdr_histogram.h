@@ -588,7 +588,10 @@ static_assert(sizeof(hdr_snapshot___merged_t) == 24, "no padding expected in hdr
 template<class Histogram>
 inline hdr_snapshot___nmpa_t* hdr_histogram___save_snapshot_nmpa(Histogram const& h, hdr_histogram_conf_t const& conf, struct nmpa_s *nmpa)
 {
-	auto *result = (hdr_snapshot___nmpa_t*)nmpa_calloc(nmpa, sizeof(hdr_snapshot___nmpa_t) + h.get_counts_nonzero() * sizeof(uint32_t));
+	hdr_snapshot___nmpa_t *result = nullptr;
+	size_t const object_size = sizeof(*result) + h.get_counts_nonzero() * sizeof(result->counts[0]);
+
+	result = static_cast<hdr_snapshot___nmpa_t*>(nmpa_calloc(nmpa, object_size));
 	if (nullptr == result)
 		return nullptr;
 
