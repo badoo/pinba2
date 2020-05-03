@@ -132,7 +132,7 @@ inline duration_t get_percentile(flat_histogram_t const& hv, histogram_conf_t co
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // hdr histogram - used for current timeslice histograms aggregation
 
-using hdr_snapshot_t = hdr_snapshot___impl_t<uint32_t>;
+// using hdr_snapshot_t = hdr_snapshot___impl_t<uint32_t>;
 
 struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 {
@@ -160,7 +160,13 @@ struct hdr_histogram_t : public hdr_histogram___impl_t<uint32_t>
 
 inline duration_t get_percentile(hdr_histogram_t const& hv, histogram_conf_t const& conf, double percentile)
 {
-	int64_t const pct_value = hv.get_percentile(conf.hdr, percentile);
+	int64_t const pct_value = hdr_histogram___get_percentile(hv, conf.hdr, percentile);
+	return pct_value * conf.unit_size;
+}
+
+inline duration_t get_percentile(hdr_snapshot___merged_t const& hv, histogram_conf_t const& conf, double percentile)
+{
+	int64_t const pct_value = hdr_snapshot___get_percentile(hv, conf.hdr, percentile);
 	return pct_value * conf.unit_size;
 }
 
@@ -182,29 +188,58 @@ inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_histogram_t const& h
 {
 	flat_histogram_t flat;
 
-	flat.total_count  = hdr.total_count();
-	flat.negative_inf = hdr.negative_inf();
-	flat.positive_inf = hdr.positive_inf();
+	flat.total_count  = hdr.get_total_count();
+	flat.negative_inf = hdr.get_negative_inf();
+	flat.positive_inf = hdr.get_positive_inf();
 
 	flat.values.clear();
-	flat.values.resize(hdr.counts_nonzero()); // FIXME: this does useless zero init
+	flat.values.resize(hdr.get_counts_nonzero()); // FIXME: this does useless zero init
 
 	auto const counts_r = hdr.get_counts_range();
 
 	uint32_t read_position = 0;
-	for (uint32_t i = 0; i < hdr.counts_nonzero(); i++)
+	for (uint32_t i = 0; i < hdr.get_counts_nonzero(); i++)
 	{
 		while (counts_r[read_position] == 0)
 			read_position++;
 
 		histogram_value_t& hv_value = flat.values[i];
-		hv_value.bucket_id = (uint32_t) hdr.value_at_index(read_position);
+		hv_value.bucket_id = (uint32_t) hdr_algorithms::value_at_index(conf.hdr, read_position);
 		hv_value.value     = counts_r[read_position];
 
 		read_position++;
 	}
 
 	assert(read_position <= counts_r.size());
+
+	return flat;
+}
+
+inline flat_histogram_t histogram___convert_hdr_to_flat(hdr_snapshot___merged_t const& h, histogram_conf_t const& conf)
+{
+	flat_histogram_t flat;
+
+	flat.total_count  = h.total_count;
+	flat.negative_inf = h.negative_inf;
+	flat.positive_inf = h.positive_inf;
+
+	flat.values.clear();
+	flat.values.resize(h.counts_nonzero); // FIXME: this does useless zero init
+
+	uint32_t read_position = 0;
+	for (uint32_t i = 0; i < h.counts_nonzero; i++)
+	{
+		while (h.counts[read_position] == 0)
+			read_position++;
+
+		histogram_value_t& hv_value = flat.values[i];
+		hv_value.bucket_id = (uint32_t) hdr_algorithms::value_at_index(conf.hdr, read_position);
+		hv_value.value     = h.counts[read_position];
+
+		read_position++;
+	}
+
+	assert(read_position <= h.counts_len);
 
 	return flat;
 }

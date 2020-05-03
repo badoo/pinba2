@@ -567,25 +567,24 @@ namespace { namespace aux {
 
 			struct history_row_t
 			{
-				uint64_t          key_hash;
-				key_t             key;
-				data_t            data;
-				// flat_histogram_t  hv;
-				hdr_snapshot_t    hv;
+				uint64_t                key_hash;
+				key_t                   key;
+				data_t                  data;
+				hdr_snapshot___nmpa_t  *hv;
 
-				history_row_t() = default;
-
-				// move only
-				history_row_t(history_row_t&&) = default;
-				history_row_t& operator=(history_row_t&&) = default;
+				// history_row_t() = delete; // to be initialized manually
 			};
 
 			struct history_tick_t : public report_tick_t // not required to inherit here, but get history ring for free
 			{
 				// precalculated mem usage, to avoid expensive computation in get_estimates()
-				uint64_t                   mem_used = 0;
+				uint64_t                         mem_used = 0;
 
-				std::vector<history_row_t> rows    = {};
+				std::unique_ptr<history_row_t[]> rows       = {};
+				uint32_t                         row_count  = {};
+				uint32_t                         padding___ = {}; // be explicit, we know it's there
+
+				nmpa_autofree_t                  hv_nmpa    = nmpa_autofree_t{ 128 * 1024 }; // TODO: don't init this, if hvs are disabled
 			};
 
 		public:
@@ -607,33 +606,41 @@ namespace { namespace aux {
 			virtual void merge_tick(report_tick_ptr tick_base) override
 			{
 				// re-process tick data, for more compact storage
-				auto *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src (non-const to move from, see below)
+				auto *agg_tick = static_cast<tick_t const*>(tick_base.get()); // src
 				auto    h_tick = meow::make_intrusive<history_tick_t>();      // dst
 
 				// remember to grab repacker_state
 				h_tick->repacker_state = std::move(agg_tick->repacker_state);
 
 				// reserve, we know the size
-				h_tick->rows.reserve(agg_tick->ht.size());
-				h_tick->mem_used += h_tick->rows.capacity() * sizeof(*h_tick->rows.begin());
+				h_tick->row_count = agg_tick->ht.size();
+				h_tick->rows.reset(new history_row_t[h_tick->row_count]); // no init!
 
+				// copy all the relevant data, transforming on the go
+				// for less memory usage
+				// and faster report snapshot merges
+				size_t write_offset = 0;
 				for (auto const& ht_pair : agg_tick->ht)
 				{
-					h_tick->rows.emplace_back();
-
 					key_t       const& src_key  = ht_pair.first;
 					tick_item_t const& src_item = *ht_pair.second;
-					history_row_t    & dst_row  = h_tick->rows.back();
+					history_row_t    & dst_row  = h_tick->rows[write_offset];
 
 					dst_row.key_hash = src_item.key_hash;
 					dst_row.key      = src_key;
 					dst_row.data     = src_item.data;
 
-					// FIXME: only convert if histograms are enabled!
-					dst_row.hv       = std::move(src_item.hv.save_snapshot(hv_conf_.hdr));
-					h_tick->mem_used += dst_row.hv.counts.capacity() * sizeof(*dst_row.hv.counts.begin());
+					if (rinfo_.hv_enabled)
+						dst_row.hv  = hdr_histogram___save_snapshot_nmpa(src_item.hv, hv_conf_.hdr, &h_tick->hv_nmpa);
+
+					write_offset++;
 				}
 
+				// memory counters
+				h_tick->mem_used += h_tick->row_count * sizeof(h_tick->rows[0]);
+				h_tick->mem_used += nmpa_mem_used(&h_tick->hv_nmpa);
+
+				// ready
 				ring_.append(std::move(h_tick));
 			}
 
@@ -652,7 +659,7 @@ namespace { namespace aux {
 					for (auto const& tick_base : ringbuf)
 					{
 						auto const& tick = static_cast<history_tick_t const&>(*tick_base);
-						non_unique_rows += tick.rows.size();
+						non_unique_rows += tick.row_count;
 					}
 
 					// got stats from snapshot merge with exact values, adjust based uniq to total rows ratio
@@ -692,11 +699,12 @@ namespace { namespace aux {
 					data_t       data;
 
 					// list of saved hvs, we merge only when requested (i.e. in hv_at_position)
+					// TODO: use nmpa for flat histograms as well (?)
 					// please note that we're also saving pointers to flat_histogram_t::values
 					// and will restore full structs on merge
 					// this a 'limitation' of multi_merge() function
-					std::vector<hdr_snapshot_t const*>  saved_hv;
-					flat_histogram_t                    merged_hv;
+					std::vector<hdr_snapshot___nmpa_t const*>  saved_hv;
+					flat_histogram_t                           merged_hv;
 				};
 
 				struct hashtable_t
@@ -729,72 +737,34 @@ namespace { namespace aux {
 					if (row->saved_hv.empty()) // already merged
 						return &row->merged_hv;
 
-				#if 0
-					struct merger_t
-					{
-						flat_histogram_t *to;
-
-						inline bool compare(histogram_value_t const& l, histogram_value_t const& r) const
-						{
-							return l.bucket_id < r.bucket_id;
-						}
-
-						inline bool equal(histogram_value_t const& l, histogram_value_t const& r) const
-						{
-							return l.bucket_id == r.bucket_id;
-						}
-
-						inline void reserve(size_t const sz)
-						{
-							to->values.reserve(sz);
-						}
-
-						inline void push_back(histogram_values_t const *seq, histogram_value_t const& v)
-						{
-							flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, seq);
-
-							bool const should_insert = [&]()
-							{
-								if (to->values.empty())
-									return true;
-
-								return !equal(to->values.back(), v);
-							}();
-
-							if (should_insert)
-							{
-								to->values.emplace_back(v);
-							}
-							else
-							{
-								to->values.back().value += v.value;
-							}
-						}
-					};
-
-					// merge histogram values
-					merger_t merger = { .to = &row->merged_hv };
-					pinba::multi_merge(&merger, row->saved_hv.begin(), row->saved_hv.end());
-
-					// merge histogram totals
-					for (auto const *src_hv_values : row->saved_hv)
-					{
-						flat_histogram_t *src = MEOW_SELF_FROM_MEMBER(flat_histogram_t, values, src_hv_values);
-						row->merged_hv.total_count  += src->total_count;
-						row->merged_hv.negative_inf += src->negative_inf;
-						row->merged_hv.positive_inf += src->positive_inf;
-					}
-				#endif
-
-					hdr_histogram_t tmp_hv { &snapshot_ctx->nmpa, snapshot_ctx->hv_conf };
+					#define HDR_HISTOGRAM__ALLOC_SNAPSHOT_MERGER(type, name, conf) \
+						type *name = nullptr; \
+						{ \
+							auto const& cf = conf; \
+							size_t const obj_size = sizeof(type) + cf.counts_len * sizeof(uint32_t); \
+							name = static_cast<type*>(alloca(obj_size)); \
+							memset(name, 0, obj_size); /* zero init before merge */ \
+							name->counts_len = cf.counts_len; /* init length to correct value */ \
+						} \
+					/**/
+					HDR_HISTOGRAM__ALLOC_SNAPSHOT_MERGER(hdr_snapshot___merged_t, tmp_merged, snapshot_ctx->hv_conf.hdr);
 
 					for (auto const *src_hv : row->saved_hv)
 					{
-						tmp_hv.merge_snapshot(snapshot_ctx->hv_conf.hdr, *src_hv);
+						hdr_histogram___merge_snapshot_from_to(snapshot_ctx->hv_conf.hdr, *src_hv, *tmp_merged);
 					}
 
+					// hdr_snapshot___merged_t *tmp_merged = hdr_histogram___allocate_snapshot_merger(&snapshot_ctx->nmpa, snapshot_ctx->hv_conf.hdr);
+					// if (nullptr == tmp_merged)
+					// {
+					// 	for (auto const *src_hv : row->saved_hv)
+					// 	{
+					// 		hdr_histogram___merge_snapshot_from_to(snapshot_ctx->hv_conf.hdr, *src_hv, *tmp_merged);
+					// 	}
+					// }
+
 					// commit
-					row->merged_hv = histogram___convert_hdr_to_flat(tmp_hv, snapshot_ctx->hv_conf);
+					row->merged_hv = std::move(histogram___convert_hdr_to_flat(*tmp_merged, snapshot_ctx->hv_conf));
 					row->saved_hv.clear();
 
 					return &row->merged_hv;
@@ -809,7 +779,7 @@ namespace { namespace aux {
 
 						auto const& tick = static_cast<history_tick_t const&>(*tick_base);
 
-						stats->row_count += tick.rows.size();
+						stats->row_count += tick.row_count;
 					}
 				}
 
@@ -858,7 +828,7 @@ namespace { namespace aux {
 
 						n_ticks++;
 
-						for (size_t i = 0; i < tick.rows.size(); i++)
+						for (size_t i = 0; i < tick.row_count; i++)
 						{
 							history_row_t const& src = tick.rows[i];
 
@@ -877,14 +847,14 @@ namespace { namespace aux {
 								if (dst.saved_hv.empty())
 									dst.saved_hv.reserve(ticks.size());
 
-								dst.saved_hv.push_back(&src.hv);
+								dst.saved_hv.push_back(src.hv);
 							}
 						}
 
-						key_lookups += tick.rows.size();
+						key_lookups += tick.row_count;
 
 						if (need_histograms)
-							hv_appends  += tick.rows.size();
+							hv_appends  += tick.row_count;
 					}
 
 					LOG_DEBUG(snapshot_ctx->logger(), "prepare '{0}'; n_ticks: {1}, key_lookups: {2}, hv_appends: {3}",

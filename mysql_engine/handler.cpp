@@ -959,7 +959,9 @@ private:
 			unsigned const n_histogram_fields = 1;
 			if (findex < n_histogram_fields)
 			{
+				auto const *hv_conf   = snapshot_->histogram_conf();
 				auto const *histogram = snapshot_->get_histogram(row_pos);
+
 				if (histogram != nullptr)
 				{
 					auto const hv_data = [&]() -> std::string
@@ -971,23 +973,6 @@ private:
 
 						ff::fmt(result, "hv={0}:{1}:{2};", hv_min_ms, hv_max_ms, rinfo->hv_bucket_count);
 						ff::fmt(result, "values=[");
-
-						// if (HISTOGRAM_KIND__HASHTABLE == rinfo->hv_kind)
-						// {
-						// 	auto const *hv = static_cast<histogram_t const*>(histogram);
-
-						// 	auto const& hv_map = hv->map_cref();
-						// 	for (auto it = hv_map.begin(), it_end = hv_map.end(); it != it_end; ++it)
-						// 	{
-						// 		ff::fmt(result, "{0}{1}:{2}", (hv_map.begin() == it)?"":", ", it->first, it->second);
-						// 	}
-
-						// 	if (hv->negative_inf() > 0)
-						// 		ff::fmt(result, "{0}min:{1}", hv_map.empty() ? "" : ", ", hv->negative_inf());
-
-						// 	if (hv->positive_inf() > 0)
-						// 		ff::fmt(result, "{0}max:{1}", hv_map.empty() ? "" : ", ", hv->positive_inf());
-						// }
 
 						if (HISTOGRAM_KIND__FLAT == rinfo->hv_kind)
 						{
@@ -1012,24 +997,24 @@ private:
 
 							bool printed_something = false;
 
-							for (uint32_t i = 0; i < hv->counts_len(); i++)
+							for (uint32_t i = 0; i < hv->get_counts_len(); i++)
 							{
 								if (hv->count_at_index(i) == 0)
 									continue;
 
-								ff::fmt(result, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(i), hv->count_at_index(i));
+								ff::fmt(result, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(hv_conf->hdr, i), hv->count_at_index(i));
 								printed_something = true;
 							}
 
-							if (hv->negative_inf() > 0)
+							if (hv->get_negative_inf() > 0)
 							{
-								ff::fmt(result, "{0}min:{1}", (printed_something)?", ":"", hv->negative_inf());
+								ff::fmt(result, "{0}min:{1}", (printed_something)?", ":"", hv->get_negative_inf());
 								printed_something = true;
 							}
 
-							if (hv->positive_inf() > 0)
+							if (hv->get_positive_inf() > 0)
 							{
-								ff::fmt(result, "{0}max:{1}", (printed_something)?", ":"", hv->positive_inf());
+								ff::fmt(result, "{0}max:{1}", (printed_something)?", ":"", hv->get_positive_inf());
 								printed_something = true;
 							}
 						}

@@ -125,6 +125,93 @@ inline meow::error_t hdr_histogram_configure___sig_figures(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct hdr_algorithms
+{
+	static inline int64_t value_at_index(hdr_histogram_conf_t const& conf, int32_t index)
+	{
+		int32_t bucket_index = (index >> conf.sub_bucket_half_count_magnitude) - 1;
+		int32_t sub_bucket_index = (index & (conf.sub_bucket_half_count - 1)) + conf.sub_bucket_half_count;
+
+		if (bucket_index < 0)
+		{
+			sub_bucket_index -= conf.sub_bucket_half_count;
+			bucket_index = 0;
+		}
+
+		return value_from_index(conf, bucket_index, sub_bucket_index);
+	}
+
+	static inline int64_t value_from_index(hdr_histogram_conf_t const& conf, int32_t bucket_index, int32_t sub_bucket_index)
+	{
+		return ((int64_t) sub_bucket_index) << (bucket_index + conf.unit_magnitude);
+	}
+
+	static inline int32_t index_for_value(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		int32_t const bucket_index     = get_bucket_index(conf, value);
+		int32_t const sub_bucket_index = get_sub_bucket_index(conf, value, bucket_index);
+
+		return index_combined(conf, bucket_index, sub_bucket_index);
+	}
+
+	static inline int32_t index_combined(hdr_histogram_conf_t const& conf, int32_t bucket_index, int32_t sub_bucket_index)
+	{
+		// Calculate the index for the first entry in the bucket:
+		// (The following is the equivalent of ((bucket_index + 1) * subBucketHalfCount) ):
+		int32_t const bucket_base_index = (bucket_index + 1) << conf.sub_bucket_half_count_magnitude;
+		// Calculate the offset in the bucket:
+		int32_t const offset_in_bucket = sub_bucket_index - conf.sub_bucket_half_count;
+		// The following is the equivalent of ((sub_bucket_index  - subBucketHalfCount) + bucketBaseIndex;
+		return bucket_base_index + offset_in_bucket;
+	}
+
+// ranges
+
+	static inline int64_t size_of_equivalent_value_range(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		int32_t const bucket_index     = get_bucket_index(conf, value);
+		int32_t const sub_bucket_index = get_sub_bucket_index(conf, value, bucket_index);
+		int32_t const adjusted_bucket  = (sub_bucket_index >= conf.sub_bucket_count) ? (bucket_index + 1) : bucket_index;
+		return int64_t(1) << (conf.unit_magnitude + adjusted_bucket);
+	}
+
+	static inline int64_t next_non_equivalent_value(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		return lowest_equivalent_value(conf, value) + size_of_equivalent_value_range(conf, value);
+	}
+
+	static inline int64_t lowest_equivalent_value(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		int32_t const bucket_index     = get_bucket_index(conf, value);
+		int32_t const sub_bucket_index = get_sub_bucket_index(conf, value, bucket_index);
+		return value_from_index(conf, bucket_index, sub_bucket_index);
+	}
+
+	static inline int64_t highest_equivalent_value(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		return next_non_equivalent_value(conf, value) - 1;
+	}
+
+// utilities
+
+	static inline int32_t get_sub_bucket_index(hdr_histogram_conf_t const& conf, int64_t value, int32_t bucket_index)
+	{
+		return (int32_t)(value >> (bucket_index + conf.unit_magnitude));
+	}
+
+	static inline int32_t get_bucket_index(hdr_histogram_conf_t const& conf, int64_t value)
+	{
+		// get smallest power of 2 containing value
+		int32_t const pow2ceiling = (sizeof(unsigned long long) * 8) - __builtin_clzll(value | conf.sub_bucket_mask);
+		// adjust for unit bitsize and bucket size
+		return pow2ceiling - conf.unit_magnitude - (conf.sub_bucket_half_count_magnitude + 1);
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+#if 0
+
 template<class CounterT>
 struct hdr_snapshot___impl_t
 {
@@ -149,7 +236,7 @@ static_assert(std::is_integral<uint32_t>::value, "hdr_snapshot_t; CounterT must 
 static_assert(!std::is_copy_constructible<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
 static_assert(std::is_nothrow_move_constructible<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
 static_assert(std::is_nothrow_move_assignable<hdr_snapshot___impl_t<uint32_t>>::value, "hdr_snapshot_t must be movable");
-
+#endif
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class CounterT>
@@ -158,7 +245,7 @@ struct hdr_histogram___impl_t : private boost::noncopyable
 	using self_t     = hdr_histogram___impl_t;
 	using counter_t  = CounterT;
 	using config_t   = hdr_histogram_conf_t;
-	using snapshot_t = hdr_snapshot___impl_t<CounterT>;
+	// using snapshot_t = hdr_snapshot___impl_t<CounterT>;
 
 	static_assert(std::is_integral<counter_t>::value, "T must be an integral type");
 
@@ -168,22 +255,15 @@ public:
 	{
 		nmpa_                           = nmpa;
 
-		negative_inf_                   = 0;
-		positive_inf_                   = 0;
-		total_count_                    = 0;
-		counts_nonzero_                 = 0;
-		counts_maxlen_                  = conf.counts_len;
-
-		sub_bucket_count                = conf.sub_bucket_count;
-		sub_bucket_half_count           = conf.sub_bucket_half_count;
-		sub_bucket_mask                 = conf.sub_bucket_mask;
-		unit_magnitude                  = conf.unit_magnitude;
-		sub_bucket_half_count_magnitude = conf.sub_bucket_half_count_magnitude;
+		negative_inf                   = 0;
+		positive_inf                   = 0;
+		total_count                    = 0;
+		counts_nonzero                 = 0;
 
 		// allocate small part on init
-		counts_len_                     = conf.sub_bucket_half_count;
-		counts_ = (counter_t*)nmpa_calloc(nmpa_, counts_len_ * sizeof(counter_t));
-		if (counts_ == nullptr)
+		counts_len                      = conf.sub_bucket_half_count;
+		counts = (counter_t*)nmpa_calloc(nmpa_, counts_len * sizeof(counter_t));
+		if (counts == nullptr)
 			throw std::bad_alloc();
 	}
 
@@ -208,49 +288,42 @@ public:
 	{
 		nmpa_                           = other.nmpa;
 
-		negative_inf_                   = other.negative_inf_;
-		positive_inf_                   = other.positive_inf_;
-		total_count_                    = other.total_count_;
-		counts_nonzero_                 = other.counts_nonzero_;
-		counts_len_                     = other.counts_len_;
-		counts_maxlen_                  = other.counts_maxlen_;
+		negative_inf                   = other.negative_inf;
+		positive_inf                   = other.positive_inf;
+		total_count                    = other.total_count;
+		counts_nonzero                 = other.counts_nonzero;
+		counts_len                     = other.counts_len;
 
-		sub_bucket_count                = other.sub_bucket_count;
-		sub_bucket_half_count           = other.sub_bucket_half_count;
-		sub_bucket_mask                 = other.sub_bucket_mask;
-		unit_magnitude                  = other.unit_magnitude;
-		sub_bucket_half_count_magnitude = other.sub_bucket_half_count_magnitude;
-
-		counts_ = other.counts_;
-		other.counts_ = nullptr;
+		counts = other.counts;
+		other.counts = nullptr;
 
 		return *this;
 	}
 
 public: // reads
 
-	counter_t negative_inf() const noexcept { return negative_inf_; }
-	counter_t positive_inf() const noexcept { return positive_inf_; }
-	uint64_t  total_count() const noexcept { return total_count_; }
-	uint32_t  counts_nonzero() const noexcept { return counts_nonzero_; }
-	uint32_t  counts_len() const noexcept { return counts_len_; }
+	counter_t get_negative_inf() const noexcept { return negative_inf; }
+	counter_t get_positive_inf() const noexcept { return positive_inf; }
+	uint64_t  get_total_count() const noexcept { return total_count; }
+	uint32_t  get_counts_nonzero() const noexcept { return counts_nonzero; }
+	uint32_t  get_counts_len() const noexcept { return counts_len; }
 
 	using counts_range_t    = meow::string_ref<counter_t const>;
 	using counts_range_nc_t = meow::string_ref<counter_t>;
 
 	counts_range_t get_counts_range() const
 	{
-		return { this->counts_, this->counts_len_ };
+		return { this->counts, this->counts_len };
 	}
 
 	counts_range_nc_t mutable_counts_range()
 	{
-		return { this->counts_, this->counts_len_ };
+		return { this->counts, this->counts_len };
 	}
 
 	uint64_t get_allocated_size() const
 	{
-		return sizeof(counter_t) * this->counts_len_;
+		return sizeof(counter_t) * this->counts_len;
 	}
 
 public:
@@ -269,19 +342,21 @@ public:
 
 		if (__builtin_expect(value < conf.lowest_trackable_value, 0))
 		{
-			this->negative_inf_ += increment_by;
+			this->negative_inf += increment_by;
 		}
 		else if (__builtin_expect(value > conf.highest_trackable_value, 0))
 		{
-			this->positive_inf_ += increment_by;
+			this->positive_inf += increment_by;
 		}
 		else {
-			int32_t const counts_index = counts_index_for(value);
-			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len_));
+			int32_t const counts_index = hdr_algorithms::index_for_value(conf, value);
+			// assert((counts_index >= 0) && ((uint32_t)counts_index < this->counts_len));
 
-			if ((uint32_t)counts_index >= counts_len_)
+			if ((uint32_t)counts_index >= counts_len)
 			{
-				counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
+				uint32_t const new_counts_len = conf.counts_len;
+
+				counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts, counts_len * sizeof(counter_t), new_counts_len * sizeof(counter_t));
 				if (tmp == nullptr)
 				{
 					// we're noexcept, can't throw, so silently ignore the operation, best we can do for the time being
@@ -289,333 +364,385 @@ public:
 					// throw std::bad_alloc();
 					return false;
 				}
-				std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
-				counts_len_ = counts_maxlen_;
-				counts_ = tmp;
+				std::uninitialized_fill(tmp + counts_len, tmp + new_counts_len, 0);
+				counts_len = new_counts_len;
+				counts = tmp;
 			}
 
-			counter_t& counter = this->counts_[counts_index];
+			counter_t& counter = this->counts[counts_index];
 
-			counts_nonzero_ += (counter == 0);
+			counts_nonzero += (counter == 0);
 			counter         += increment_by;
 		}
 
-		this->total_count_ += increment_by;
+		this->total_count += increment_by;
 		return true;
 	}
 
 	void merge_other_with_same_conf(self_t const& other, config_t const& conf)
 	{
-		assert(this->counts_maxlen_ == other.counts_maxlen_);
-
-		if (this->counts_len_ < other.counts_len_)
+		if (this->counts_len < other.counts_len)
 		{
-			counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
+			uint32_t const new_counts_len = conf.counts_len;
+
+			counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts, counts_len * sizeof(counter_t), new_counts_len * sizeof(counter_t));
 			if (tmp == nullptr)
 				throw std::bad_alloc();
 
-			std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
-			counts_len_ = counts_maxlen_;
-			counts_ = tmp;
+			std::uninitialized_fill(tmp + counts_len, tmp + new_counts_len, 0);
+			counts_len = new_counts_len;
+			counts = tmp;
 		}
 
-		for (uint32_t i = 0; i < other.counts_len_; i++)
+		for (uint32_t i = 0; i < other.counts_len; i++)
 		{
-			counter_t&       dst_counter = this->counts_[i];
-			counter_t const& src_counter = other.counts_[i];
+			counter_t&       dst_counter = this->counts[i];
+			counter_t const& src_counter = other.counts[i];
 
 			if ((dst_counter == 0) && (src_counter != 0))
-				this->counts_nonzero_ += 1;
+				this->counts_nonzero += 1;
 
 			dst_counter += src_counter;
 		}
 
-		this->negative_inf_ += other.negative_inf_;
-		this->positive_inf_ += other.positive_inf_;
-		this->total_count_ += other.total_count_;
-	}
-
-	snapshot_t save_snapshot(config_t const& conf) const
-	{
-		snapshot_t result;
-
-		result.counts.resize(this->counts_nonzero());
-		result.total_count  = this->total_count();
-		result.negative_inf = this->negative_inf();
-		result.positive_inf = this->positive_inf();
-
-		uint32_t write_position = 0;
-
-		for (uint32_t i = 0; i < this->counts_len(); ++i)
-		{
-			uint32_t const cnt = this->count_at_index(i);
-			if (cnt == 0)
-				continue;
-
-			auto& snap_elt = result.counts[write_position];
-
-			snap_elt.index = i;
-			snap_elt.count = cnt;
-
-			write_position++;
-		}
-
-		assert(write_position == result.counts.size());
-
-		// for (auto const& elt : result.counts)
-		// {
-		// 	ff::fmt(stderr, "{0} -> {1}\n", elt.index, elt.count);
-		// }
-
-		return result;
-	}
-
-	void merge_snapshot(config_t const& conf, snapshot_t const& snapshot)
-	{
-		// FIXME: turn this into a function, copy-pasted from merge_other_with_same_conf()
-		if (this->counts_len_ < counts_maxlen_)
-		{
-			counter_t *tmp = (counter_t*)nmpa_realloc(nmpa_, counts_, counts_len_ * sizeof(counter_t), counts_maxlen_ * sizeof(counter_t));
-			if (tmp == nullptr)
-				throw std::bad_alloc();
-
-			std::uninitialized_fill(tmp + counts_len_, tmp + counts_maxlen_, 0);
-			this->counts_len_ = counts_maxlen_;
-			this->counts_ = tmp;
-		}
-
-		this->total_count_  += snapshot.total_count;
-		this->negative_inf_ += snapshot.negative_inf;
-		this->positive_inf_ += snapshot.positive_inf;
-
-		for (auto const& src : snapshot.counts)
-		{
-			counter_t      & dst_counter = this->counts_[src.index];
-			counter_t const& src_counter = src.count;
-
-			// ff::fmt(stderr, "merging; at: {0}, src: {1} + dst: {2} = ", src.index, src_counter, dst_counter);
-
-			if (dst_counter == 0)
-				this->counts_nonzero_ += 1;
-
-			dst_counter += src_counter;
-
-			// ff::fmt(stderr, "{0}\n", dst_counter);
-		}
-	}
-
-public:
-
-	inline int64_t get_percentile(config_t const& conf, double percentile) const
-	{
-		if (percentile == 0.)
-			return conf.lowest_trackable_value;
-
-		if (this->total_count() == 0) // no values in histogram, nothing to do
-			return conf.lowest_trackable_value;
-
-		uint64_t required_sum = [&]()
-		{
-			uint64_t const res = std::ceil(this->total_count() * percentile / 100.0);
-			uint64_t const total = (uint64_t)this->total_count();
-			return (res > total) ? total : res;
-		}();
-
-		// meow::format::fmt(stderr, "{0}({1}); neg_inf: {2}, pos_inf: {3}\n", __func__, percentile, this->negative_inf(), this->positive_inf());
-		// meow::format::fmt(stderr, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, this->total_count(), required_sum);
-
-		// fastpath - are we in negative_inf?, <= here !
-		if (required_sum <= (uint64_t)this->negative_inf())
-			return conf.lowest_trackable_value;
-
-		// fastpath - are we going to hit positive_inf?
-		if (required_sum > (uint64_t)(this->total_count() - this->positive_inf()))
-			return conf.highest_trackable_value;
-
-		// already past negative_inf, adjust
-		required_sum -= this->negative_inf();
-
-
-		// slowpath - shut up and calculate
-		uint64_t current_sum = 0;
-
-		auto const counts_r = this->get_counts_range();
-
-		for (uint32_t i = 0; i < counts_r.size(); i++)
-		{
-			uint32_t const bucket_id       = i;
-			uint64_t const next_has_values = counts_r[i];
-			uint64_t const need_values     = required_sum - current_sum;
-
-			if (next_has_values < need_values) // take bucket and move on
-			{
-				current_sum += next_has_values;
-				// meow::format::fmt(stderr, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
-				continue;
-			}
-
-			if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
-			{
-				// meow::format::fmt(stderr, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
-				int64_t const result = this->highest_equivalent_value(this->value_at_index(bucket_id));
-				return (result < conf.highest_trackable_value)
-						? result
-						: conf.highest_trackable_value;
-			}
-
-			// incomplete bucket, interpolate, assuming flat time distribution within bucket
-			{
-				int64_t const d = this->size_of_equivalent_value_range(bucket_id) * need_values / next_has_values;
-
-				// meow::format::fmt(stderr, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
-				int64_t const result = this->lowest_equivalent_value(this->value_at_index(bucket_id)) + d;
-				return (result < conf.highest_trackable_value)
-						? result
-						: conf.highest_trackable_value;
-			}
-		}
-
-		// dump hv contents to stderr, as we're going to die anyway
-		{
-			meow::format::fmt(stderr, "{0} internal failure, dumping histogram\n", __func__);
-			meow::format::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, total_count: {3}, hv_size: {4}\n",
-				__func__, this->negative_inf(), this->positive_inf(), this->total_count(), this->counts_len_);
-
-			for (uint32_t i = 0; i < counts_r.size(); i++)
-				meow::format::fmt(stderr, "[{0}] -> {1}\n", this->value_at_index(i), this->count_at_index(i));
-		}
-
-		assert(!"must not be reached");
+		this->negative_inf += other.negative_inf;
+		this->positive_inf += other.positive_inf;
+		this->total_count += other.total_count;
 	}
 
 public:
 
 	inline counter_t count_at_index(int32_t index) const
 	{
-		return this->counts_[index];
+		return this->counts[index];
 	}
 
-	inline int64_t value_at_index(int32_t index) const
+	inline int64_t value_at_index(config_t const& conf, int32_t index) const
 	{
-		int32_t bucket_index = (index >> this->sub_bucket_half_count_magnitude) - 1;
-		int32_t sub_bucket_index = (index & (this->sub_bucket_half_count - 1)) + this->sub_bucket_half_count;
-
-		if (bucket_index < 0)
-		{
-			sub_bucket_index -= this->sub_bucket_half_count;
-			bucket_index = 0;
-		}
-
-		return value_from_index(bucket_index, sub_bucket_index, this->unit_magnitude);
-	}
-
-	inline int64_t size_of_equivalent_value_range(int64_t value) const
-	{
-		int32_t const bucket_index     = get_bucket_index(value);
-		int32_t const sub_bucket_index = get_sub_bucket_index(value, bucket_index, this->unit_magnitude);
-		int32_t const adjusted_bucket  = (sub_bucket_index >= this->sub_bucket_count) ? (bucket_index + 1) : bucket_index;
-		return int64_t(1) << (this->unit_magnitude + adjusted_bucket);
-	}
-
-	inline int64_t next_non_equivalent_value(int64_t value) const
-	{
-		return lowest_equivalent_value(value) + size_of_equivalent_value_range(value);
-	}
-
-	inline int64_t lowest_equivalent_value(int64_t value) const
-	{
-		int32_t const bucket_index     = get_bucket_index(value);
-		int32_t const sub_bucket_index = get_sub_bucket_index(value, bucket_index, this->unit_magnitude);
-		return value_from_index(bucket_index, sub_bucket_index, this->unit_magnitude);
-	}
-
-	inline int64_t highest_equivalent_value(int64_t value) const
-	{
-		return next_non_equivalent_value(value) - 1;
-	}
-
-public: // utilities
-
-	static inline int64_t value_from_index(int32_t bucket_index, int32_t sub_bucket_index, int32_t unit_magnitude)
-	{
-		return ((int64_t) sub_bucket_index) << (bucket_index + unit_magnitude);
-	}
-
-	static inline int32_t get_sub_bucket_index(int64_t value, int32_t bucket_index, int32_t unit_magnitude)
-	{
-		return (int32_t)(value >> (bucket_index + unit_magnitude));
-	}
-
-	inline int32_t get_bucket_index(int64_t value) const
-	{
-		// get smallest power of 2 containing value
-		int32_t const pow2ceiling = (sizeof(unsigned long long) * 8) - __builtin_clzll(value | this->sub_bucket_mask);
-		// adjust for unit bitsize and bucket size
-		return pow2ceiling - this->unit_magnitude - (this->sub_bucket_half_count_magnitude + 1);
-	}
-
-	inline int32_t counts_index( int32_t bucket_index, int32_t sub_bucket_index) const
-	{
-		// Calculate the index for the first entry in the bucket:
-		// (The following is the equivalent of ((bucket_index + 1) * subBucketHalfCount) ):
-		int32_t const bucket_base_index = (bucket_index + 1) << this->sub_bucket_half_count_magnitude;
-		// Calculate the offset in the bucket:
-		int32_t const offset_in_bucket = sub_bucket_index - this->sub_bucket_half_count;
-		// The following is the equivalent of ((sub_bucket_index  - subBucketHalfCount) + bucketBaseIndex;
-		return bucket_base_index + offset_in_bucket;
-	}
-
-	inline int32_t counts_index_for(int64_t value) const
-	{
-		int32_t const bucket_index     = get_bucket_index(value);
-		int32_t const sub_bucket_index = get_sub_bucket_index(value, bucket_index, this->unit_magnitude);
-
-		return counts_index(bucket_index, sub_bucket_index);
+		return hdr_algorithms::value_at_index(conf, index);
 	}
 
 private:
 	struct nmpa_s *nmpa_;
 	// 8
 
-	// FIXME: experiment with small types, they seem to generate too many instructions to extend
-	uint16_t   sub_bucket_count;
-	uint16_t   sub_bucket_half_count;
-	uint16_t   sub_bucket_mask;
-	uint8_t    unit_magnitude;
-	uint8_t    sub_bucket_half_count_magnitude;
+	uint32_t   counts_nonzero;
+	uint32_t   counts_len;
 	// 16
 
-	uint32_t   counts_nonzero_;
-	uint32_t   counts_len_;
+	uint64_t   total_count;
 	// 24
 
-	uint64_t   total_count_;
+	counter_t  *counts;
 	// 32
 
-	counter_t  *counts_;
+	counter_t   negative_inf;
+	counter_t   positive_inf;
 	// 40
-
-	uint32_t    counts_maxlen_;
-	counter_t   negative_inf_;
-	counter_t   positive_inf_;
-	uint32_t    padding____; // explicitly put it somewhere, as we know it exists
-	// 56
 };
-static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 56, "");
+static_assert(sizeof(hdr_histogram___impl_t<uint32_t>) == 40, "");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+template<class Histogram>
+inline int64_t hdr_histogram___get_percentile(Histogram const& h, hdr_histogram_conf_t const& conf, double percentile)
+{
+	if (percentile == 0.)
+		return conf.lowest_trackable_value;
+
+	if (h.get_total_count() == 0) // no values in histogram, nothing to do
+		return conf.lowest_trackable_value;
+
+	uint64_t required_sum = [&]()
+	{
+		uint64_t const res = std::ceil(h.get_total_count() * percentile / 100.0);
+		uint64_t const total = (uint64_t)h.get_total_count();
+		return (res > total) ? total : res;
+	}();
+
+	// meow::format::fmt(stderr, "{0}({1}); neg_inf: {2}, pos_inf: {3}\n", __func__, percentile, h.negative_inf(), h.positive_inf());
+	// meow::format::fmt(stderr, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, h.total_count(), required_sum);
+
+	// fastpath - are we in negative_inf?, <= here !
+	if (required_sum <= (uint64_t)h.get_negative_inf())
+		return conf.lowest_trackable_value;
+
+	// fastpath - are we going to hit positive_inf?
+	if (required_sum > (uint64_t)(h.get_total_count() - h.get_positive_inf()))
+		return conf.highest_trackable_value;
+
+	// already past negative_inf, adjust
+	required_sum -= h.get_negative_inf();
+
+
+	// slowpath - shut up and calculate
+	uint64_t current_sum = 0;
+
+	auto const counts_r = h.get_counts_range();
+
+	for (uint32_t i = 0; i < counts_r.size(); i++)
+	{
+		uint32_t const bucket_id       = i;
+		uint64_t const next_has_values = counts_r[i];
+		uint64_t const need_values     = required_sum - current_sum;
+
+		if (next_has_values < need_values) // take bucket and move on
+		{
+			current_sum += next_has_values;
+			// meow::format::fmt(stderr, "[{0}] current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			continue;
+		}
+
+		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
+		{
+			// meow::format::fmt(stderr, "[{0}] full; current_sum +=; {1} -> {2}\n", bucket_id, next_has_values, current_sum);
+			int64_t const result = hdr_algorithms::highest_equivalent_value(conf, hdr_algorithms::value_at_index(conf, bucket_id));
+			return (result < conf.highest_trackable_value)
+					? result
+					: conf.highest_trackable_value;
+		}
+
+		// incomplete bucket, interpolate, assuming flat time distribution within bucket
+		{
+			int64_t const d = hdr_algorithms::size_of_equivalent_value_range(conf, bucket_id) * need_values / next_has_values;
+
+			// meow::format::fmt(stderr, "[{0}] last, has: {1}, taking: {2}, {3}\n", bucket_id, next_has_values, need_values, d);
+			int64_t const result = hdr_algorithms::lowest_equivalent_value(conf, hdr_algorithms::value_at_index(conf, bucket_id)) + d;
+			return (result < conf.highest_trackable_value)
+					? result
+					: conf.highest_trackable_value;
+		}
+	}
+
+	// dump hv contents to stderr, as we're going to die anyway
+	hdr_histogram___debug_dump(stderr, h, conf, "get_percentile");
+
+	assert(!"must not be reached");
+}
+#if 0
+template<class Histogram>
+typename Histogram::snapshot_t hdr_histogram___create_snapshot(Histogram const& h, config_t const& conf)
+{
+	typename Histogram::snapshot_t result;
+
+	result.counts.resize(h.counts_nonzero());
+	result.total_count  = h.total_count();
+	result.negative_inf = h.negative_inf();
+	result.positive_inf = h.positive_inf();
+
+	uint32_t write_position = 0;
+
+	for (uint32_t i = 0; i < h.counts_len(); ++i)
+	{
+		uint32_t const cnt = h.count_at_index(i);
+		if (cnt == 0)
+			continue;
+
+		auto& snap_elt = result.counts[write_position];
+
+		snap_elt.index = i;
+		snap_elt.count = cnt;
+
+		write_position++;
+	}
+
+	assert(write_position == result.counts.size());
+
+	return result;
+}
+#endif
+
+// nmpa allocated pod / standard-layout type,
+// intended to be allocated in nmpa, not constructed with ctor
+struct hdr_snapshot___nmpa_t
+{
+	struct count_t
+	{
+		uint32_t index;
+		uint32_t count;
+	};
+
+	uint64_t  total_count;
+	uint32_t  negative_inf;
+	uint32_t  positive_inf;
+
+	uint32_t  counts_len;
+	// uint32_t  padding___;
+	count_t   counts[0];
+};
+static_assert(sizeof(hdr_snapshot___nmpa_t) == 24, "no padding expected in hdr_snapshot___nmpa_t");
+
+struct hdr_snapshot___merged_t
+{
+	uint64_t  total_count;
+	uint32_t  negative_inf;
+	uint32_t  positive_inf;
+
+	uint32_t  counts_len;
+	uint32_t  counts_nonzero;
+	uint32_t  counts[0];
+};
+static_assert(sizeof(hdr_snapshot___merged_t) == 24, "no padding expected in hdr_snapshot___merged_t");
+
+
+template<class Histogram>
+inline hdr_snapshot___nmpa_t* hdr_histogram___save_snapshot_nmpa(Histogram const& h, hdr_histogram_conf_t const& conf, struct nmpa_s *nmpa)
+{
+	auto *result = (hdr_snapshot___nmpa_t*)nmpa_calloc(nmpa, sizeof(hdr_snapshot___nmpa_t) + h.get_counts_nonzero() * sizeof(uint32_t));
+	if (nullptr == result)
+		return nullptr;
+
+	result->counts_len   = h.get_counts_nonzero();
+	result->total_count  = h.get_total_count();
+	result->negative_inf = h.get_negative_inf();
+	result->positive_inf = h.get_positive_inf();
+
+	uint32_t write_position = 0;
+
+	for (uint32_t i = 0; i < h.get_counts_len(); ++i)
+	{
+		uint32_t const cnt = h.count_at_index(i);
+		if (cnt == 0)
+			continue;
+
+		auto& snap_elt = result->counts[write_position];
+
+		snap_elt.index = i;
+		snap_elt.count = cnt;
+
+		write_position++;
+	}
+
+	assert(write_position == result->counts_len);
+
+	return result;
+}
+
+inline hdr_snapshot___merged_t* hdr_histogram___allocate_snapshot_merger(struct nmpa_s *nmpa, hdr_histogram_conf_t const& conf)
+{
+	size_t const obj_size = sizeof(hdr_snapshot___merged_t) + conf.counts_len * sizeof(uint32_t);
+
+	auto *result = static_cast<hdr_snapshot___merged_t*>(nmpa_calloc(nmpa, obj_size)); // zero init is important here
+	if (nullptr == result)
+		return nullptr;
+
+	result->counts_len = conf.counts_len;
+
+	return result;
+}
+
+inline void hdr_histogram___merge_snapshot_from_to(hdr_histogram_conf_t const& conf, hdr_snapshot___nmpa_t const& from, hdr_snapshot___merged_t& to)
+{
+	to.total_count  += from.total_count;
+	to.negative_inf += from.negative_inf;
+	to.positive_inf += from.positive_inf;
+
+	for (uint32_t i = 0; i < from.counts_len; ++i)
+	{
+		auto const    & src_pair    = from.counts[i];
+		uint32_t      & dst_counter = to.counts[src_pair.index];
+
+		// ff::fmt(stderr, "merging; at: {0}, src: {1} + dst: {2} = ", src_pair.index, src_pair.count, dst_counter);
+
+		// check if a zero counter is changing to non zero
+		//  1st check is the real one
+		//  2nd check is always true, since we're copying from a snapshot, which is not supposed to store zeroes at all
+		if ((dst_counter == 0) && (src_pair.count != 0))
+			to.counts_nonzero += 1;
+
+		dst_counter += src_pair.count;
+
+		// ff::fmt(stderr, "{0}\n", dst_counter);
+	}
+}
+
+template<class HSnapshot>
+inline int64_t hdr_snapshot___get_percentile(HSnapshot const& h, hdr_histogram_conf_t const& conf, double percentile)
+{
+	if (percentile == 0.)
+		return conf.lowest_trackable_value;
+
+	if (h.total_count == 0) // no values in histogram, nothing to do
+		return conf.lowest_trackable_value;
+
+	uint64_t required_sum = [&]()
+	{
+		uint64_t const res = std::ceil(h.total_count * percentile / 100.0);
+		uint64_t const total = (uint64_t)h.total_count;
+		return (res > total) ? total : res;
+	}();
+
+	// meow::format::fmt(stderr, "{0}({1}); neg_inf: {2}, pos_inf: {3}\n", __func__, percentile, h.negative_inf(), h.positive_inf());
+	// meow::format::fmt(stderr, "{0}({1}); total: {2}, required: {3}\n", __func__, percentile, h.total_count(), required_sum);
+
+	// fastpath - are we in negative_inf?, <= here !
+	if (required_sum <= (uint64_t)h.negative_inf)
+		return conf.lowest_trackable_value;
+
+	// fastpath - are we going to hit positive_inf?
+	if (required_sum > (uint64_t)(h.total_count - h.positive_inf))
+		return conf.highest_trackable_value;
+
+	// already past negative_inf, adjust
+	required_sum -= h.negative_inf;
+
+
+	// slowpath - shut up and calculate
+	uint64_t current_sum = 0;
+
+	for (uint32_t i = 0; i < h.counts_len; i++)
+	{
+		uint32_t const index           = i;
+		uint64_t const next_has_values = h.counts[i];
+		uint64_t const need_values     = required_sum - current_sum;
+
+		if (next_has_values < need_values) // take bucket and move on
+		{
+			current_sum += next_has_values;
+			// meow::format::fmt(stderr, "[{0}] current_sum +=; {1} -> {2}\n", index, next_has_values, current_sum);
+			continue;
+		}
+
+		if (next_has_values == need_values) // complete bucket, return upper time bound for this bucket
+		{
+			// meow::format::fmt(stderr, "[{0}] full; current_sum +=; {1} -> {2}\n", index, next_has_values, current_sum);
+			int64_t const result = hdr_algorithms::highest_equivalent_value(conf, hdr_algorithms::value_at_index(conf, index));
+			return (result < conf.highest_trackable_value)
+					? result
+					: conf.highest_trackable_value;
+		}
+
+		// incomplete bucket, interpolate, assuming flat time distribution within bucket
+		{
+			int64_t const d = hdr_algorithms::size_of_equivalent_value_range(conf, index) * need_values / next_has_values;
+
+			// meow::format::fmt(stderr, "[{0}] last, has: {1}, taking: {2}, {3}\n", index, next_has_values, need_values, d);
+			int64_t const result = hdr_algorithms::lowest_equivalent_value(conf, hdr_algorithms::value_at_index(conf, index)) + d;
+			return (result < conf.highest_trackable_value)
+					? result
+					: conf.highest_trackable_value;
+		}
+	}
+
+	// dump hv contents to stderr, as we're going to die anyway
+	// FIXME:
+	// hdr_histogram___debug_dump(stderr, h, "get_percentile");
+
+	assert(!"must not be reached");
+}
+
+
 template<class SinkT, class Histogram>
-inline void hdr_histogram___debug_dump(SinkT& sink, Histogram const& hv, meow::str_ref func_name)
+inline void hdr_histogram___debug_dump(SinkT& sink, Histogram const& hv, hdr_histogram_conf_t const& conf, meow::str_ref func_name)
 {
 	auto const counts_r = hv.get_counts_range();
 
 	meow::format::fmt(stderr, "{0} internal failure, dumping histogram\n", func_name);
 	meow::format::fmt(stderr, "{0} neg_inf: {1}, pos_inf: {2}, total_count: {3}, hv_size: {4}\n",
-		func_name, hv.negative_inf(), hv.positive_inf(), hv.total_count(), counts_r.size());
+		func_name, hv.get_negative_inf(), hv.get_positive_inf(), hv.get_total_count(), counts_r.size());
 
 	for (uint32_t i = 0; i < counts_r.size(); i++)
-		meow::format::fmt(stderr, "  [{0}] -> {1}\n", hv.value_at_index(i), hv.count_at_index(i));
+		meow::format::fmt(stderr, "  [{0}] -> {1}\n", hdr_algorithms::value_at_index(conf, i), hv.count_at_index(i));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

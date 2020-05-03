@@ -23,6 +23,8 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 		auto const *histogram = snapshot->get_histogram(pos);
 		if (histogram != nullptr)
 		{
+			auto const *hv_conf = snapshot->histogram_conf();
+
 			// if (HISTOGRAM_KIND__HASHTABLE == snapshot->histogram_kind())
 			// {
 			// 	auto const *hv = static_cast<histogram_t const*>(histogram);
@@ -49,24 +51,24 @@ void debug_dump_report_snapshot(FILE *sink, report_snapshot_t *snapshot, str_ref
 				auto const *hv = static_cast<hdr_histogram_t const*>(histogram);
 				bool printed_something = false;
 
-				for (uint32_t i = 0; i < hv->counts_len(); i++)
+				for (uint32_t i = 0; i < hv->get_counts_len(); i++)
 				{
 					if (hv->count_at_index(i) == 0)
 						continue;
 
-					ff::fmt(sink, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(i), hv->count_at_index(i));
+					ff::fmt(sink, "{0}{1}: {2}", (printed_something)?", ":"", hv->value_at_index(hv_conf->hdr, i), hv->count_at_index(i));
 					printed_something = true;
 				}
 
-				if (hv->negative_inf() > 0)
+				if (hv->get_negative_inf() > 0)
 				{
-					ff::fmt(sink, "{0}min:{1}", (printed_something)?", ":"", hv->negative_inf());
+					ff::fmt(sink, "{0}min:{1}", (printed_something)?", ":"", hv->get_negative_inf());
 					printed_something = true;
 				}
 
-				if (hv->positive_inf() > 0)
+				if (hv->get_positive_inf() > 0)
 				{
-					ff::fmt(sink, "{0}max:{1}", (printed_something)?", ":"", hv->positive_inf());
+					ff::fmt(sink, "{0}max:{1}", (printed_something)?", ":"", hv->get_positive_inf());
 					printed_something = true;
 				}
 			}
