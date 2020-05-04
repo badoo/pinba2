@@ -600,23 +600,20 @@ inline hdr_snapshot___nmpa_t* hdr_histogram___save_snapshot_nmpa(Histogram const
 	result->negative_inf = h.get_negative_inf();
 	result->positive_inf = h.get_positive_inf();
 
-	uint32_t write_position = 0;
+	uint32_t read_position = 0;
 
-	for (uint32_t i = 0; i < h.get_counts_len(); ++i)
+	// find and copy all non-zero elts of the array (of which there are h.get_counts_nonzero())
+	//  the loop structure idea is to avoid scanning the long tail of zeroes in source array
+	for (uint32_t i = 0; i < h.get_counts_nonzero(); ++i)
 	{
-		uint32_t const cnt = h.count_at_index(i);
-		if (cnt == 0)
-			continue;
+		while (0 == h.count_at_index(read_position))
+			++read_position;
 
-		auto& snap_elt = result->counts[write_position];
+		auto& snap_elt = result->counts[i];
 
-		snap_elt.index = i;
-		snap_elt.count = cnt;
-
-		write_position++;
+		snap_elt.index = read_position;
+		snap_elt.count = h.count_at_index(read_position);
 	}
-
-	assert(write_position == result->counts_len);
 
 	return result;
 }
