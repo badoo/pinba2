@@ -17,6 +17,8 @@
 #include "pinba/globals.h"
 #include "pinba/limits.h"
 
+#include <immintrin.h>
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct hdr_histogram_conf_t
@@ -307,6 +309,7 @@ public: // reads
 	uint64_t  get_total_count() const noexcept { return total_count; }
 	uint32_t  get_counts_nonzero() const noexcept { return counts_nonzero; }
 	uint32_t  get_counts_len() const noexcept { return counts_len; }
+	uint32_t* get_counts_ptr() const noexcept { return counts; }
 
 	using counts_range_t    = meow::string_ref<counter_t const>;
 	using counts_range_nc_t = meow::string_ref<counter_t>;
@@ -602,6 +605,41 @@ inline hdr_snapshot___nmpa_t* hdr_histogram___save_snapshot_nmpa(Histogram const
 
 	// find and copy all non-zero elts of the array (of which there are h.get_counts_nonzero())
 	//  the loop structure idea is to avoid scanning the long tail of zeroes in source array
+#if 1
+
+	uint32_t write_position = 0;
+	uint32_t const *counts = h.get_counts_ptr();
+	// assert((counts_r.size() % 4) == 0);
+
+	for (uint32_t i = 0, i_end = h.get_counts_len(); i < i_end; i += 4)
+	{
+		__m128i const v      = _mm_load_si128((__m128i*)(counts + i));
+		__m128i const vcmp   = _mm_cmpeq_epi32(v, _mm_setzero_si128()); // set all 1 bits to each uint32_t that is equal to 0
+		uint32_t vmask = _mm_movemask_epi8(vcmp); // 16 bits, each 0/1 depending on highest bit in vcmp byte elements
+
+		if (vmask == 0x0) // all zero, continue
+			continue;
+
+		// example: 0000 1111 0000 0000, shuffle_mask: 11 00 00 00
+
+		vmask = ~vmask;
+
+		for (int j = _tzcnt_u32(vmask) / 4; j < 4; ++j)
+		{
+			if ((vmask >> (j * 4)) & 0x0f)
+			{
+				result->counts[write_position].index = i + j;
+				result->counts[write_position].count = counts[i + j];
+
+				++write_position;
+			}
+		}
+
+		if (write_position >= result->counts_len)
+			break;
+	}
+
+#else
 	uint32_t read_position = 0;
 	for (uint32_t i = 0; i < result->counts_len; ++i)
 	{
@@ -617,7 +655,7 @@ inline hdr_snapshot___nmpa_t* hdr_histogram___save_snapshot_nmpa(Histogram const
 
 		++read_position;
 	}
-
+#endif
 	return result;
 }
 
