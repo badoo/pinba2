@@ -851,7 +851,7 @@ namespace { namespace aux {
 								if (inserted_pair.second) // just inserted empty elt
 								{
 									dst.saved_hvs_len = 0;
-									dst.saved_hvs.reset(new hdr_snapshot___nmpa_t const* [dst.saved_hvs_len]);
+									dst.saved_hvs.reset(new hdr_snapshot___nmpa_t const* [ticks.size()]);
 								}
 
 								dst.saved_hvs[dst.saved_hvs_len++] = src.hv;
