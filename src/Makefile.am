@@ -48,4 +48,5 @@ pinba2_SOURCES = \
 pinba2_LDADD = \
 	libpinba2.a \
 	$(DEPS_LIBS) \
+	$(AX_LDFLAGS) \
 	#

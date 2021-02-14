@@ -281,7 +281,7 @@ AC_ARG_WITH(build-string,  [AS_HELP_STRING([--with-build-string],[set custom bui
 AC_ARG_WITH(nanomsg, [AS_HELP_STRING([--with-nanomsg], [path to nanomsg library (build it statically)])],
 [
 	DEPS_CFLAGS="$DEPS_CFLAGS -pthread -I$with_nanomsg/include"
-	LDFLAGS="$LDFLAGS -lanl"
+	AX_LDFLAGS="$AX_LDFLAGS -lanl"
 	DEPS_LIBS="$DEPS_LIBS $with_nanomsg/lib/libnanomsg.a"
 ])
 
