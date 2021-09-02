@@ -344,7 +344,7 @@ mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
       COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 ```
 
-example (grouped by host_name, scrip_tname, server_name and value timer tag "tag10")
+example (grouped by host_name, script_name, server_name and value timer tag "tag10")
 
 ```sql
 mysql> CREATE TABLE `report_host_script_server_tag10` (
