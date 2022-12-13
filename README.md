@@ -3,7 +3,6 @@ Pinba2
 
 An attempt to rethink internal implementation and some features of excellent https://github.com/tony2001/pinba_engine by @tony2001.
 
-
 Pinba (PHP Is Not A Bottleneck Anymore) is a statistics server using MySQL as an interface.
 
 It accumulates and processes data sent over UDP and displays statistics in human-readable form of simple "reports" (like what are my slowest scripts or sql queries).
@@ -16,7 +15,7 @@ Key differences from original implementation
 - no raw data tables (i.e. requests, timers) support, yet (can be implemented)
     - raw data tables have VERY high memory usage requirements and uses are limited
 - simpler, more flexible report configuration
-    - all use cases from original pinba are covered by only 3 kinds of reports (of which you mostly need one: timer)
+    - all use cases from original Pinba are covered by only 3 kinds of reports (of which you mostly need one: timer)
     - simple aggregation keys specification, can mix different types, i.e. ~script,~server,+request_tag,@timer_tag
         - supports 15 keys max at the moment (never seen anyone using more than 5 anyway)
         - performance does not degrade when adding more keys to reports
@@ -33,7 +32,7 @@ Key differences from original implementation
     - current goal is to be able to handle 10gpbs of incoming traffic with hundreds of reports
 - select performance - might be slower
   - selects from complex reports never slow down new data aggregation
-  - selects in general will be slower for complex reports with thousands of rows and high percision percentiles
+  - selects in general will be slower for complex reports with thousands of rows and high precision percentiles
     - select * from 30k rows report without percentiles takes at least ~200 milliseconds or so
     - with percentiles (say histogram with 10k entries) - will add ~300ms to that
 - misc
@@ -64,7 +63,6 @@ We've got some scripts to help [in scripts directory](scripts).
 Convert mysqldump of your old tables to new format with [this script](scripts/convert_mysqldump.php).
 
 
-
 More Info
 --------
 
@@ -82,13 +80,13 @@ Docker
 
 [`Dockerfile`](Dockerfile)
 
+
 Basics
 ------
 
 **Requests**
 
 We get these over UDP, each request contains metrics data gathered by your application (like serving pages to users, or performing db queries).
-
 
 Data comes in three forms
 
@@ -105,7 +103,7 @@ Data comes in three forms
     - `memory_footprint`: amount of memory used
 - **request tags** - this is just a bunch of `key -> value` pairs attached to request as a whole
     - ex. in pseudocode `[ 'application' -> 'my_cool_app', 'environment' -> 'production' ]`
-- **timers** - a bunch is sub-action measurements, for example: time it took to execute some db query, or process some user input.
+- **timers** - a bunch of sub-action measurements, for example: time it took to execute some db query, or process some user input.
     - number of timers is not limited, track all db/memcached queries
     - each timer can also have tags!
         - ex. `[ 'group' -> 'db', 'server' -> 'db1.lan', 'op_type' -> 'update' ]`
@@ -141,7 +139,7 @@ There are 3 kinds of reports: packet, request, timer. The difference between tho
 
 Reports are exposed to the user as SQL tables.
 
-All report tables have same simple structure
+All report tables have the same simple structure
 
 - `Aggregation_key`, one table field per key part (i.e. ~script,~host,@timer_tag needs 3 fields with appropriate types)
 - `Aggregated_data`, 3 fields per data field (field_value, field_value_per_sec, field_value_percent) (i.e. request report needs 7*3 fields = 21 data fields)
@@ -158,10 +156,14 @@ ASCII art!
                               | key -> value |           | key_part_1 | ... | data_part_1 | ... | percentile_1 | ... |
                               ----------------           -------------------------------------------------------------
 
+__NB__
+
+- there are no reports tables created by default in the database. It is up to you to create the ones you need
+- after executing the table creation DDL, you have to run a SELECT once in order for the table to start gathering aggregated data
 
 **SQL table comments**
 
-All pinba tables are created with sql comment to tell the engine about table purpose and structure,
+All pinba tables are created with a sql comment to tell the engine about table purpose and structure,
 general syntax for comment is as follows (not all reports use all the fields).
 
     > COMMENT='v2/<report_type>/<aggregation_window>/<keys>/<histogram+percentiles>/<filters>';
@@ -186,12 +188,12 @@ general syntax for comment is as follows (not all reports use all the fields).
         - &lt;percentiles&gt;=p&lt;double&gt;[,p&lt;double&gt;[...]]
         - (alt syntax) &lt;percentiles&gt;='percentiles='&lt;double&gt;[:&lt;double&gt;[...]]
     - example: 'hv=0:2000:20000,p99,p99.9,p100'
-        - this uses histogram for time range [0,2000) millseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
+        - this uses histogram for time range [0,2000) milliseconds, with 20000 buckets, so each bucket is 0.1 ms 'wide'
         - also adds 3 percentiles to report 99th, 99.9th and 100th, percentile calculation precision is 0.1ms given above
         - uses 'request_time' (for packet/request reports) or 'timer_value' (for timer reports) from incoming packets for percentiles calculation
     - example (alt syntax): 'hv=0:2000:20000,percentiles=99:99.9:100'
         - same effect as above
-- &lt;filters&gt;: accept only packets maching these filters into this report
+- &lt;filters&gt;: accept only packets matching these filters into this report
     - to disable: put 'no_filters' here, report will accept all packets
     - any of (separate with commas):
         - 'min_time=&lt;milliseconds&gt;'
@@ -697,7 +699,7 @@ histogram looks like this
   [positive_infinity bucket] -> number of time values in range (<max_value_ms>, +inf)
 ```
 
-**Things to know about percentile caculation**
+**Things to know about percentile calculation**
 
 - when percentile calculation needs to take 'partial bucket' (i.e. not all values from the bucket) - it interpolates percentile value, assuming uniform distribution within the bucket
 - percentile 0   - is always equal to min_value_ms
@@ -726,7 +728,7 @@ Example
 hv=0:2000:20000;values=[min:3,max:3,69:3]
 ```
 
-**Percentile caculation example**
+**Percentile calculation example**
 
 Given the histogram above, say we need to calculate percentile 50 (aka median). Aka, the value that is larger than 50% of the values in the 'value set'.
 Our 'value set' is as follows
@@ -747,4 +749,4 @@ or, transforming 'infinities' into min_value_ms and max_value_ms
   [ 0ms, 0ms, 0ms, 6.33(3)ms, 6.66(6)ms, 7ms, 2000ms, 2000ms, 2000ms ]
   ```
   since we assume uniform distribution, virtually splitting the bucket into N=3 (the number of values in a bucket) sub-buckets
-- so our answer will be 6.66(6) millseconds
+- so our answer will be 6.66(6) milliseconds
