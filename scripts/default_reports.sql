@@ -27,7 +27,7 @@ CREATE TABLE `report_by_host_name` (
   `memory_footprint` bigint(20) NOT NULL,
   `memory_per_sec` float NOT NULL,
   `memory_percent` float
-) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~host/no_percentiles/no_filters';
+) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/request/default_history_time/~host/no_percentiles/no_filters';
 
 CREATE TABLE `report_by_script_name` (
   `script` varchar(64) NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE `report_by_script_name` (
   `memory_footprint` bigint(20) NOT NULL,
   `memory_per_sec` float NOT NULL,
   `memory_percent` float
-) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~script/no_percentiles/no_filters';
+) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/request/default_history_time/~script/no_percentiles/no_filters';
 
 CREATE TABLE `report_by_server_name` (
   `server` varchar(64) NOT NULL,
@@ -71,4 +71,4 @@ CREATE TABLE `report_by_server_name` (
   `memory_footprint` bigint(20) NOT NULL,
   `memory_per_sec` float NOT NULL,
   `memory_percent` float
-) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/default_history_time/~server/no_percentiles/no_filters';
+) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/request/default_history_time/~server/no_percentiles/no_filters';

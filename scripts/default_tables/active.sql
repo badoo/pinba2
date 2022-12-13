@@ -28,4 +28,4 @@ CREATE TABLE IF NOT EXISTS `pinba`.`active` (
   `last_tick_time` double NOT NULL,
   `last_tick_prepare_duration` double NOT NULL,
   `last_snapshot_merge_duration` double NOT NULL
-) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
+) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/active';
