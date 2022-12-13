@@ -158,6 +158,12 @@ ASCII art!
                               | key -> value |           | key_part_1 | ... | data_part_1 | ... | percentile_1 | ... |
                               ----------------           -------------------------------------------------------------
 
+__NB__
+
+- the pinba engine treats strings as sequences of bytes, ie. it is agnostic to the character set used by the client
+  for string values such as tags, hostnames etc. We default to use `utf8mb4` for the table creation scripts and examples
+  as it seems the most logical default to use in 2022
+
 
 **SQL table comments**
 
@@ -230,7 +236,7 @@ mysql> CREATE TABLE `info` (
       `ru_stime_total` double NOT NULL,
       `traffic` bigint(20) unsigned NOT NULL,
       `memory_footprint` bigint(20) unsigned NOT NULL
-    ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
+    ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/packet/default_history_time/no_keys/no_percentiles/no_filters'
 
 mysql> select * from info;
 +-----------+-------------+-------------------+------------------+-----------------+-----------+------------------+
@@ -277,7 +283,7 @@ mysql> CREATE TABLE `report_by_script_name` (
         `memory_footprint` bigint(20) NOT NULL,
         `memory_per_sec` float NOT NULL,
         `memory_percent` float
-        ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
+        ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/request/60/~script/no_percentiles/no_filters';
 
 mysql> select * from report_by_script_name; -- skipped some fields for brevity
 +----------------+-----------+-------------+----------------+------------------+----------------+------------------+-----------------+------------------+
@@ -340,7 +346,7 @@ mysql> CREATE TABLE `tag_info_pinger_call_from_wwwbmamlan` (
       `p99` float NOT NULL,
       `p100` float NOT NULL,
       `histogram_data` text NOT NULL
-    ) ENGINE=PINBA DEFAULT CHARSET=latin1
+    ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4
       COMMENT='v2/timer/60/@pinger_dst_cluster,@pinger_src_host,@pinger_dst_host/hv=0:1000:100000,p50,p75,p95,p99,p100/+pinger_phase=call,+pinger_src_cluster=wwwbma.mlan';
 ```
 
@@ -362,7 +368,7 @@ mysql> CREATE TABLE `report_host_script_server_tag10` (
       `ru_utime_per_sec` float NOT NULL,
       `ru_stime_total` float NOT NULL,
       `ru_stime_per_sec` float NOT NULL
-    ) ENGINE=PINBA DEFAULT CHARSET=latin1
+    ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4
       COMMENT='v2/timer/60/~host,~script,~server,@tag10/no_percentiles/no_filters';
 
 mysql> select * from report_host_script_server_tag10; -- skipped some fields for brevity
@@ -469,7 +475,7 @@ mysql> CREATE TABLE IF NOT EXISTS `pinba`.`active` (
       `last_tick_time` double NOT NULL,
       `last_tick_prepare_duration` double NOT NULL,
       `last_snapshot_merge_duration` double NOT NULL
-    ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/active';
+    ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/active';
 
 
 mysql> select *, packets_received/uptime as packets_per_sec, timers_scanned/uptime as timers_per_sec, ru_utime/uptime utime_per_sec from active\G
@@ -559,7 +565,7 @@ mysql> CREATE TABLE IF NOT EXISTS `stats` (
       `dictionary_mem_strings` BIGINT(20) UNSIGNED NOT NULL,
       `version_info` text(1024) NOT NULL,
       `build_string` text(1024) NOT NULL
-    ) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
+    ) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/stats';
 ```
 
 ```sql

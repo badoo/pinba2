@@ -36,4 +36,4 @@ CREATE TABLE IF NOT EXISTS `pinba`.`stats` (
   `dictionary_mem_strings` bigint(20) unsigned NOT NULL,
   `version_info` text NOT NULL,
   `build_string` text NOT NULL
-) ENGINE=PINBA DEFAULT CHARSET=latin1 COMMENT='v2/stats';
+) ENGINE=PINBA DEFAULT CHARSET=utf8mb4 COMMENT='v2/stats';
